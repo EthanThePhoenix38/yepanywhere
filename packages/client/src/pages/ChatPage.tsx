@@ -27,7 +27,7 @@ function ChatPageContent({
   projectId: string;
   sessionId: string;
 }) {
-  const { messages, status, loading, error, connected } = useSession(
+  const { messages, status, loading, error, connected, setStatus } = useSession(
     projectId,
     sessionId,
   );
@@ -38,7 +38,9 @@ function ChatPageContent({
     try {
       if (status.state === "idle") {
         // Resume the session
-        await api.resumeSession(projectId, sessionId, text);
+        const result = await api.resumeSession(projectId, sessionId, text);
+        // Update status to trigger SSE connection
+        setStatus({ state: "owned", processId: result.processId });
       } else {
         // Queue to existing process
         await api.queueMessage(sessionId, text);

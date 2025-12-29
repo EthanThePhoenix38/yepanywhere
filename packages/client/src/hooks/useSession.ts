@@ -59,5 +59,5 @@ export function useSession(projectId: string, sessionId: string) {
     { onMessage: handleSSEMessage },
   );
 
-  return { messages, status, loading, error, connected };
+  return { messages, status, loading, error, connected, setStatus };
 }
