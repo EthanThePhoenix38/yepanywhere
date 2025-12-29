@@ -35,6 +35,7 @@ function processMessage(
       type: "user_prompt",
       id: msg.id,
       content,
+      sourceMessages: [msg],
     });
     return;
   }
@@ -52,7 +53,7 @@ function processMessage(
     // Attach results to pending tool calls
     for (const block of content) {
       if (block.type === "tool_result" && block.tool_use_id) {
-        attachToolResult(block, msg.toolUseResult, items, pendingToolCalls);
+        attachToolResult(block, msg, items, pendingToolCalls);
       }
     }
     return;
@@ -64,6 +65,7 @@ function processMessage(
       type: "user_prompt",
       id: msg.id,
       content,
+      sourceMessages: [msg],
     });
     return;
   }
@@ -81,6 +83,7 @@ function processMessage(
           type: "text",
           id: blockId,
           text: block.text,
+          sourceMessages: [msg],
         });
       }
     } else if (block.type === "thinking") {
@@ -91,6 +94,7 @@ function processMessage(
           thinking: block.thinking,
           signature: undefined,
           status: "complete",
+          sourceMessages: [msg],
         });
       }
     } else if (block.type === "tool_use") {
@@ -102,6 +106,7 @@ function processMessage(
           toolInput: block.input,
           toolResult: undefined,
           status: "pending",
+          sourceMessages: [msg],
         };
         pendingToolCalls.set(block.id, items.length);
         items.push(toolCall);
@@ -112,7 +117,7 @@ function processMessage(
 
 function attachToolResult(
   block: ContentBlock,
-  structuredResult: unknown,
+  resultMessage: Message,
   items: RenderItem[],
   pendingToolCalls: Map<string, number>,
 ): void {
@@ -133,7 +138,7 @@ function attachToolResult(
   const resultData: ToolResultData = {
     content: block.content || "",
     isError: block.is_error || false,
-    structured: structuredResult,
+    structured: resultMessage.toolUseResult,
   };
 
   // Create a new ToolCallItem to ensure React sees the change
@@ -144,6 +149,7 @@ function attachToolResult(
     toolInput: item.toolInput,
     toolResult: resultData,
     status: block.is_error ? "error" : "complete",
+    sourceMessages: [...item.sourceMessages, resultMessage],
   };
 
   items[index] = updatedItem;

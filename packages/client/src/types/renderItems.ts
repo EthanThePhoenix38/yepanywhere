@@ -1,4 +1,4 @@
-import type { ContentBlock } from "../types";
+import type { ContentBlock, Message } from "../types";
 
 /**
  * RenderItem types for the preprocessed message rendering system.
@@ -13,13 +13,19 @@ export type RenderItem =
   | ToolCallItem
   | UserPromptItem;
 
-export interface TextItem {
+/** Base fields shared by all render items */
+interface RenderItemBase {
+  /** Source JSONL messages that contributed to this item (for debugging) */
+  sourceMessages: Message[];
+}
+
+export interface TextItem extends RenderItemBase {
   type: "text";
   id: string;
   text: string;
 }
 
-export interface ThinkingItem {
+export interface ThinkingItem extends RenderItemBase {
   type: "thinking";
   id: string;
   thinking: string;
@@ -27,7 +33,7 @@ export interface ThinkingItem {
   status: "streaming" | "complete";
 }
 
-export interface ToolCallItem {
+export interface ToolCallItem extends RenderItemBase {
   type: "tool_call";
   id: string; // tool_use.id
   toolName: string; // tool_use.name
@@ -43,7 +49,7 @@ export interface ToolResultData {
   structured?: unknown;
 }
 
-export interface UserPromptItem {
+export interface UserPromptItem extends RenderItemBase {
   type: "user_prompt";
   id: string;
   content: string | ContentBlock[];
