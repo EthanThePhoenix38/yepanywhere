@@ -27,91 +27,126 @@
    Text Blocks
    ========================================================================== */
 
-.text-block {
-  white-space: pre-wrap;
-  word-break: break-word;
-  line-height: 1.6;
+.text-block,
+.text-content {
+  font-size: var(--font-size-base);
+  line-height: 1.5;
+  color: var(--text-primary);
+}
+
+.text-block p {
+  margin: 0 0 var(--space-2) 0;
+}
+
+.text-block p:last-child {
+  margin-bottom: 0;
+}
+
+.text-block code {
+  font-family: var(--font-mono);
+  font-size: 0.9em;
+  background: var(--bg-code);
+  padding: 2px 4px;
+  border-radius: var(--radius-sm);
+}
+
+.text-block pre {
+  background: var(--bg-code);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  padding: var(--space-2);
+  overflow-x: auto;
+  font-family: var(--font-mono);
+  font-size: var(--font-size-sm);
+}
+
+.text-block pre code {
+  background: none;
+  padding: 0;
+}
+
+.text-block ul,
+.text-block ol {
+  margin: var(--space-2) 0;
+  padding-left: 24px;
+}
+
+.text-block li {
+  margin: var(--space-1) 0;
+}
+
+.text-block a {
+  color: var(--link-color);
+  text-decoration: none;
+}
+
+.text-block a:hover {
+  text-decoration: underline;
+}
+
+.text-block blockquote {
+  margin: var(--space-2) 0;
+  padding-left: var(--space-3);
+  border-left: 3px solid var(--border-color);
+  color: var(--text-muted);
+}
+
+.text-block h1,
+.text-block h2,
+.text-block h3,
+.text-block h4,
+.text-block h5,
+.text-block h6 {
+  margin: var(--space-3) 0 var(--space-2) 0;
+  font-weight: 600;
+}
+
+.text-block hr {
+  border: none;
+  border-top: 1px solid var(--border-color);
+  margin: var(--space-3) 0;
 }
 
 /* ==========================================================================
-   Thinking Blocks
+   Thinking Blocks - Collapsible Pattern
    ========================================================================== */
 
-.thinking-block {
-  margin: 0.5rem 0;
+.thinking-block.collapsible {
+  margin: var(--space-1) 0;
 }
 
-/* Collapsed state - small inline toggle */
-.thinking-toggle-collapsed {
-  display: inline-flex;
+.collapsible__summary {
+  display: flex;
   align-items: center;
-  gap: 0.25rem;
-  padding: 0.125rem 0.25rem;
-  background: transparent;
-  border: none;
-  outline: none;
-  color: #666;
+  gap: var(--space-1);
+  color: var(--text-muted);
+  font-size: var(--font-size-base);
   cursor: pointer;
-  font-size: 0.8rem;
+  list-style: none;
 }
 
-.thinking-toggle-collapsed:hover,
-.thinking-toggle-collapsed:focus,
-.thinking-toggle-collapsed:active {
-  background: transparent;
-  outline: none;
-  color: #666;
+.collapsible__summary::-webkit-details-marker {
+  display: none;
 }
 
-.thinking-toggle-collapsed:hover .thinking-label,
-.thinking-toggle-collapsed:hover .thinking-icon {
-  color: #aaa;
+.collapsible__icon {
+  font-size: var(--font-size-xs);
+  transition: transform 0.15s ease;
 }
 
-/* Expanded state - full width clickable block */
-.thinking-block-expanded {
-  display: block;
-  width: 100%;
-  background: transparent;
-  border: none;
-  outline: none;
-  text-align: left;
-  cursor: pointer;
-  color: #666;
-  font-size: 0.8rem;
+details[open] .collapsible__icon {
+  transform: rotate(90deg);
 }
 
-.thinking-block-expanded:hover,
-.thinking-block-expanded:focus,
-.thinking-block-expanded:active {
-  background: transparent;
-  outline: none;
+.collapsible__content {
+  padding: var(--space-2) 0 var(--space-2) var(--space-4);
 }
 
-/* Header line in expanded state - same size as collapsed */
-.thinking-toggle-expanded {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.25rem;
-  padding: 0.125rem 0.25rem;
-}
-
-.thinking-label {
-  font-style: italic;
-  color: inherit;
-}
-
-.thinking-icon {
-  font-size: 0.7rem;
-  color: inherit;
-  margin-left: 0.125rem;
-}
-
-.thinking-content {
-  padding: 0.5rem 0;
-  color: #888;
+.collapsible__content .text-content {
+  color: var(--text-muted);
+  font-size: var(--font-size-base);
+  line-height: 1.5;
   white-space: pre-wrap;
-  word-break: break-word;
 }
 
 /* ==========================================================================

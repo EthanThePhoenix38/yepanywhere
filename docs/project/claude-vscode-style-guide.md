@@ -21,18 +21,30 @@
 
 | Token | Value | Usage |
 |-------|-------|-------|
-| `--app-claude-orange` | `#d97757` | Primary accent, timeline dots, spinner |
+| `--app-claude-orange` | `#d97757` | Loading spinner, working states |
 | `--app-claude-clay-button-orange` | `#c6613f` | Light theme buttons/spinner |
 | `--app-claude-ivory` | `#faf9f5` | Light backgrounds |
 | `--app-claude-slate` | `#141413` | Deep charcoal, dark backgrounds |
+
+### Timeline Dot Colors
+
+The timeline dots use different colors based on state (via `.o:before` pseudo-element):
+
+| State | Color | CSS Class |
+|-------|-------|-----------|
+| Tool call | `#74c991` (green) | `.o.rr:before` |
+| Error | `#c74e39` (red) | `.o.ir:before` |
+| Warning | `#e1c08d` (amber) | `.o.tr:before` |
+| Default/text | `var(--app-secondary-foreground)` | `.o:before` |
+| Loading | `#d97757` (orange, animated) | `.o.nr:before` |
 
 ### Semantic Colors
 
 | Token | Value | Usage |
 |-------|-------|-------|
-| Success green | `#74c991` | Success states, passed tests |
-| Error red | `#c74e39` | Errors, deletions, failures |
-| Warning yellow | `#e1c08d` | Warnings, modified files |
+| Success green | `#74c991` | Tool call dots, passed tests |
+| Error red | `#c74e39` | Error dots, deletions, failures |
+| Warning yellow | `#e1c08d` | Warning dots, modified files |
 | Link blue | `#4daafc` | Links, interactive text |
 | VSCode blue | `#007acc` | Focus states, progress bars |
 | Muted text | `#888888` | Secondary/dimmed text |

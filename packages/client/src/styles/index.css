@@ -1,16 +1,76 @@
 @import "./renderers.css";
 @import "./tool-rows.css";
 
+/* ==========================================================================
+   CSS Design Tokens - Claude VSCode Extension Style
+   ========================================================================== */
+
+:root {
+  /* Claude Brand Colors */
+  --app-claude-orange: #d97757;
+  --app-claude-clay-button-orange: #c6613f;
+  --app-claude-ivory: #faf9f5;
+  --app-claude-slate: #141413;
+
+  /* Timeline Dot Colors (from .o:before variants) */
+  --timeline-dot-default: #9d9d9d; /* Gray for text messages */
+  --timeline-dot-tool: #74c991; /* Green for tool calls */
+  --timeline-dot-error: #c74e39; /* Red for errors */
+  --timeline-dot-warning: #e1c08d; /* Amber for warnings */
+  --timeline-dot-working: #d97757; /* Orange for loading (animated) */
+
+  /* Text Colors */
+  --text-primary: #cccccc;
+  --text-muted: #9d9d9d;
+  --text-dimmed: #666666;
+
+  /* Backgrounds */
+  --bg-surface: #181818;
+  --bg-hover: #2a2d2e;
+  --bg-code: #1f1f1f;
+
+  /* Semantic Colors */
+  --link-color: #4daafc;
+  --error-color: #c74e39;
+  --success-color: #74c991;
+  --warning-color: #e1c08d;
+  --focus-border: #007acc;
+  --border-color: #3c3c3c;
+
+  /* Typography */
+  --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", "Roboto",
+    sans-serif;
+  --font-mono: "SF Mono", Monaco, "Cascadia Code", Consolas, monospace;
+  --font-size-xs: 10px;
+  --font-size-sm: 12px;
+  --font-size-base: 13px;
+  --font-size-lg: 14px;
+
+  /* Spacing */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+
+  /* Border Radius */
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --radius-lg: 8px;
+
+  /* Spinner */
+  --app-spinner-foreground: #d97757;
+}
+
 * {
   box-sizing: border-box;
 }
 
 body {
-  font-family: system-ui, sans-serif;
+  font-family: var(--font-sans);
   margin: 0;
   padding: 0;
-  background: #1a1a1a;
-  color: #e0e0e0;
+  background: var(--bg-surface);
+  color: var(--text-primary);
 }
 
 .page {

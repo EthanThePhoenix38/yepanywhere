@@ -19,9 +19,12 @@ Extracted from the Claude Code VSCode extension CSS:
 --app-claude-ivory: #faf9f5;       /* Light backgrounds */
 --app-claude-slate: #141413;       /* Dark backgrounds */
 
-/* Timeline Colors */
---timeline-dot: #d97757;           /* Orange dot (Claude brand) */
---timeline-line: #3c3c3c;          /* Implied vertical line */
+/* Timeline Dot Colors (from .o:before variants) */
+--timeline-dot-default: var(--vscode-descriptionForeground); /* Gray for text */
+--timeline-dot-tool: #74c991;      /* Green for tool calls (.o.rr) */
+--timeline-dot-error: #c74e39;     /* Red for errors (.o.ir) */
+--timeline-dot-warning: #e1c08d;   /* Amber for warnings (.o.tr) */
+--timeline-line: var(--app-primary-border-color); /* Vertical connector */
 
 /* Text Colors */
 --text-primary: var(--vscode-foreground);           /* #cccccc */
@@ -60,7 +63,9 @@ The left-side timeline with status dots. Each message/tool call gets an orange d
 │ ●   Read  types.ts                                          │
 └─────────────────────────────────────────────────────────────┘
   ↑
-  Orange dots (~8px), vertically aligned
+  GREEN dots for tool calls (#74c991)
+  Gray for text messages
+  Red for errors, amber for warnings
 ```
 
 ### CSS/Layout
@@ -73,20 +78,36 @@ The left-side timeline with status dots. Each message/tool call gets an orange d
   gap: 8px;
 }
 
-/* Timeline dot (implied from screenshots) */
-.timeline-dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: var(--app-claude-orange); /* #d97757 */
-  flex-shrink: 0;
-  margin-top: 4px; /* Align with first line of text */
+/* Timeline dot - uses ::before pseudo-element with Unicode circle */
+/* Minified: .o:before */
+.message-row::before {
+  content: "\25cf";  /* ● Unicode filled circle */
+  position: absolute;
+  left: 8px;
+  padding-top: 2px;
+  font-size: 10px;
+  color: var(--app-secondary-foreground); /* Default: gray */
 }
 
-/* Working state - uses spinner instead of pulse */
-.timeline-dot--working {
-  background: var(--app-spinner-foreground);
-  /* Actual extension uses codicon spinner animation */
+/* Tool call dots are GREEN */
+.message-row--tool::before {
+  color: #74c991;  /* Green */
+}
+
+/* Error dots are RED */
+.message-row--error::before {
+  color: #c74e39;  /* Red */
+}
+
+/* Warning dots are AMBER */
+.message-row--warning::before {
+  color: #e1c08d;  /* Amber */
+}
+
+/* Working/loading state uses orange spinner */
+.message-row--working::before {
+  color: var(--app-spinner-foreground); /* #d97757 orange */
+  animation: codicon-spin 1s linear infinite;
 }
 ```
 
@@ -572,7 +593,7 @@ Quick lookup for minified → semantic names:
 - [x] Color palette extracted
 - [x] Typography tokens extracted
 - [x] Spacing scale extracted
-- [ ] Timeline dots (orange, 8px)
+- [ ] Timeline dots (green for tools, gray default, red/amber for states)
 - [ ] Message row layout
 
 ### Tool Renderers
