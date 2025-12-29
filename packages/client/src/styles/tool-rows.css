@@ -43,16 +43,16 @@
   flex-shrink: 0;
 }
 
-.timeline-dot.pending {
+.timeline-dot.status-pending {
   background: var(--timeline-dot-working, #0078d4);
   animation: pulse 1.5s ease-in-out infinite;
 }
 
-.timeline-dot.complete {
+.timeline-dot.status-complete {
   background: var(--timeline-dot-success, #4ec9b0);
 }
 
-.timeline-dot.error {
+.timeline-dot.status-error {
   background: var(--timeline-dot-error, #f48771);
 }
 
@@ -89,14 +89,6 @@
   }
 }
 
-/* Tool icon */
-.tool-icon {
-  flex-shrink: 0;
-  width: 16px;
-  text-align: center;
-  font-size: 12px;
-}
-
 /* Tool name */
 .tool-name {
   flex-shrink: 0;
@@ -115,18 +107,6 @@
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-}
-
-/* Error badge */
-.tool-error-badge {
-  flex-shrink: 0;
-  padding: 1px 6px;
-  font-size: 10px;
-  font-weight: 500;
-  text-transform: uppercase;
-  color: var(--error-color, #f48771);
-  background: rgba(244, 135, 113, 0.15);
-  border-radius: 3px;
 }
 
 /* Expand chevron */

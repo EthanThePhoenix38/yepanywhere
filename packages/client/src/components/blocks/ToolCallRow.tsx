@@ -2,7 +2,7 @@ import { memo, useMemo, useState } from "react";
 import type { ToolResultData } from "../../types/renderItems";
 import { toolRegistry } from "../renderers/tools";
 import type { RenderContext } from "../renderers/types";
-import { getToolIcon, getToolSummary } from "../tools/summaries";
+import { getToolSummary } from "../tools/summaries";
 
 interface Props {
   id: string;
@@ -25,8 +25,6 @@ export const ToolCallRow = memo(function ToolCallRow({
     return getToolSummary(toolName, toolInput, toolResult, status);
   }, [toolName, toolInput, toolResult, status]);
 
-  const icon = getToolIcon(toolName);
-
   const handleToggle = () => {
     setExpanded(!expanded);
   };
@@ -45,7 +43,7 @@ export const ToolCallRow = memo(function ToolCallRow({
       className={`tool-row ${expanded ? "expanded" : "collapsed"} status-${status}`}
     >
       <button type="button" className="tool-row-header" onClick={handleToggle}>
-        <span className={`timeline-dot ${status}`} />
+        <span className={`timeline-dot status-${status}`} />
 
         {status === "pending" && (
           <span className="tool-spinner" aria-label="Running">
@@ -53,13 +51,8 @@ export const ToolCallRow = memo(function ToolCallRow({
           </span>
         )}
 
-        <span className="tool-icon" aria-hidden="true">
-          {icon}
-        </span>
         <span className="tool-name">{toolName}</span>
         <span className="tool-summary">{summary}</span>
-
-        {status === "error" && <span className="tool-error-badge">error</span>}
 
         <span className="expand-chevron" aria-hidden="true">
           {expanded ? "▾" : "▸"}

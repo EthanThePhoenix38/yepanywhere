@@ -141,10 +141,8 @@
 }
 
 .tool-name {
-  text-transform: uppercase;
   color: #888;
   font-weight: 500;
-  letter-spacing: 0.05em;
 }
 
 .tool-content {

@@ -35,30 +35,6 @@ export function getToolSummary(
 }
 
 /**
- * Get tool icon based on tool name
- */
-export function getToolIcon(toolName: string): string {
-  const icons: Record<string, string> = {
-    Read: "📖",
-    Write: "✍️",
-    Edit: "✏️",
-    Bash: "💻",
-    Glob: "🔍",
-    Grep: "🔎",
-    Task: "🤖",
-    TodoWrite: "📝",
-    WebSearch: "🌐",
-    WebFetch: "📥",
-    AskUserQuestion: "❓",
-    ExitPlanMode: "📋",
-    BashOutput: "📤",
-    TaskOutput: "📤",
-    KillShell: "⛔",
-  };
-  return icons[toolName] || "🔧";
-}
-
-/**
  * Default input summary when renderer doesn't provide one
  */
 function getDefaultInputSummary(toolName: string, input: unknown): string {
