@@ -4,7 +4,6 @@ import { api } from "../api/client";
 import { MessageInput } from "../components/MessageInput";
 import { MessageList } from "../components/MessageList";
 import { StatusIndicator } from "../components/StatusIndicator";
-import { useActivityDrawer } from "../context/ActivityDrawerContext";
 import { useSession } from "../hooks/useSession";
 import type { Project } from "../types";
 
@@ -33,7 +32,6 @@ function SessionPageContent({
     useSession(projectId, sessionId);
   const [sending, setSending] = useState(false);
   const [project, setProject] = useState<Project | null>(null);
-  const { drawerHeight } = useActivityDrawer();
 
   // Fetch project info for breadcrumb
   useEffect(() => {
@@ -69,7 +67,7 @@ function SessionPageContent({
   if (error) return <div className="error">Error: {error.message}</div>;
 
   return (
-    <div className="session-page" style={{ paddingBottom: drawerHeight }}>
+    <div className="session-page">
       <header className="session-header">
         <div className="session-header-left">
           <nav className="breadcrumb">

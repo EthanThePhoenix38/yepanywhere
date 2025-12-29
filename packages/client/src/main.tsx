@@ -1,8 +1,6 @@
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
-import { ActivityDrawer } from "./components/ActivityDrawer";
-import { ActivityDrawerProvider } from "./context/ActivityDrawerContext";
 import { ActivityPage } from "./pages/ActivityPage";
 import { ProjectsPage } from "./pages/ProjectsPage";
 import { SessionPage } from "./pages/SessionPage";
@@ -17,19 +15,16 @@ if (!rootElement) {
 createRoot(rootElement).render(
   <StrictMode>
     <BrowserRouter>
-      <ActivityDrawerProvider>
-        <Routes>
-          <Route path="/" element={<Navigate to="/projects" replace />} />
-          <Route path="/projects" element={<ProjectsPage />} />
-          <Route path="/projects/:projectId" element={<SessionsPage />} />
-          <Route
-            path="/projects/:projectId/sessions/:sessionId"
-            element={<SessionPage />}
-          />
-          <Route path="/activity" element={<ActivityPage />} />
-        </Routes>
-        <ActivityDrawer />
-      </ActivityDrawerProvider>
+      <Routes>
+        <Route path="/" element={<Navigate to="/projects" replace />} />
+        <Route path="/projects" element={<ProjectsPage />} />
+        <Route path="/projects/:projectId" element={<SessionsPage />} />
+        <Route
+          path="/projects/:projectId/sessions/:sessionId"
+          element={<SessionPage />}
+        />
+        <Route path="/activity" element={<ActivityPage />} />
+      </Routes>
     </BrowserRouter>
   </StrictMode>,
 );
