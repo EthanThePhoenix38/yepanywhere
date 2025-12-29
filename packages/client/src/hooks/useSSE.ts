@@ -10,6 +10,7 @@ export function useSSE(url: string | null, options: UseSSEOptions) {
   const [connected, setConnected] = useState(false);
   const eventSourceRef = useRef<EventSource | null>(null);
   const lastEventIdRef = useRef<string | null>(null);
+  const reconnectTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const optionsRef = useRef(options);
   optionsRef.current = options;
 
@@ -32,9 +33,17 @@ export function useSSE(url: string | null, options: UseSSEOptions) {
       if (event.lastEventId) {
         lastEventIdRef.current = event.lastEventId;
       }
-      const data = JSON.parse(event.data);
-      // Use eventType (SSE event name), not data.type (SDK message type)
-      optionsRef.current.onMessage({ ...data, eventType });
+      // Guard against undefined data (can happen on connection errors)
+      if (event.data === undefined || event.data === null) {
+        return;
+      }
+      try {
+        const data = JSON.parse(event.data);
+        // Use eventType (SSE event name), not data.type (SDK message type)
+        optionsRef.current.onMessage({ ...data, eventType });
+      } catch {
+        // Ignore malformed JSON
+      }
     };
 
     es.addEventListener("connected", handleEvent("connected"));
@@ -50,7 +59,7 @@ export function useSSE(url: string | null, options: UseSSEOptions) {
 
       // Auto-reconnect after 2s
       es.close();
-      setTimeout(connect, 2000);
+      reconnectTimeoutRef.current = setTimeout(connect, 2000);
     };
 
     eventSourceRef.current = es;
@@ -60,6 +69,10 @@ export function useSSE(url: string | null, options: UseSSEOptions) {
     connect();
 
     return () => {
+      if (reconnectTimeoutRef.current) {
+        clearTimeout(reconnectTimeoutRef.current);
+        reconnectTimeoutRef.current = null;
+      }
       eventSourceRef.current?.close();
     };
   }, [connect]);
