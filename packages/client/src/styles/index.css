@@ -162,32 +162,22 @@ button:disabled {
 /* Messages */
 .message {
   margin-bottom: 1rem;
-  padding: 1rem;
-  border-radius: 8px;
 }
 
-.message-user {
-  background: #2a3a4a;
+/* User prompts - compact bubble that shrinks to fit content */
+.message-user-prompt {
+  background: #3a3a3a;
+  border-radius: 6px;
+  margin-left: 0;
+  width: fit-content;
+  max-width: 80%;
+  padding: 0.25rem 0.5rem;
+  font-size: 0.85rem;
+}
+
+/* All other messages (assistant responses, tool results) - indented, no background */
+.message-response {
   margin-left: 2rem;
-}
-
-.message-assistant {
-  background: #2a2a2a;
-  margin-right: 2rem;
-}
-
-.message-system {
-  background: #3a3a2a;
-  font-size: 0.875rem;
-  color: #888;
-}
-
-.message-role {
-  font-size: 0.75rem;
-  font-weight: bold;
-  text-transform: uppercase;
-  color: #888;
-  margin-bottom: 0.5rem;
 }
 
 .message-content {

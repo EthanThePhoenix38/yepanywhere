@@ -38,9 +38,18 @@ const MessageItem = memo(function MessageItem({
 }) {
   const content = msg.content;
 
+  // User prompts are user messages without tool_result blocks (actual typed input)
+  // Tool results and assistant messages are "responses"
+  const hasToolResults =
+    Array.isArray(content) &&
+    content.some((block) => block.type === "tool_result");
+  const isUserPrompt = msg.role === "user" && !hasToolResults;
+  const messageClass = isUserPrompt
+    ? "message-user-prompt"
+    : "message-response";
+
   return (
-    <div className={`message message-${msg.role}`}>
-      <div className="message-role">{msg.role}</div>
+    <div className={`message ${messageClass}`}>
       <div className="message-content">
         {typeof content === "string" ? (
           <div className="text-block">{content}</div>
