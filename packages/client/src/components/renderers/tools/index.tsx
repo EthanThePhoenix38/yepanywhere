@@ -66,8 +66,16 @@ export const toolRegistry = new ToolRendererRegistry(fallbackToolRenderer);
 // Import and register tool renderers
 import { bashRenderer } from "./BashRenderer";
 import { editRenderer } from "./EditRenderer";
+import { globRenderer } from "./GlobRenderer";
+import { grepRenderer } from "./GrepRenderer";
 import { readRenderer } from "./ReadRenderer";
+import { todoWriteRenderer } from "./TodoWriteRenderer";
+import { writeRenderer } from "./WriteRenderer";
 
 toolRegistry.register(bashRenderer);
 toolRegistry.register(readRenderer);
 toolRegistry.register(editRenderer);
+toolRegistry.register(writeRenderer);
+toolRegistry.register(globRenderer);
+toolRegistry.register(grepRenderer);
+toolRegistry.register(todoWriteRenderer);

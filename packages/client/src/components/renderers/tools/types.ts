@@ -82,6 +82,77 @@ export interface PatchHunk {
 }
 
 /**
+ * Write tool types
+ */
+export interface WriteInput {
+  file_path: string;
+  content: string;
+}
+
+export interface WriteResult {
+  type: "text";
+  file: {
+    filePath: string;
+    content: string;
+    numLines: number;
+    startLine: number;
+    totalLines: number;
+  };
+}
+
+/**
+ * TodoWrite tool types
+ */
+export interface TodoWriteInput {
+  todos: Todo[];
+}
+
+export interface TodoWriteResult {
+  oldTodos: Todo[];
+  newTodos: Todo[];
+}
+
+export interface Todo {
+  content: string;
+  status: "pending" | "in_progress" | "completed";
+  activeForm: string;
+}
+
+/**
+ * Glob tool types
+ */
+export interface GlobInput {
+  pattern: string;
+  path?: string;
+}
+
+export interface GlobResult {
+  filenames: string[];
+  durationMs: number;
+  numFiles: number;
+  truncated: boolean;
+}
+
+/**
+ * Grep tool types
+ */
+export interface GrepInput {
+  pattern: string;
+  path?: string;
+  glob?: string;
+  output_mode?: "files_with_matches" | "content" | "count";
+}
+
+export interface GrepResult {
+  mode: "files_with_matches" | "content" | "count";
+  filenames: string[];
+  numFiles: number;
+  content?: string;
+  numLines?: number;
+  appliedLimit?: number;
+}
+
+/**
  * Tool renderer interface
  */
 export interface ToolRenderer<TInput = unknown, TResult = unknown> {
