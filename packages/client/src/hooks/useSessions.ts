@@ -3,6 +3,7 @@ import { api } from "../api/client";
 import type { Project, SessionSummary } from "../types";
 import {
   type FileChangeEvent,
+  type SessionCreatedEvent,
   type SessionStatusEvent,
   useFileActivity,
 } from "./useFileActivity";
@@ -74,10 +75,30 @@ export function useSessions(projectId: string | undefined) {
     [projectId],
   );
 
-  // Subscribe to file activity and status changes
+  // Handle new session created (instant add without refetch)
+  const handleSessionCreated = useCallback(
+    (event: SessionCreatedEvent) => {
+      // Only care about sessions in our project
+      if (event.session.projectId !== projectId) return;
+
+      setSessions((prev) => {
+        // Check for duplicates (session might already exist from race condition)
+        if (prev.some((s) => s.id === event.session.id)) {
+          return prev;
+        }
+
+        // Add new session at the beginning (most recent first)
+        return [event.session, ...prev];
+      });
+    },
+    [projectId],
+  );
+
+  // Subscribe to file activity, status changes, and session creation
   useFileActivity({
     onFileChange: handleFileChange,
     onSessionStatusChange: handleSessionStatusChange,
+    onSessionCreated: handleSessionCreated,
   });
 
   // Initial fetch

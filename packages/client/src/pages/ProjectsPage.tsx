@@ -1,6 +1,13 @@
 import { Link } from "react-router-dom";
 import { useProjects } from "../hooks/useProjects";
 
+function formatActiveCount(owned: number, external: number): string {
+  const parts: string[] = [];
+  if (owned > 0) parts.push(`${owned} active`);
+  if (external > 0) parts.push(`${external} active external`);
+  return parts.join(", ");
+}
+
 export function ProjectsPage() {
   const { projects, loading, error } = useProjects();
 
@@ -18,7 +25,21 @@ export function ProjectsPage() {
             <li key={project.id}>
               <Link to={`/projects/${project.id}`}>
                 <strong>{project.name}</strong>
-                <span className="meta">{project.sessionCount} sessions</span>
+                <span className="meta">
+                  {project.sessionCount} sessions
+                  {(project.activeOwnedCount > 0 ||
+                    project.activeExternalCount > 0) && (
+                    <span className="active-indicator">
+                      {" "}
+                      (
+                      {formatActiveCount(
+                        project.activeOwnedCount,
+                        project.activeExternalCount,
+                      )}
+                      )
+                    </span>
+                  )}
+                </span>
               </Link>
             </li>
           ))}

@@ -1,4 +1,4 @@
-import { access, readdir } from "node:fs/promises";
+import { access, readdir, stat } from "node:fs/promises";
 import { basename, join } from "node:path";
 import type { Project } from "../supervisor/types.js";
 import {
@@ -49,12 +49,16 @@ export class ProjectScanner {
         if (projectPath && !seenPaths.has(projectPath)) {
           seenPaths.add(projectPath);
           const sessionCount = await this.countSessions(dirPath);
+          const lastActivity = await this.getLastActivity(dirPath);
           projects.push({
             id: encodeProjectId(projectPath),
             path: projectPath,
             name: basename(projectPath),
             sessionCount,
             sessionDir: dirPath,
+            activeOwnedCount: 0, // populated by route
+            activeExternalCount: 0, // populated by route
+            lastActivity,
           });
         }
         continue;
@@ -81,6 +85,7 @@ export class ProjectScanner {
         seenPaths.add(projectPath);
 
         const sessionCount = await this.countSessions(projectDirPath);
+        const lastActivity = await this.getLastActivity(projectDirPath);
 
         projects.push({
           id: encodeProjectId(projectPath),
@@ -88,6 +93,9 @@ export class ProjectScanner {
           name: basename(projectPath),
           sessionCount,
           sessionDir: projectDirPath,
+          activeOwnedCount: 0, // populated by route
+          activeExternalCount: 0, // populated by route
+          lastActivity,
         });
       }
     }
@@ -142,6 +150,31 @@ export class ProjectScanner {
       ).length;
     } catch {
       return 0;
+    }
+  }
+
+  private async getLastActivity(
+    projectDirPath: string,
+  ): Promise<string | null> {
+    try {
+      const files = await readdir(projectDirPath);
+      const jsonlFiles = files.filter(
+        (f) => f.endsWith(".jsonl") && !f.startsWith("agent-"),
+      );
+
+      if (jsonlFiles.length === 0) return null;
+
+      let latestMtime = 0;
+      for (const file of jsonlFiles) {
+        const stats = await stat(join(projectDirPath, file));
+        if (stats.mtimeMs > latestMtime) {
+          latestMtime = stats.mtimeMs;
+        }
+      }
+
+      return latestMtime > 0 ? new Date(latestMtime).toISOString() : null;
+    } catch {
+      return null;
     }
   }
 }

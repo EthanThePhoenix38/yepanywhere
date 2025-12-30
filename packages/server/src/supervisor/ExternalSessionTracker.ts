@@ -3,10 +3,11 @@ import type {
   BusEvent,
   EventBus,
   FileChangeEvent,
+  SessionCreatedEvent,
   SessionStatusEvent,
 } from "../watcher/EventBus.js";
 import type { Supervisor } from "./Supervisor.js";
-import type { SessionStatus } from "./types.js";
+import type { SessionStatus, SessionSummary } from "./types.js";
 
 interface ExternalSessionInfo {
   detectedAt: Date;
@@ -20,6 +21,11 @@ export interface ExternalSessionTrackerOptions {
   supervisor: Supervisor;
   /** Time in ms before external status decays to idle (default: 30000) */
   decayMs?: number;
+  /** Optional callback to get session summary for new external sessions */
+  getSessionSummary?: (
+    sessionId: string,
+    projectId: string,
+  ) => Promise<SessionSummary | null>;
 }
 
 /**
@@ -35,11 +41,16 @@ export class ExternalSessionTracker {
   private supervisor: Supervisor;
   private decayMs: number;
   private unsubscribe: (() => void) | null = null;
+  private getSessionSummary?: (
+    sessionId: string,
+    projectId: string,
+  ) => Promise<SessionSummary | null>;
 
   constructor(options: ExternalSessionTrackerOptions) {
     this.eventBus = options.eventBus;
     this.supervisor = options.supervisor;
     this.decayMs = options.decayMs ?? 30000;
+    this.getSessionSummary = options.getSessionSummary;
 
     // Subscribe to bus events, filter for file changes
     this.unsubscribe = options.eventBus.subscribe((event: BusEvent) => {
@@ -166,8 +177,39 @@ export class ExternalSessionTracker {
       };
       this.externalSessions.set(sessionId, info);
 
+      // Emit session created event if we can get the summary
+      this.emitSessionCreated(sessionId, projectId);
+
       // Emit status change event
       this.emitStatusChange(sessionId, projectId, { state: "external" });
+    }
+  }
+
+  private async emitSessionCreated(
+    sessionId: string,
+    projectId: string,
+  ): Promise<void> {
+    if (!this.getSessionSummary) return;
+
+    try {
+      const summary = await this.getSessionSummary(sessionId, projectId);
+      if (summary) {
+        // Update status to external
+        summary.status = { state: "external" };
+
+        const event: SessionCreatedEvent = {
+          type: "session-created",
+          session: summary,
+          timestamp: new Date().toISOString(),
+        };
+        this.eventBus.emit(event);
+      }
+    } catch (error) {
+      // Log but don't fail - session may not be readable yet
+      console.warn(
+        `[ExternalSessionTracker] Failed to read session ${sessionId}:`,
+        error,
+      );
     }
   }
 

@@ -54,6 +54,13 @@ export function createApp(options: AppOptions): Hono {
         eventBus: options.eventBus,
         supervisor,
         decayMs: 30000, // 30 seconds
+        // Callback to get session summary for new external sessions
+        getSessionSummary: async (sessionId, projectId) => {
+          const project = await scanner.getProject(projectId);
+          if (!project) return null;
+          const reader = readerFactory(project.sessionDir);
+          return reader.getSessionSummary(sessionId, projectId);
+        },
       })
     : undefined;
 

@@ -3,6 +3,7 @@ export type {
   FileChangeEvent,
   FileChangeType,
   SessionStatusEvent,
+  SessionCreatedEvent,
   BusEvent,
   EventHandler,
 } from "./EventBus.js";

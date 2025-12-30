@@ -5,9 +5,18 @@ import type {
   RealClaudeSDKInterface,
   UserMessage,
 } from "../sdk/types.js";
-import type { EventBus, SessionStatusEvent } from "../watcher/EventBus.js";
+import type {
+  EventBus,
+  SessionCreatedEvent,
+  SessionStatusEvent,
+} from "../watcher/EventBus.js";
 import { Process, type ProcessConstructorOptions } from "./Process.js";
-import type { ProcessInfo, ProcessOptions, SessionStatus } from "./types.js";
+import type {
+  ProcessInfo,
+  ProcessOptions,
+  SessionStatus,
+  SessionSummary,
+} from "./types.js";
 import { encodeProjectId } from "./types.js";
 
 export interface SupervisorOptions {
@@ -131,7 +140,7 @@ export class Supervisor {
       await process.waitForSessionId();
     }
 
-    this.registerProcess(process);
+    this.registerProcess(process, !resumeSessionId);
 
     return process;
   }
@@ -170,7 +179,7 @@ export class Supervisor {
 
     const process = new Process(iterator, options);
 
-    this.registerProcess(process);
+    this.registerProcess(process, !resumeSessionId);
 
     // Queue the initial message
     process.queueMessage(message);
@@ -258,17 +267,24 @@ export class Supervisor {
     return true;
   }
 
-  private registerProcess(process: Process): void {
+  private registerProcess(process: Process, isNewSession: boolean): void {
     this.processes.set(process.id, process);
     this.sessionToProcess.set(process.sessionId, process.id);
 
-    // Emit status change event
-    this.emitStatusChange(process.sessionId, process.projectId, {
+    const status: SessionStatus = {
       state: "owned",
       processId: process.id,
       permissionMode: process.permissionMode,
       modeVersion: process.modeVersion,
-    });
+    };
+
+    // Emit session created event for new sessions
+    if (isNewSession) {
+      this.emitSessionCreated(process, status);
+    }
+
+    // Emit status change event
+    this.emitStatusChange(process.sessionId, process.projectId, status);
 
     // Listen for completion to auto-cleanup
     process.subscribe((event) => {
@@ -301,6 +317,29 @@ export class Supervisor {
       projectId,
       status,
       timestamp: new Date().toISOString(),
+    };
+    this.eventBus.emit(event);
+  }
+
+  private emitSessionCreated(process: Process, status: SessionStatus): void {
+    if (!this.eventBus) return;
+
+    const now = new Date().toISOString();
+    const session: SessionSummary = {
+      id: process.sessionId,
+      projectId: process.projectId,
+      title: null, // Title comes from first user message, populated later via file change
+      fullTitle: null,
+      createdAt: now,
+      updatedAt: now,
+      messageCount: 0,
+      status,
+    };
+
+    const event: SessionCreatedEvent = {
+      type: "session-created",
+      session,
+      timestamp: now,
     };
     this.eventBus.emit(event);
   }

@@ -11,6 +11,47 @@ export interface ProjectsDeps {
   externalTracker?: ExternalSessionTracker;
 }
 
+interface ProjectActivityCounts {
+  activeOwnedCount: number;
+  activeExternalCount: number;
+}
+
+function getProjectActivityCounts(
+  supervisor: Supervisor | undefined,
+  externalTracker: ExternalSessionTracker | undefined,
+): Map<string, ProjectActivityCounts> {
+  const counts = new Map<string, ProjectActivityCounts>();
+
+  // Count owned sessions from Supervisor
+  if (supervisor) {
+    for (const process of supervisor.getAllProcesses()) {
+      const existing = counts.get(process.projectId) || {
+        activeOwnedCount: 0,
+        activeExternalCount: 0,
+      };
+      existing.activeOwnedCount++;
+      counts.set(process.projectId, existing);
+    }
+  }
+
+  // Count external sessions
+  if (externalTracker) {
+    for (const sessionId of externalTracker.getExternalSessions()) {
+      const info = externalTracker.getExternalSessionInfo(sessionId);
+      if (info) {
+        const existing = counts.get(info.projectId) || {
+          activeOwnedCount: 0,
+          activeExternalCount: 0,
+        };
+        existing.activeExternalCount++;
+        counts.set(info.projectId, existing);
+      }
+    }
+  }
+
+  return counts;
+}
+
 export function createProjectsRoutes(deps: ProjectsDeps): Hono {
   const routes = new Hono();
 
@@ -39,7 +80,30 @@ export function createProjectsRoutes(deps: ProjectsDeps): Hono {
 
   // GET /api/projects - List all projects
   routes.get("/", async (c) => {
-    const projects = await deps.scanner.listProjects();
+    const rawProjects = await deps.scanner.listProjects();
+    const activityCounts = getProjectActivityCounts(
+      deps.supervisor,
+      deps.externalTracker,
+    );
+
+    // Enrich projects with active counts
+    const projects = rawProjects.map((project) => ({
+      ...project,
+      activeOwnedCount: activityCounts.get(project.id)?.activeOwnedCount ?? 0,
+      activeExternalCount:
+        activityCounts.get(project.id)?.activeExternalCount ?? 0,
+    }));
+
+    // Sort by lastActivity descending (most recent first), nulls last
+    projects.sort((a, b) => {
+      if (!a.lastActivity && !b.lastActivity) return 0;
+      if (!a.lastActivity) return 1;
+      if (!b.lastActivity) return -1;
+      return (
+        new Date(b.lastActivity).getTime() - new Date(a.lastActivity).getTime()
+      );
+    });
+
     return c.json({ projects });
   });
 

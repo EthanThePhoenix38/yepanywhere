@@ -2,7 +2,7 @@
  * Simple in-memory pub/sub event bus for file change and session status events.
  */
 
-import type { SessionStatus } from "../supervisor/types.js";
+import type { SessionStatus, SessionSummary } from "../supervisor/types.js";
 
 export type FileChangeType = "create" | "modify" | "delete";
 
@@ -30,8 +30,17 @@ export interface SessionStatusEvent {
   timestamp: string;
 }
 
+export interface SessionCreatedEvent {
+  type: "session-created";
+  session: SessionSummary;
+  timestamp: string;
+}
+
 /** Union of all event types that can be emitted through the bus */
-export type BusEvent = FileChangeEvent | SessionStatusEvent;
+export type BusEvent =
+  | FileChangeEvent
+  | SessionStatusEvent
+  | SessionCreatedEvent;
 
 export type EventHandler<T = BusEvent> = (event: T) => void;
 

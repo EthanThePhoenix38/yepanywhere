@@ -15,6 +15,9 @@ export interface Project {
   name: string; // directory name
   sessionCount: number;
   sessionDir: string; // path to session directory (e.g., ~/.claude/projects/hostname/-encoded-path/)
+  activeOwnedCount: number; // sessions owned by this server
+  activeExternalCount: number; // sessions controlled by external processes
+  lastActivity: string | null; // ISO timestamp of most recent session update
 }
 
 // Session status

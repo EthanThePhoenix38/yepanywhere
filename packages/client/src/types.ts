@@ -7,6 +7,9 @@ export interface Project {
   path: string;
   name: string;
   sessionCount: number;
+  activeOwnedCount: number;
+  activeExternalCount: number;
+  lastActivity: string | null;
 }
 
 export interface SessionSummary {
