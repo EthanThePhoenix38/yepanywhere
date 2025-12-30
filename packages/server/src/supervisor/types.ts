@@ -34,14 +34,16 @@ export interface SessionSummary {
   status: SessionStatus;
 }
 
-// Content block in messages
+/**
+ * Content block in messages - loosely typed to preserve all fields.
+ */
 export interface ContentBlock {
-  type: "text" | "thinking" | "tool_use" | "tool_result";
+  type: string;
   // text block
   text?: string;
   // thinking block
   thinking?: string;
-  signature?: string; // Never rendered (but preserved for completeness)
+  signature?: string;
   // tool_use block
   id?: string;
   name?: string;
@@ -50,25 +52,35 @@ export interface ContentBlock {
   tool_use_id?: string;
   content?: string;
   is_error?: boolean;
+  // Allow any additional fields
+  [key: string]: unknown;
 }
 
-// Message representation
+/**
+ * Message representation - loosely typed to preserve all JSONL fields.
+ *
+ * We pass through all fields from JSONL without stripping.
+ * This preserves debugging info, DAG structure, and metadata.
+ */
 export interface Message {
   id: string;
-  role: "user" | "assistant" | "system";
-  content: string | ContentBlock[];
-  timestamp: string;
+  type: string;
+  role?: "user" | "assistant" | "system";
+  content?: string | ContentBlock[];
+  timestamp?: string;
+  // DAG structure
+  parentUuid?: string | null;
+  // Tool use related
   toolUse?: {
     id: string;
     name: string;
     input: unknown;
   };
-  /** Structured tool result data (from JSONL toolUseResult field) */
   toolUseResult?: unknown;
-  /** Raw JSONL entry for debugging (visible via ctrl+click) */
-  rawJsonl?: unknown;
-  /** Tool use IDs that are orphaned (process killed before result) */
+  // Computed fields (added by SessionReader)
   orphanedToolUseIds?: string[];
+  // Allow any additional fields from JSONL
+  [key: string]: unknown;
 }
 
 // Full session with messages

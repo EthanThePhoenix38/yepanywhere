@@ -8,21 +8,24 @@
  * - Clean recovery (resumption picks any node as continuation point)
  */
 
-/** Raw content block from JSONL */
+/** Raw content block from JSONL - loosely typed to preserve all fields */
 interface RawContentBlock {
   type: string;
   id?: string;
   tool_use_id?: string;
+  [key: string]: unknown;
 }
 
-/** Raw JSONL message format */
+/** Raw JSONL message format - loosely typed to preserve all fields */
 export interface RawSessionMessage {
   type: string;
   message?: {
     content: string | RawContentBlock[];
+    [key: string]: unknown;
   };
   uuid?: string;
   parentUuid?: string | null;
+  [key: string]: unknown;
 }
 
 /** A node in the conversation DAG */

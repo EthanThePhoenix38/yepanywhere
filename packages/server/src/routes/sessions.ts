@@ -55,7 +55,8 @@ function sdkMessagesToClientMessages(sdkMessages: SDKMessage[]): Message[] {
 
       messages.push({
         id: msg.uuid ?? `msg-${Date.now()}-${messages.length}`,
-        role: msg.type,
+        type: msg.type,
+        role: msg.type as "user" | "assistant",
         content,
         timestamp: new Date().toISOString(),
       });

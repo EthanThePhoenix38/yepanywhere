@@ -19,11 +19,15 @@ export interface SessionSummary {
   status: SessionStatus;
 }
 
+/**
+ * Content block in messages - loosely typed to preserve all fields.
+ */
 export interface ContentBlock {
-  type: "text" | "thinking" | "tool_use" | "tool_result" | "image";
+  type: string;
   text?: string;
   // thinking block
   thinking?: string;
+  signature?: string;
   // tool_use block
   id?: string;
   name?: string;
@@ -32,22 +36,40 @@ export interface ContentBlock {
   tool_use_id?: string;
   content?: string;
   is_error?: boolean;
+  // Allow any additional fields
+  [key: string]: unknown;
 }
 
+/**
+ * Message representation - loosely typed to preserve all server fields.
+ *
+ * Messages may come from:
+ * 1. SDK streaming (real-time, may be missing some fields)
+ * 2. JSONL from disk (authoritative, complete)
+ *
+ * The client merges these with JSONL taking precedence.
+ */
 export interface Message {
   id: string;
-  role: "user" | "assistant" | "system";
-  content: string | ContentBlock[];
-  timestamp: string;
+  type?: string;
+  role?: "user" | "assistant" | "system";
+  content?: string | ContentBlock[];
+  timestamp?: string;
+  // DAG structure
+  parentUuid?: string | null;
+  // Tool use related
   toolUse?: {
     id: string;
     name: string;
     input: unknown;
   };
-  /** Structured tool result data (from JSONL toolUseResult field) */
   toolUseResult?: unknown;
-  /** Tool use IDs that are orphaned (process killed before result) */
+  // Computed fields
   orphanedToolUseIds?: string[];
+  // Source tracking for merge
+  _source?: "sdk" | "jsonl";
+  // Allow any additional fields
+  [key: string]: unknown;
 }
 
 export interface Session extends SessionSummary {

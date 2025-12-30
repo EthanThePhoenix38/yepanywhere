@@ -14,7 +14,7 @@ export interface SessionReaderOptions {
   sessionDir: string;
 }
 
-// JSONL content block format from claude-code
+// JSONL content block format from claude-code - loosely typed to preserve all fields
 interface RawContentBlock {
   type: string;
   text?: string;
@@ -26,19 +26,24 @@ interface RawContentBlock {
   tool_use_id?: string;
   content?: string;
   is_error?: boolean;
+  // Allow any additional fields
+  [key: string]: unknown;
 }
 
-// JSONL message format from claude-code
+// JSONL message format from claude-code - loosely typed to preserve all fields
 interface RawSessionMessage {
   type: string;
   message?: {
     content: string | RawContentBlock[];
     role?: string;
+    [key: string]: unknown;
   };
   timestamp?: string;
   uuid?: string;
   parentUuid?: string | null;
   toolUseResult?: unknown;
+  // Allow any additional fields from JSONL
+  [key: string]: unknown;
 }
 
 export class SessionReader {
@@ -159,18 +164,9 @@ export class SessionReader {
     const orphanedToolUses = findOrphanedToolUses(activeBranch);
 
     // Convert to Message objects (only active branch)
-    const messages: Message[] = [];
-    let messageIndex = 0;
-    for (const node of activeBranch) {
-      const message = this.convertMessage(
-        node.raw,
-        messageIndex++,
-        orphanedToolUses,
-      );
-      if (message) {
-        messages.push(message);
-      }
-    }
+    const messages: Message[] = activeBranch.map((node, index) =>
+      this.convertMessage(node.raw, index, orphanedToolUses),
+    );
 
     // Filter to only messages after the given ID (for incremental fetching)
     if (afterMessageId) {
@@ -240,54 +236,51 @@ export class SessionReader {
       .join("\n");
   }
 
+  /**
+   * Convert a raw JSONL message to our Message format.
+   *
+   * We pass through all fields from JSONL without stripping.
+   * This preserves debugging info, DAG structure, and metadata.
+   * The only transformation is:
+   * - Ensure id exists (fallback to index-based)
+   * - Normalize content blocks (pass through all fields)
+   * - Add computed orphanedToolUseIds
+   */
   private convertMessage(
     raw: RawSessionMessage,
     index: number,
     orphanedToolUses: Set<string> = new Set(),
-  ): Message | null {
-    // Only process user and assistant messages (skip internal types like queue-operation, file-history-snapshot)
-    if (raw.type !== "user" && raw.type !== "assistant") return null;
-
-    const role: "user" | "assistant" = raw.type;
-
-    let content: string | ContentBlock[];
+  ): Message {
+    // Normalize content blocks - pass through all fields
+    let content: string | ContentBlock[] | undefined;
     if (typeof raw.message?.content === "string") {
       content = raw.message.content;
     } else if (Array.isArray(raw.message?.content)) {
-      // Preserve all fields from content blocks
-      content = raw.message.content.map((block) => ({
-        type: block.type as ContentBlock["type"],
-        // text block
-        text: block.text,
-        // thinking block
-        thinking: block.thinking,
-        signature: block.signature,
-        // tool_use block
-        id: block.id,
-        name: block.name,
-        input: block.input,
-        // tool_result block
-        tool_use_id: block.tool_use_id,
-        content: block.content,
-        is_error: block.is_error,
-      }));
-    } else {
-      content = "";
+      // Pass through all fields from each content block
+      content = raw.message.content.map((block) => ({ ...block }));
     }
 
+    // Build message by spreading all raw fields, then override with normalized values
     const message: Message = {
+      ...raw,
+      // Ensure id exists
       id: raw.uuid ?? `msg-${index}`,
-      role,
-      content,
-      timestamp: raw.timestamp ?? new Date().toISOString(),
-      rawJsonl: raw,
+      // Include normalized content if message had content
+      ...(raw.message && {
+        message: {
+          ...raw.message,
+          ...(content !== undefined && { content }),
+        },
+      }),
+      // Also expose content at top level for convenience (matches SDK format)
+      ...(content !== undefined && { content }),
+      // Ensure type is set
+      type: raw.type,
+      // Map type to role for user/assistant messages
+      ...(raw.type === "user" || raw.type === "assistant"
+        ? { role: raw.type as "user" | "assistant" }
+        : {}),
     };
-
-    // Include toolUseResult if present
-    if (raw.toolUseResult !== undefined) {
-      (message as Message & { toolUseResult?: unknown }).toolUseResult =
-        raw.toolUseResult;
-    }
 
     // Identify orphaned tool_use IDs in this message's content
     if (Array.isArray(content)) {

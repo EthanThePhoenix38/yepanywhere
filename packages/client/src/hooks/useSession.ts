@@ -18,6 +18,55 @@ export type ProcessState = "idle" | "running" | "waiting-input";
 
 const THROTTLE_MS = 500;
 
+/**
+ * Merge messages from different sources.
+ * JSONL (from disk) is authoritative; SDK (streaming) provides real-time updates.
+ *
+ * Strategy:
+ * - If message only exists from one source, use it
+ * - If both exist, use JSONL as base but preserve any SDK-only fields
+ * - Warn if SDK has fields that JSONL doesn't (validates our assumption)
+ */
+function mergeMessage(
+  existing: Message | undefined,
+  incoming: Message,
+  incomingSource: "sdk" | "jsonl",
+): Message {
+  if (!existing) {
+    return { ...incoming, _source: incomingSource };
+  }
+
+  const existingSource = existing._source ?? "sdk";
+
+  // If incoming is JSONL, it's authoritative - use it as base
+  if (incomingSource === "jsonl") {
+    // Check if SDK had fields that JSONL doesn't (shouldn't happen if JSONL is superset)
+    if (existingSource === "sdk") {
+      for (const key of Object.keys(existing)) {
+        if (key !== "_source" && !(key in incoming)) {
+          console.warn(
+            `[useSession] SDK message ${existing.id} has field "${key}" not in JSONL. This suggests JSONL is not a superset of SDK data.`,
+          );
+        }
+      }
+    }
+    // Merge: JSONL base, preserve any SDK-only fields
+    return {
+      ...existing,
+      ...incoming,
+      _source: "jsonl",
+    };
+  }
+
+  // If incoming is SDK and existing is JSONL, keep JSONL (it's authoritative)
+  if (existingSource === "jsonl") {
+    return existing;
+  }
+
+  // Both are SDK - use the newer one (incoming)
+  return { ...incoming, _source: "sdk" };
+}
+
 export function useSession(projectId: string, sessionId: string) {
   const [session, setSession] = useState<Session | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
@@ -92,7 +141,12 @@ export function useSession(projectId: string, sessionId: string) {
       .getSession(projectId, sessionId)
       .then((data) => {
         setSession(data.session);
-        setMessages(data.messages);
+        // Tag messages from JSONL as authoritative
+        const taggedMessages = data.messages.map((m) => ({
+          ...m,
+          _source: "jsonl" as const,
+        }));
+        setMessages(taggedMessages);
         setStatus(data.status);
         // Sync permission mode from server if owned
         if (
@@ -119,7 +173,41 @@ export function useSession(projectId: string, sessionId: string) {
         lastMessageIdRef.current,
       );
       if (data.messages.length > 0) {
-        setMessages((prev) => [...prev, ...data.messages]);
+        setMessages((prev) => {
+          // Create a map of existing messages for efficient lookup
+          const messageMap = new Map(prev.map((m) => [m.id, m]));
+
+          // Merge each incoming JSONL message
+          for (const incoming of data.messages) {
+            const existing = messageMap.get(incoming.id);
+            messageMap.set(
+              incoming.id,
+              mergeMessage(existing, incoming, "jsonl"),
+            );
+          }
+
+          // Return as array, preserving order (existing + new)
+          const result: Message[] = [];
+          const seen = new Set<string>();
+
+          // First add existing messages (in order)
+          for (const msg of prev) {
+            if (!seen.has(msg.id)) {
+              result.push(messageMap.get(msg.id) ?? msg);
+              seen.add(msg.id);
+            }
+          }
+
+          // Then add any new messages
+          for (const incoming of data.messages) {
+            if (!seen.has(incoming.id)) {
+              result.push(messageMap.get(incoming.id) ?? incoming);
+              seen.add(incoming.id);
+            }
+          }
+
+          return result;
+        });
       }
       setStatus(data.status);
     } catch {
@@ -203,65 +291,85 @@ export function useSession(projectId: string, sessionId: string) {
     (data: { eventType: string; [key: string]: unknown }) => {
       if (data.eventType === "message") {
         // The message event contains the SDK message directly
-        // We need to convert it to our Message format
-        const sdkMessage = data as {
+        // Pass through all fields without stripping
+        const sdkMessage = data as Record<string, unknown> & {
           eventType: string;
-          type: string;
-          uuid?: string;
-          message?: { content: string; role?: string };
         };
-        if (sdkMessage.message) {
-          const role =
-            (sdkMessage.message.role as Message["role"]) || "assistant";
-          const id = sdkMessage.uuid ?? `msg-${Date.now()}`;
-          const rawContent = sdkMessage.message.content;
-          // Convert assistant string content to ContentBlock[] format for preprocessMessages
-          const content =
-            role === "assistant" && typeof rawContent === "string"
-              ? [{ type: "text" as const, text: rawContent }]
-              : rawContent;
 
-          setMessages((prev) => {
-            // Dedupe by message ID - skip if we already have this message
-            if (prev.some((m) => m.id === id)) {
+        // Extract id - prefer uuid, fall back to id field, then generate
+        const rawUuid = sdkMessage.uuid;
+        const rawId = sdkMessage.id;
+        const id: string =
+          (typeof rawUuid === "string" ? rawUuid : null) ??
+          (typeof rawId === "string" ? rawId : null) ??
+          `msg-${Date.now()}`;
+
+        // Extract type and role
+        const msgType =
+          typeof sdkMessage.type === "string" ? sdkMessage.type : undefined;
+        const msgRole = sdkMessage.role as Message["role"] | undefined;
+
+        // Build message object, preserving all SDK fields
+        const incoming: Message = {
+          ...(sdkMessage as Partial<Message>),
+          id,
+          type: msgType,
+          // Ensure role is set for user/assistant types
+          role:
+            msgRole ??
+            (msgType === "user" || msgType === "assistant"
+              ? msgType
+              : undefined),
+        };
+
+        // Remove eventType from the message (it's SSE envelope, not message data)
+        (incoming as { eventType?: string }).eventType = undefined;
+
+        setMessages((prev) => {
+          // Check for existing message with same ID
+          const existingIdx = prev.findIndex((m) => m.id === id);
+
+          if (existingIdx >= 0) {
+            // Merge with existing message
+            const existing = prev[existingIdx];
+            const merged = mergeMessage(existing, incoming, "sdk");
+
+            // Only update if actually different
+            if (existing === merged) {
               return prev;
             }
 
-            // For user messages, check if we have a temp message with same content
-            if (role === "user") {
-              const tempIdx = prev.findIndex(
-                (m) =>
-                  m.id.startsWith("temp-") &&
-                  m.role === "user" &&
-                  m.content === content,
-              );
-              if (tempIdx >= 0) {
-                // Replace temp message with authoritative one (real UUID)
-                const updated = [...prev];
-                const existing = updated[tempIdx];
-                if (existing) {
-                  updated[tempIdx] = {
-                    id,
-                    role: existing.role,
-                    content: existing.content,
-                    timestamp: existing.timestamp,
-                  };
-                }
-                return updated;
+            const updated = [...prev];
+            updated[existingIdx] = merged;
+            return updated;
+          }
+
+          // For user messages, check if we have a temp message to replace
+          if (incoming.role === "user") {
+            const tempIdx = prev.findIndex(
+              (m) =>
+                m.id.startsWith("temp-") &&
+                m.role === "user" &&
+                JSON.stringify(m.content) === JSON.stringify(incoming.content),
+            );
+            if (tempIdx >= 0) {
+              // Replace temp message with authoritative one (real UUID + all fields)
+              const updated = [...prev];
+              const existing = updated[tempIdx];
+              if (existing) {
+                updated[tempIdx] = {
+                  ...existing,
+                  ...incoming,
+                  _source: "sdk",
+                };
               }
+              return updated;
             }
-            // Add new message
-            return [
-              ...prev,
-              {
-                id,
-                role,
-                content,
-                timestamp: new Date().toISOString(),
-              },
-            ];
-          });
-        }
+          }
+
+          // Add new message
+          return [...prev, { ...incoming, _source: "sdk" }];
+        });
       } else if (data.eventType === "status") {
         const statusData = data as {
           eventType: string;

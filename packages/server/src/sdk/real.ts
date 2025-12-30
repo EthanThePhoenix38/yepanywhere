@@ -126,89 +126,53 @@ export class RealClaudeSDK implements RealClaudeSDKInterface {
 
   /**
    * Convert an SDK message to our internal SDKMessage format.
+   *
+   * We pass through all fields from the SDK without stripping.
+   * This preserves debugging info, DAG structure, and metadata.
    */
   private convertMessage(message: AgentSDKMessage): SDKMessage {
-    // The SDK message types map fairly directly to our types
-    switch (message.type) {
-      case "system":
-        return {
-          type: "system",
-          subtype: (message as { subtype?: string }).subtype,
-          session_id: (message as { session_id?: string }).session_id,
-        };
+    // Pass through all fields, only normalize content blocks
+    const sdkMessage = message as unknown as SDKMessage;
 
-      case "assistant":
-        return {
-          type: "assistant",
-          uuid: (message as { uuid?: string }).uuid,
-          session_id: (message as { session_id?: string }).session_id,
-          message: {
-            content: this.extractContent(message),
-            role: "assistant",
-          },
-        };
-
-      case "user":
-        return {
-          type: "user",
-          uuid: (message as { uuid?: string }).uuid,
-          session_id: (message as { session_id?: string }).session_id,
-          message: {
-            content: this.extractContent(message),
-            role: "user",
-          },
-        };
-
-      case "result":
-        return {
-          type: "result",
-          subtype: (message as { subtype?: string }).subtype,
-          session_id: (message as { session_id?: string }).session_id,
-        };
-
-      default:
-        // For any other message types, pass through as-is
-        return message as unknown as SDKMessage;
+    // For messages with content, normalize the content blocks
+    if (sdkMessage.message?.content) {
+      return {
+        ...sdkMessage,
+        message: {
+          ...sdkMessage.message,
+          content: this.normalizeContent(sdkMessage.message.content),
+        },
+      };
     }
+
+    // Pass through as-is for messages without content
+    return sdkMessage;
   }
 
   /**
-   * Extract content from an SDK message.
+   * Normalize content to ensure consistent format.
+   * Preserves all fields, only converts strings to text blocks.
    */
-  private extractContent(message: AgentSDKMessage): string | ContentBlock[] {
-    const msg = message as { message?: { content?: unknown } };
-    if (!msg.message?.content) {
-      return "";
-    }
-
-    const content = msg.message.content;
-
-    // If content is a string, return it directly
+  private normalizeContent(
+    content: string | ContentBlock[] | unknown,
+  ): string | ContentBlock[] {
+    // String content stays as string
     if (typeof content === "string") {
       return content;
     }
 
-    // If content is an array, convert to our content block format
+    // Array content - normalize each block
     if (Array.isArray(content)) {
       return content.map((block): ContentBlock => {
         if (typeof block === "string") {
           return { type: "text", text: block };
         }
-        // Map SDK block types to our ContentBlock type
-        const blockType = block.type as string;
-        if (
-          blockType === "text" ||
-          blockType === "tool_use" ||
-          blockType === "tool_result" ||
-          blockType === "image"
-        ) {
-          return block as ContentBlock;
-        }
-        // Default to text for unknown types
-        return { type: "text", text: JSON.stringify(block) };
+        // Pass through all block fields - don't strip anything
+        return block as ContentBlock;
       });
     }
 
-    return "";
+    // Unknown content type - stringify for safety
+    return String(content);
   }
 }

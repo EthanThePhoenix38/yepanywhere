@@ -12,19 +12,38 @@ export interface ContentBlock {
   input?: unknown;
 }
 
+/**
+ * SDK Message - loosely typed to preserve all fields from the SDK.
+ *
+ * We intentionally use a loose type here to:
+ * 1. Pass through all SDK fields without stripping
+ * 2. Allow frontend to inspect any field for debugging
+ * 3. Avoid breaking when SDK adds new fields
+ *
+ * Known fields are documented but not enforced.
+ */
 export interface SDKMessage {
-  type: "system" | "assistant" | "user" | "result" | "error";
+  type: string;
   uuid?: string;
   subtype?: string;
   session_id?: string;
+  timestamp?: string;
   message?: {
     content: string | ContentBlock[];
     role?: string;
   };
+  // DAG structure
+  parentUuid?: string | null;
+  parent_tool_use_id?: string;
+  // Message origin flags
+  isSynthetic?: boolean;
+  isReplay?: boolean;
+  userType?: string;
   // Tool use related
   tool_use_id?: string;
   tool_name?: string;
   tool_input?: unknown;
+  toolUseResult?: unknown;
   // Input requests (tool approval, questions, etc.)
   input_request?: {
     id: string;
@@ -32,6 +51,17 @@ export interface SDKMessage {
     prompt: string;
     options?: string[];
   };
+  // Result metadata
+  duration_ms?: number;
+  duration_api_ms?: number;
+  total_cost_usd?: number;
+  usage?: unknown;
+  modelUsage?: unknown;
+  num_turns?: number;
+  // Error info
+  error?: unknown;
+  // Allow any additional fields from SDK
+  [key: string]: unknown;
 }
 
 export interface UserMessage {
