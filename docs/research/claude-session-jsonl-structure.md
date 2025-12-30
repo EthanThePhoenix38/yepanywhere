@@ -226,6 +226,34 @@ The `parentUuid` structure could enable:
 - Project ID derived from path: `-home-user-code-project` format
 - Agent files may use prefix: `agent-<short-hash>.jsonl`
 
+## Permission Mode Storage
+
+### What's NOT in the JSONL
+
+The JSONL stores **raw user input only** - no system-reminders are persisted. This means:
+
+- System-reminders (including mode info) are **dynamically injected** when messages are sent to the API
+- They are NOT stored in the conversation history
+- The JSONL can't tell us the mode at any given point
+
+### How Mode is Communicated
+
+Mode information is injected at API request time by the client/server layer:
+
+| Mode | Agent Awareness | How Communicated |
+|------|-----------------|------------------|
+| Plan mode | **Yes** - agent knows | System-reminder injected in API request |
+| Ask (default) | **No** - agent doesn't distinguish | Handled by permission callback |
+| Auto edit | **No** - agent doesn't distinguish | Handled by permission callback |
+
+The agent only knows if it's in **plan mode** (tools denied, planning only). It does NOT know the granularity between "ask before edits" vs "auto-approve edits" - that's handled by the `canUseTool` callback in the client layer.
+
+### Implications
+
+1. **Session resumption** - Mode must be stored/restored separately from JSONL
+2. **Replaying history** - System-reminders must be re-injected based on current mode
+3. **Mode changes mid-session** - Not persisted in JSONL, must track in application state
+
 ## Open Questions
 
 1. How does Claude API handle orphaned tool_use in conversation history? (Seems tolerant based on testing)
