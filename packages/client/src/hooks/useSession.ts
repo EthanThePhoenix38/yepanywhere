@@ -197,6 +197,7 @@ export function useSession(projectId: string, sessionId: string) {
               const duplicateMsg = prev.find(
                 (m) =>
                   m.id !== incoming.id && // Different ID
+                  !replacedTempIds.has(m.id) && // Not already matched by a previous JSONL message
                   (m.id.startsWith("temp-") || m._source === "sdk") && // Temp or SDK-sourced
                   m.type === "user" &&
                   JSON.stringify(getMessageContent(m)) ===
