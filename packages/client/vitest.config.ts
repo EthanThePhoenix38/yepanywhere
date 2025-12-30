@@ -3,6 +3,9 @@ import { defineConfig } from "vitest/config";
 
 export default defineConfig({
   plugins: [react()],
+  resolve: {
+    conditions: ["source"],
+  },
   test: {
     environment: "jsdom",
     globals: true,
