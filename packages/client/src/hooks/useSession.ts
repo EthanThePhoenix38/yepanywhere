@@ -269,12 +269,21 @@ export function useSession(projectId: string, sessionId: string) {
         setProcessState("idle");
         setStatus({ state: "idle" });
       } else if (data.eventType === "connected") {
-        // Sync permission mode from connected event
+        // Sync state and permission mode from connected event
         const connectedData = data as {
           eventType: string;
+          state?: string;
           permissionMode?: PermissionMode;
           modeVersion?: number;
         };
+        // Sync process state so watching tabs see "processing" indicator
+        if (
+          connectedData.state === "idle" ||
+          connectedData.state === "running" ||
+          connectedData.state === "waiting-input"
+        ) {
+          setProcessState(connectedData.state as ProcessState);
+        }
         if (
           connectedData.permissionMode &&
           connectedData.modeVersion !== undefined

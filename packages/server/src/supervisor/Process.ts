@@ -209,6 +209,11 @@ export class Process {
     this.emit({ type: "message", message: sdkMessage });
 
     if (this.messageQueue) {
+      // Transition to running if we were idle
+      if (this._state.type === "idle") {
+        this.clearIdleTimer();
+        this.setState({ type: "running" });
+      }
       return this.messageQueue.push(message);
     }
 
