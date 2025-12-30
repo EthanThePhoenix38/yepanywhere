@@ -162,30 +162,39 @@ h2 {
   display: flex;
   flex-direction: column;
   height: 100vh;
+  height: 100dvh; /* Dynamic viewport height - accounts for mobile browser chrome */
+  overflow: hidden; /* Prevent body scroll */
 }
 
 .session-header {
-  padding: 1rem;
+  flex-shrink: 0; /* Never shrink the header */
+  padding: 0.75rem 1rem;
   border-bottom: 1px solid #333;
   display: flex;
   justify-content: space-between;
   align-items: center;
+  background: var(--bg-surface);
 }
 
 .session-header-left {
   display: flex;
   align-items: center;
-  gap: 1rem;
+  gap: 0.75rem;
+  min-width: 0; /* Allow text truncation */
+  flex: 1;
 }
 
 .session-header-left .breadcrumb {
   margin-bottom: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .session-title {
   color: #e0e0e0;
   font-weight: 500;
-  max-width: 300px;
+  max-width: 200px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -195,11 +204,45 @@ h2 {
   flex: 1;
   overflow-y: auto;
   padding: 1rem;
+  min-height: 0; /* Critical for flex overflow scrolling */
+  -webkit-overflow-scrolling: touch; /* Smooth scrolling on iOS */
 }
 
 .session-input {
-  padding: 1rem;
+  flex-shrink: 0; /* Never shrink the input area */
+  padding: 0.75rem 1rem;
   border-top: 1px solid #333;
+  background: var(--bg-surface);
+}
+
+/* Mobile-specific adjustments */
+@media (max-width: 600px) {
+  .session-header {
+    padding: 0.5rem 0.75rem;
+  }
+
+  .session-header-left {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.25rem;
+  }
+
+  .session-title {
+    max-width: 100%;
+    font-size: 0.875rem;
+  }
+
+  .breadcrumb {
+    font-size: 0.75rem;
+  }
+
+  .session-messages {
+    padding: 0.75rem;
+  }
+
+  .session-input {
+    padding: 0.5rem 0.75rem;
+  }
 }
 
 /* Messages */
