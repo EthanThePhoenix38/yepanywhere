@@ -80,4 +80,40 @@ test.describe("Permission Mode", () => {
     await modeButton.click();
     await expect(modeDot).toHaveClass(/mode-bypassPermissions/);
   });
+
+  test("mode syncs from server after page refresh when session is active", async ({
+    page,
+  }) => {
+    await page.goto("/projects");
+    await page.waitForSelector(".project-list a");
+    await page.locator(".project-list a").first().click();
+
+    // Start a session
+    await page.fill(".new-session-form input", "Test message");
+    await page.click(".new-session-form button");
+
+    await expect(page.locator(".session-messages")).toBeVisible();
+
+    const modeButton = page.locator(".mode-button");
+
+    // Initial state: Ask before edits
+    await expect(modeButton).toContainText("Ask before edits");
+
+    // Switch to "Edit automatically"
+    await modeButton.click();
+    await expect(modeButton).toContainText("Edit automatically");
+
+    // Wait for the session to be active (processing the message)
+    // The mode is sent with the initial message, so we need to wait for it to be established
+    await page.waitForTimeout(500);
+
+    // Refresh the page
+    await page.reload();
+
+    // Wait for session page to load again
+    await expect(page.locator(".session-messages")).toBeVisible();
+
+    // Verify the mode is still "Edit automatically" (synced from server)
+    await expect(modeButton).toContainText("Edit automatically");
+  });
 });

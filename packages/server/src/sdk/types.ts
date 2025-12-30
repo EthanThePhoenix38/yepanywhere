@@ -1,5 +1,9 @@
 // Core types for Claude SDK abstraction
 
+// Re-export PermissionMode from shared
+export type { PermissionMode } from "@claude-anywhere/shared";
+import type { PermissionMode } from "@claude-anywhere/shared";
+
 export interface ContentBlock {
   type: "text" | "tool_use" | "tool_result" | "image";
   text?: string;
@@ -49,12 +53,6 @@ export interface ClaudeSDK {
 
 // New interface for real SDK with full features
 import type { MessageQueue } from "./messageQueue.js";
-
-export type PermissionMode =
-  | "default"
-  | "bypassPermissions"
-  | "acceptEdits"
-  | "plan";
 
 export interface ToolApprovalResult {
   behavior: "allow" | "deny";

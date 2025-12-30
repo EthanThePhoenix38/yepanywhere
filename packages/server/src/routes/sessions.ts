@@ -55,7 +55,11 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
 
     // Determine the session status
     const status = process
-      ? { state: "owned" as const, processId: process.id }
+      ? {
+          state: "owned" as const,
+          processId: process.id,
+          permissionMode: process.permissionMode,
+        }
       : isExternal
         ? { state: "external" as const }
         : (session?.status ?? { state: "idle" as const });

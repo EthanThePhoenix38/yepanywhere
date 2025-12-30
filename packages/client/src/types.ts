@@ -1,11 +1,6 @@
-// Shared types for the client - copied from server to avoid coupling
-// TODO: Consider a shared package if these drift
-
-export type PermissionMode =
-  | "default"
-  | "bypassPermissions"
-  | "acceptEdits"
-  | "plan";
+// Re-export shared types
+export type { PermissionMode, SessionStatus } from "@claude-anywhere/shared";
+import type { SessionStatus } from "@claude-anywhere/shared";
 
 export interface Project {
   id: string;
@@ -23,11 +18,6 @@ export interface SessionSummary {
   messageCount: number;
   status: SessionStatus;
 }
-
-export type SessionStatus =
-  | { state: "idle" }
-  | { state: "owned"; processId: string }
-  | { state: "external" };
 
 export interface ContentBlock {
   type: "text" | "thinking" | "tool_use" | "tool_result" | "image";

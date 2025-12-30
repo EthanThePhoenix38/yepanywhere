@@ -48,6 +48,13 @@ function SessionPageContent({
     api.getProject(projectId).then((data) => setProject(data.project));
   }, [projectId]);
 
+  // Sync permission mode from server when session is owned
+  useEffect(() => {
+    if (status.state === "owned" && status.permissionMode) {
+      setPermissionMode(status.permissionMode);
+    }
+  }, [status]);
+
   const handleSend = async (text: string) => {
     setSending(true);
     addUserMessage(text); // Optimistic display with temp ID
