@@ -1,9 +1,10 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { api } from "../api/client";
 import { MessageInput } from "../components/MessageInput";
 import { MessageList } from "../components/MessageList";
 import { StatusIndicator } from "../components/StatusIndicator";
+import { ToolApprovalPanel } from "../components/ToolApprovalPanel";
 import { useSession } from "../hooks/useSession";
 import type { Project } from "../types";
 
@@ -33,7 +34,9 @@ function SessionPageContent({
     messages,
     status,
     processState,
+    pendingInputRequest,
     permissionMode,
+    isModePending,
     loading,
     error,
     connected,
@@ -85,6 +88,18 @@ function SessionPageContent({
     }
   };
 
+  const handleApprove = useCallback(async () => {
+    if (pendingInputRequest) {
+      await api.respondToInput(sessionId, pendingInputRequest.id, "approve");
+    }
+  }, [sessionId, pendingInputRequest]);
+
+  const handleDeny = useCallback(async () => {
+    if (pendingInputRequest) {
+      await api.respondToInput(sessionId, pendingInputRequest.id, "deny");
+    }
+  }, [sessionId, pendingInputRequest]);
+
   if (loading) return <div className="loading">Loading session...</div>;
   if (error) return <div className="error">Error: {error.message}</div>;
 
@@ -125,22 +140,31 @@ function SessionPageContent({
       </main>
 
       <footer className="session-input">
-        <MessageInput
-          onSend={handleSend}
-          disabled={sending}
-          placeholder={
-            status.state === "idle"
-              ? "Send a message to resume..."
-              : status.state === "external"
-                ? "External session - send at your own risk..."
-                : "Queue a message..."
-          }
-          mode={permissionMode}
-          onModeChange={setPermissionMode}
-          isRunning={status.state === "owned"}
-          isThinking={processState === "running"}
-          onStop={handleAbort}
-        />
+        {pendingInputRequest ? (
+          <ToolApprovalPanel
+            request={pendingInputRequest}
+            onApprove={handleApprove}
+            onDeny={handleDeny}
+          />
+        ) : (
+          <MessageInput
+            onSend={handleSend}
+            disabled={sending}
+            placeholder={
+              status.state === "idle"
+                ? "Send a message to resume..."
+                : status.state === "external"
+                  ? "External session - send at your own risk..."
+                  : "Queue a message..."
+            }
+            mode={permissionMode}
+            onModeChange={setPermissionMode}
+            isModePending={isModePending}
+            isRunning={status.state === "owned"}
+            isThinking={processState === "running"}
+            onStop={handleAbort}
+          />
+        )}
       </footer>
     </div>
   );

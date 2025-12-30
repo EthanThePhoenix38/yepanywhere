@@ -51,3 +51,15 @@ export interface Message {
 export interface Session extends SessionSummary {
   messages: Message[];
 }
+
+// Input request for tool approval or user questions
+export interface InputRequest {
+  id: string;
+  sessionId: string;
+  type: "tool-approval" | "question" | "choice";
+  prompt: string;
+  options?: string[];
+  toolName?: string;
+  toolInput?: unknown;
+  timestamp: string;
+}

@@ -26,10 +26,7 @@ export function loadConfig(): Config {
     claudeProjectsDir:
       process.env.CLAUDE_PROJECTS_DIR ??
       path.join(os.homedir(), ".claude", "projects"),
-    idleTimeoutMs: parseIntOrDefault(
-      process.env.IDLE_TIMEOUT_MS,
-      5 * 60 * 1000,
-    ),
+    idleTimeoutMs: parseIntOrDefault(process.env.IDLE_TIMEOUT, 5 * 60) * 1000,
     defaultPermissionMode: parsePermissionMode(process.env.PERMISSION_MODE),
     port: parseIntOrDefault(process.env.PORT, 3400),
     useMockSdk: process.env.USE_MOCK_SDK === "true",

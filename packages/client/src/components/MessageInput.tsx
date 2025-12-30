@@ -22,6 +22,7 @@ interface Props {
   placeholder?: string;
   mode?: PermissionMode;
   onModeChange?: (mode: PermissionMode) => void;
+  isModePending?: boolean;
   isRunning?: boolean;
   isThinking?: boolean;
   onStop?: () => void;
@@ -33,6 +34,7 @@ export function MessageInput({
   placeholder,
   mode = "default",
   onModeChange,
+  isModePending,
   isRunning,
   isThinking,
   onStop,
@@ -96,6 +98,9 @@ export function MessageInput({
         >
           <span className={`mode-dot mode-${mode}`} />
           {MODE_LABELS[mode]}
+          {isModePending && (
+            <span className="mode-pending-hint">(set on next message)</span>
+          )}
         </button>
         <div className="message-input-actions">
           {isRunning && onStop && (

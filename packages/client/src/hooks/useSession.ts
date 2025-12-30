@@ -1,6 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api } from "../api/client";
-import type { Message, PermissionMode, Session, SessionStatus } from "../types";
+import type {
+  InputRequest,
+  Message,
+  PermissionMode,
+  Session,
+  SessionStatus,
+} from "../types";
 import {
   type FileChangeEvent,
   type SessionStatusEvent,
@@ -17,26 +23,33 @@ export function useSession(projectId: string, sessionId: string) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [status, setStatus] = useState<SessionStatus>({ state: "idle" });
   const [processState, setProcessState] = useState<ProcessState>("idle");
+  const [pendingInputRequest, setPendingInputRequest] =
+    useState<InputRequest | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<Error | null>(null);
 
-  // Permission mode state and version tracking for multi-tab sync
-  const [permissionMode, setPermissionModeState] =
-    useState<PermissionMode>("default");
+  // Permission mode state: localMode is UI-selected, serverMode is confirmed by server
+  const [localMode, setLocalMode] = useState<PermissionMode>("default");
+  const [serverMode, setServerMode] = useState<PermissionMode>("default");
   const [modeVersion, setModeVersion] = useState<number>(0);
   const lastKnownModeVersionRef = useRef<number>(0);
 
-  // Update permission mode and track the version for race condition handling
+  // Mode is pending when local differs from server-confirmed
+  const isModePending = localMode !== serverMode;
+
+  // Update local mode (UI selection) - will be sent to server on next message
   const setPermissionMode = useCallback((mode: PermissionMode) => {
-    setPermissionModeState(mode);
+    setLocalMode(mode);
   }, []);
 
   // Apply server mode update only if version is >= our last known version
+  // This syncs both local and server mode to the confirmed value
   const applyServerModeUpdate = useCallback(
     (mode: PermissionMode, version: number) => {
       if (version >= lastKnownModeVersionRef.current) {
         lastKnownModeVersionRef.current = version;
-        setPermissionModeState(mode);
+        setServerMode(mode);
+        setLocalMode(mode); // Sync local to server-confirmed mode
         setModeVersion(version);
       }
     },
@@ -250,7 +263,11 @@ export function useSession(projectId: string, sessionId: string) {
           });
         }
       } else if (data.eventType === "status") {
-        const statusData = data as { eventType: string; state: string };
+        const statusData = data as {
+          eventType: string;
+          state: string;
+          request?: InputRequest;
+        };
         // Track process state (running, idle, waiting-input)
         if (
           statusData.state === "idle" ||
@@ -258,6 +275,13 @@ export function useSession(projectId: string, sessionId: string) {
           statusData.state === "waiting-input"
         ) {
           setProcessState(statusData.state as ProcessState);
+        }
+        // Capture pending input request when waiting for user input
+        if (statusData.state === "waiting-input" && statusData.request) {
+          setPendingInputRequest(statusData.request);
+        } else {
+          // Clear pending request when state changes away from waiting-input
+          setPendingInputRequest(null);
         }
         // When subprocess goes idle, treat the session as idle from a UX perspective
         // (hides status indicator, changes placeholder to "Send a message to resume...")
@@ -268,6 +292,7 @@ export function useSession(projectId: string, sessionId: string) {
       } else if (data.eventType === "complete") {
         setProcessState("idle");
         setStatus({ state: "idle" });
+        setPendingInputRequest(null);
       } else if (data.eventType === "connected") {
         // Sync state and permission mode from connected event
         const connectedData = data as {
@@ -320,7 +345,9 @@ export function useSession(projectId: string, sessionId: string) {
     messages,
     status,
     processState,
-    permissionMode,
+    pendingInputRequest,
+    permissionMode: localMode, // UI-selected mode (sent with next message)
+    isModePending, // True when local mode differs from server-confirmed
     modeVersion,
     loading,
     error,

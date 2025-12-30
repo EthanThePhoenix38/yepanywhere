@@ -86,4 +86,14 @@ export const api = {
     fetchJSON<{ aborted: boolean }>(`/processes/${processId}/abort`, {
       method: "POST",
     }),
+
+  respondToInput: (
+    sessionId: string,
+    requestId: string,
+    response: "approve" | "deny",
+  ) =>
+    fetchJSON<{ accepted: boolean }>(`/sessions/${sessionId}/input`, {
+      method: "POST",
+      body: JSON.stringify({ requestId, response }),
+    }),
 };
