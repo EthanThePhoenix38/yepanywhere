@@ -288,6 +288,45 @@ h2 {
   cursor: default;
 }
 
+/* Collapsible text for long user prompts */
+.collapsible-text {
+  position: relative;
+}
+
+.collapsible-text .truncated-content {
+  position: relative;
+  white-space: pre-wrap;
+}
+
+.collapsible-text .fade-overlay {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 2.5em;
+  background: linear-gradient(to bottom, transparent, #3a3a3a);
+  pointer-events: none;
+}
+
+.show-more-btn {
+  display: block;
+  margin-left: auto;
+  margin-top: 0.25rem;
+  padding: 0.125rem 0.5rem;
+  font-size: 0.75rem;
+  color: var(--text-dimmed);
+  background: transparent;
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  cursor: pointer;
+  transition: color 0.15s, border-color 0.15s;
+}
+
+.show-more-btn:hover {
+  color: var(--text-primary);
+  border-color: var(--text-dimmed);
+}
+
 /* All other messages (assistant responses, tool results) - indented, no background */
 .message-response {
   margin-left: 2rem;

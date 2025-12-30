@@ -1,6 +1,9 @@
-import { memo } from "react";
+import { memo, useState } from "react";
 import { getFilename, parseUserPrompt } from "../../lib/parseUserPrompt";
 import type { ContentBlock } from "../../types";
+
+const MAX_LINES = 12;
+const MAX_CHARS = MAX_LINES * 100;
 
 interface Props {
   content: string | ContentBlock[];
@@ -27,6 +30,58 @@ function OpenedFilesMetadata({ files }: { files: string[] }) {
   );
 }
 
+/**
+ * Renders text content with optional truncation and "Show more" button
+ */
+function CollapsibleText({ text }: { text: string }) {
+  const [isExpanded, setIsExpanded] = useState(false);
+  const lines = text.split("\n");
+  const exceedsLines = lines.length > MAX_LINES;
+  const exceedsChars = text.length > MAX_CHARS;
+  const needsTruncation = exceedsLines || exceedsChars;
+
+  if (!needsTruncation || isExpanded) {
+    return (
+      <div className="text-block">
+        {text}
+        {isExpanded && needsTruncation && (
+          <button
+            type="button"
+            className="show-more-btn"
+            onClick={() => setIsExpanded(false)}
+          >
+            Show less
+          </button>
+        )}
+      </div>
+    );
+  }
+
+  // Truncate by lines first, then by characters if still too long
+  let truncatedText = exceedsLines
+    ? lines.slice(0, MAX_LINES).join("\n")
+    : text;
+  if (truncatedText.length > MAX_CHARS) {
+    truncatedText = truncatedText.slice(0, MAX_CHARS);
+  }
+
+  return (
+    <div className="text-block collapsible-text">
+      <div className="truncated-content">
+        {truncatedText}
+        <div className="fade-overlay" />
+      </div>
+      <button
+        type="button"
+        className="show-more-btn"
+        onClick={() => setIsExpanded(true)}
+      >
+        Show more
+      </button>
+    </div>
+  );
+}
+
 export const UserPromptBlock = memo(function UserPromptBlock({
   content,
 }: Props) {
@@ -44,7 +99,7 @@ export const UserPromptBlock = memo(function UserPromptBlock({
       <div className="user-prompt-container">
         <div className="message message-user-prompt">
           <div className="message-content">
-            <div className="text-block">{text}</div>
+            <CollapsibleText text={text} />
           </div>
         </div>
         <OpenedFilesMetadata files={openedFiles} />
@@ -77,7 +132,7 @@ export const UserPromptBlock = memo(function UserPromptBlock({
     <div className="user-prompt-container">
       <div className="message message-user-prompt">
         <div className="message-content">
-          <div className="text-block">{text}</div>
+          <CollapsibleText text={text} />
         </div>
       </div>
       <OpenedFilesMetadata files={openedFiles} />
