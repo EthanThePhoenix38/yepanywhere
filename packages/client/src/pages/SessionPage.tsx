@@ -166,32 +166,32 @@ function SessionPageContent({
       </main>
 
       <footer className="session-input">
-        {pendingInputRequest ? (
+        {pendingInputRequest && (
           <ToolApprovalPanel
             request={pendingInputRequest}
             onApprove={handleApprove}
             onDeny={handleDeny}
           />
-        ) : (
-          <MessageInput
-            onSend={handleSend}
-            disabled={sending}
-            placeholder={
-              status.state === "idle"
-                ? "Send a message to resume..."
-                : status.state === "external"
-                  ? "External session - send at your own risk..."
-                  : "Queue a message..."
-            }
-            mode={permissionMode}
-            onModeChange={setPermissionMode}
-            isModePending={isModePending}
-            isRunning={status.state === "owned"}
-            isThinking={processState === "running"}
-            onStop={handleAbort}
-            restoredText={restoredText}
-          />
         )}
+        <MessageInput
+          onSend={handleSend}
+          disabled={sending}
+          placeholder={
+            status.state === "idle"
+              ? "Send a message to resume..."
+              : status.state === "external"
+                ? "External session - send at your own risk..."
+                : "Queue a message..."
+          }
+          mode={permissionMode}
+          onModeChange={setPermissionMode}
+          isModePending={isModePending}
+          isRunning={status.state === "owned"}
+          isThinking={processState === "running"}
+          onStop={handleAbort}
+          restoredText={restoredText}
+          hidden={!!pendingInputRequest}
+        />
       </footer>
     </div>
   );

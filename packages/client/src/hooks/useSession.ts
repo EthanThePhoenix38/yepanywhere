@@ -38,10 +38,29 @@ export function useSession(projectId: string, sessionId: string) {
   // Mode is pending when local differs from server-confirmed
   const isModePending = localMode !== serverMode;
 
-  // Update local mode (UI selection) - will be sent to server on next message
-  const setPermissionMode = useCallback((mode: PermissionMode) => {
-    setLocalMode(mode);
-  }, []);
+  // Update local mode (UI selection) and sync to server if process is active
+  const setPermissionMode = useCallback(
+    async (mode: PermissionMode) => {
+      setLocalMode(mode);
+
+      // If there's an active process, immediately sync to server
+      if (status.state === "owned" || status.state === "external") {
+        try {
+          const result = await api.setPermissionMode(sessionId, mode);
+          // Update server-confirmed mode
+          if (result.modeVersion >= lastKnownModeVersionRef.current) {
+            lastKnownModeVersionRef.current = result.modeVersion;
+            setServerMode(result.permissionMode);
+            setModeVersion(result.modeVersion);
+          }
+        } catch (err) {
+          // If API fails (e.g., no active process), mode will be sent on next message
+          console.warn("Failed to sync permission mode:", err);
+        }
+      }
+    },
+    [sessionId, status.state],
+  );
 
   // Apply server mode update only if version is >= our last known version
   // This syncs both local and server mode to the confirmed value

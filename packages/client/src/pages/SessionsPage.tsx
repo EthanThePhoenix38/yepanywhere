@@ -1,7 +1,8 @@
-import { useState } from "react";
+import { type KeyboardEvent, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { api } from "../api/client";
 import { SessionStatusBadge } from "../components/StatusBadge";
+import { ENTER_SENDS_MESSAGE } from "../constants";
 import { useSessions } from "../hooks/useSessions";
 
 export function SessionsPage() {
@@ -11,8 +12,7 @@ export function SessionsPage() {
   const [newMessage, setNewMessage] = useState("");
   const [starting, setStarting] = useState(false);
 
-  const handleStartSession = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleStartSession = async () => {
     if (!projectId || !newMessage.trim()) return;
 
     setStarting(true);
@@ -22,6 +22,23 @@ export function SessionsPage() {
     } catch (err) {
       console.error("Failed to start session:", err);
       setStarting(false);
+    }
+  };
+
+  const handleKeyDown = (e: KeyboardEvent) => {
+    if (e.key === "Enter") {
+      if (ENTER_SENDS_MESSAGE) {
+        if (e.ctrlKey || e.shiftKey) {
+          return;
+        }
+        e.preventDefault();
+        handleStartSession();
+      } else {
+        if (e.ctrlKey || e.shiftKey) {
+          e.preventDefault();
+          handleStartSession();
+        }
+      }
     }
   };
 
@@ -36,18 +53,23 @@ export function SessionsPage() {
 
       <h1>{project?.name}</h1>
 
-      <form onSubmit={handleStartSession} className="new-session-form">
-        <input
-          type="text"
+      <div className="new-session-form">
+        <textarea
           value={newMessage}
           onChange={(e) => setNewMessage(e.target.value)}
+          onKeyDown={handleKeyDown}
           placeholder="Start a new session..."
           disabled={starting}
+          rows={3}
         />
-        <button type="submit" disabled={starting || !newMessage.trim()}>
+        <button
+          type="button"
+          onClick={handleStartSession}
+          disabled={starting || !newMessage.trim()}
+        >
           {starting ? "Starting..." : "Start"}
         </button>
-      </form>
+      </div>
 
       <h2>Sessions</h2>
       {sessions.length === 0 ? (

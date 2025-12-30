@@ -96,4 +96,10 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ requestId, response }),
     }),
+
+  setPermissionMode: (sessionId: string, mode: PermissionMode) =>
+    fetchJSON<{ permissionMode: PermissionMode; modeVersion: number }>(
+      `/sessions/${sessionId}/mode`,
+      { method: "PUT", body: JSON.stringify({ mode }) },
+    ),
 };

@@ -290,6 +290,28 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
     return c.json({ queued: true, position: result.position });
   });
 
+  // PUT /api/sessions/:sessionId/mode - Update permission mode without sending a message
+  routes.put("/sessions/:sessionId/mode", async (c) => {
+    const sessionId = c.req.param("sessionId");
+    const body = await c.req.json<{ mode: PermissionMode }>();
+
+    if (!body.mode) {
+      return c.json({ error: "mode is required" }, 400);
+    }
+
+    const process = deps.supervisor.getProcessForSession(sessionId);
+    if (!process) {
+      return c.json({ error: "No active process for session" }, 404);
+    }
+
+    process.setPermissionMode(body.mode);
+
+    return c.json({
+      permissionMode: process.permissionMode,
+      modeVersion: process.modeVersion,
+    });
+  });
+
   // GET /api/sessions/:sessionId/pending-input - Get pending input request
   routes.get("/sessions/:sessionId/pending-input", async (c) => {
     const sessionId = c.req.param("sessionId");

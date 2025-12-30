@@ -106,9 +106,15 @@ export class Supervisor {
     // Use provided mode or fall back to default
     const effectiveMode = permissionMode ?? this.defaultPermissionMode;
 
+    // Generate UUID for the initial message so SDK and SSE use the same ID.
+    // This ensures the client can match the SSE replay to its temp message,
+    // and prevents duplicates when JSONL is later fetched.
+    const messageUuid = randomUUID();
+    const messageWithUuid: UserMessage = { ...message, uuid: messageUuid };
+
     const result = await this.realSdk.startSession({
       cwd: projectPath,
-      initialMessage: message,
+      initialMessage: messageWithUuid,
       resumeSessionId,
       permissionMode: effectiveMode,
       onToolApproval: async (toolName, input, opts) => {
@@ -134,6 +140,12 @@ export class Supervisor {
 
     const process = new Process(iterator, options);
     processHolder.process = process;
+
+    // Add the initial user message to history with the same UUID we passed to SDK.
+    // This ensures SSE replay includes the user message so the client can replace
+    // its temp message. The SDK also writes to JSONL with this UUID, so both SSE
+    // and JSONL will have matching IDs (no duplicates).
+    process.addInitialUserMessage(message.text, messageUuid);
 
     // Wait for the real session ID from the SDK before registering
     // This ensures the client gets the correct ID to use for persistence

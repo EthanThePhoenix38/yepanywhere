@@ -221,9 +221,11 @@ export class Process {
    * Add initial user message to history without queuing to SDK.
    * Used for real SDK sessions where the initial message is passed directly
    * to the SDK but needs to be in history for SSE replay to late-joining clients.
+   *
+   * @param text - The message text
+   * @param uuid - The UUID to use (should match what was passed to SDK)
    */
-  addInitialUserMessage(text: string): void {
-    const uuid = randomUUID();
+  addInitialUserMessage(text: string, uuid: string): void {
     const sdkMessage = {
       type: "user",
       uuid,

@@ -27,6 +27,7 @@ interface Props {
   isThinking?: boolean;
   onStop?: () => void;
   restoredText?: string | null; // Text to restore after failed send
+  hidden?: boolean; // Hide but keep mounted to preserve state
 }
 
 export function MessageInput({
@@ -40,6 +41,7 @@ export function MessageInput({
   isThinking,
   onStop,
   restoredText,
+  hidden,
 }: Props) {
   const [text, setText] = useState("");
 
@@ -88,7 +90,10 @@ export function MessageInput({
   };
 
   return (
-    <div className="message-input">
+    <div
+      className="message-input"
+      style={hidden ? { display: "none" } : undefined}
+    >
       <textarea
         value={text}
         onChange={(e) => setText(e.target.value)}

@@ -68,7 +68,12 @@ export class RealClaudeSDK implements RealClaudeSDKInterface {
           cwd: options.cwd,
           resume: options.resumeSessionId,
           abortController,
-          permissionMode: options.permissionMode ?? "default",
+          // Only pass SDK-recognized modes to the SDK.
+          // Custom modes like "acceptEdits" and "plan" are handled in our canUseTool callback.
+          permissionMode:
+            options.permissionMode === "bypassPermissions"
+              ? "bypassPermissions"
+              : "default",
           canUseTool,
           systemPrompt: { type: "preset", preset: "claude_code" },
           settingSources: ["user", "project", "local"],
