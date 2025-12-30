@@ -108,16 +108,19 @@ export function useReloadNotifications() {
 
   // Reload the backend (triggers server restart)
   const reloadBackend = useCallback(async () => {
+    console.log("[ReloadNotifications] Requesting backend reload...");
     try {
-      await fetch(`${API_BASE}/dev/reload`, {
+      const res = await fetch(`${API_BASE}/dev/reload`, {
         method: "POST",
-        headers: { "X-Requested-With": "XMLHttpRequest" },
+        headers: { "X-Claude-Anywhere": "true" },
       });
+      console.log("[ReloadNotifications] Reload response:", res.status);
       // Server will restart, which will briefly disconnect SSE
       // The reconnect logic will handle it
       setPendingReloads((prev) => ({ ...prev, backend: false }));
-    } catch {
+    } catch (err) {
       // Server might already be restarting
+      console.log("[ReloadNotifications] Reload error (may be expected):", err);
     }
   }, []);
 

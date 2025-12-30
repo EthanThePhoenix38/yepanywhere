@@ -49,7 +49,7 @@ export function reloadNotify(options: ReloadNotifyOptions = {}): Plugin {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          "X-Requested-With": "XMLHttpRequest",
+          "X-Claude-Anywhere": "true",
         },
         body: JSON.stringify({ files: [relativePath] }),
       }).catch((err) => {

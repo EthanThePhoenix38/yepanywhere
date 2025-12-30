@@ -102,10 +102,11 @@ export function createApp(options: AppOptions): Hono {
       process.env.NO_BACKEND_RELOAD === "true" ||
       process.env.NO_FRONTEND_RELOAD === "true";
     if (isDevMode) {
+      console.log("[Dev] Mounting dev routes at /api/dev");
       app.route("/api/dev", createDevRoutes({ eventBus: options.eventBus }));
     }
   }
-
+  
   return app;
 }
 

@@ -320,9 +320,21 @@ export class Process {
         // Auto-approve all tools
         return { behavior: "allow" };
 
-      case "plan":
-        // Deny all tools - planning only
+      case "plan": {
+        // In plan mode, allow ExitPlanMode so the plan can be displayed
+        if (toolName === "ExitPlanMode") {
+          return { behavior: "allow" };
+        }
+        // Allow Write to .claude/plans/ directory for saving plans
+        if (toolName === "Write") {
+          const filePath = (input as { file_path?: string })?.file_path ?? "";
+          if (filePath.includes(".claude/plans/")) {
+            return { behavior: "allow" };
+          }
+        }
+        // Deny all other tools - planning only
         return { behavior: "deny", message: "Plan mode - tools not executed" };
+      }
 
       case "acceptEdits": {
         // Auto-approve file editing tools, ask for others
