@@ -39,28 +39,26 @@ export function createStreamRoutes(deps: StreamDeps): Hono {
         }),
       });
 
-      // Helper to check if a message belongs to this session
-      // Subagent messages have a different session_id and should be filtered out
-      // to match JSONL behavior (subagent messages are in separate files)
-      const isMessageForSession = (message: {
-        session_id?: string;
-      }): boolean => {
-        // Include if no session_id (system messages, old format)
-        if (!message.session_id) return true;
-        // Include if session_id matches
-        return message.session_id === sessionId;
+      // Helper to mark subagent messages
+      // Subagent messages have a different session_id than the parent session
+      const markSubagent = <T extends { session_id?: string }>(
+        message: T,
+      ): T & { isSubagent?: boolean } => {
+        // No session_id means system message or old format - not a subagent
+        if (!message.session_id) return message;
+        // If session_id matches, it's from this session
+        if (message.session_id === sessionId) return message;
+        // Different session_id means it's from a subagent
+        return { ...message, isSubagent: true };
       };
 
       // Replay buffered messages (for mock SDK that doesn't persist to disk)
       // This ensures clients that connect after messages were emitted still receive them
       for (const message of process.getMessageHistory()) {
-        // Skip subagent messages to match JSONL behavior
-        if (!isMessageForSession(message)) continue;
-
         await stream.writeSSE({
           id: String(eventId++),
           event: "message",
-          data: JSON.stringify(message),
+          data: JSON.stringify(markSubagent(message)),
         });
       }
 
@@ -86,13 +84,10 @@ export function createStreamRoutes(deps: StreamDeps): Hono {
         try {
           switch (event.type) {
             case "message":
-              // Skip subagent messages to match JSONL behavior
-              if (!isMessageForSession(event.message)) break;
-
               await stream.writeSSE({
                 id: String(eventId++),
                 event: "message",
-                data: JSON.stringify(event.message),
+                data: JSON.stringify(markSubagent(event.message)),
               });
               break;
 

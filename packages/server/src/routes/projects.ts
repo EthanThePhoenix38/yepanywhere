@@ -1,3 +1,4 @@
+import { isUrlProjectId } from "@claude-anywhere/shared";
 import { Hono } from "hono";
 import type { ProjectScanner } from "../projects/scanner.js";
 import type { SessionReader } from "../sessions/reader.js";
@@ -18,15 +19,12 @@ interface ProjectActivityCounts {
 
 /**
  * Get activity counts for all projects.
- *
- * Note: Supervisor uses base64url-encoded projectId, but ExternalSessionTracker
- * uses directory-based projectId (path after ~/.claude/projects/).
- * We return both keyed formats in the map to support lookups.
+ * All counts are keyed by UrlProjectId (base64url format).
  */
-function getProjectActivityCounts(
+async function getProjectActivityCounts(
   supervisor: Supervisor | undefined,
   externalTracker: ExternalSessionTracker | undefined,
-): Map<string, ProjectActivityCounts> {
+): Promise<Map<string, ProjectActivityCounts>> {
   const counts = new Map<string, ProjectActivityCounts>();
 
   // Count owned sessions from Supervisor (uses base64url projectId)
@@ -41,11 +39,11 @@ function getProjectActivityCounts(
     }
   }
 
-  // Count external sessions (uses directory-based projectId)
-  // Store under directory-based key for lookup in enrichment
+  // Count external sessions - convert to UrlProjectId for consistent keys
   if (externalTracker) {
     for (const sessionId of externalTracker.getExternalSessions()) {
-      const info = externalTracker.getExternalSessionInfo(sessionId);
+      const info =
+        await externalTracker.getExternalSessionInfoWithUrlId(sessionId);
       if (info) {
         const existing = counts.get(info.projectId) || {
           activeOwnedCount: 0,
@@ -58,18 +56,6 @@ function getProjectActivityCounts(
   }
 
   return counts;
-}
-
-/**
- * Extract directory-based projectId from sessionDir path.
- * e.g., "/home/user/.claude/projects/hostname/-home-code-proj" -> "hostname/-home-code-proj"
- *       "/home/user/.claude/projects/-home-code-proj" -> "-home-code-proj"
- */
-function getDirectoryProjectId(sessionDir: string): string | null {
-  const marker = "/projects/";
-  const idx = sessionDir.indexOf(marker);
-  if (idx === -1) return null;
-  return sessionDir.slice(idx + marker.length);
 }
 
 export function createProjectsRoutes(deps: ProjectsDeps): Hono {
@@ -101,28 +87,18 @@ export function createProjectsRoutes(deps: ProjectsDeps): Hono {
   // GET /api/projects - List all projects
   routes.get("/", async (c) => {
     const rawProjects = await deps.scanner.listProjects();
-    const activityCounts = getProjectActivityCounts(
+    const activityCounts = await getProjectActivityCounts(
       deps.supervisor,
       deps.externalTracker,
     );
 
-    // Enrich projects with active counts
-    // Note: Supervisor uses base64url projectId (project.id)
-    //       ExternalSessionTracker uses directory-based projectId (from sessionDir)
+    // Enrich projects with active counts (all keyed by UrlProjectId now)
     const projects = rawProjects.map((project) => {
-      // Look up owned count by base64url projectId
-      const ownedCount = activityCounts.get(project.id)?.activeOwnedCount ?? 0;
-
-      // Look up external count by directory-based projectId
-      const dirProjectId = getDirectoryProjectId(project.sessionDir);
-      const externalCount = dirProjectId
-        ? (activityCounts.get(dirProjectId)?.activeExternalCount ?? 0)
-        : 0;
-
+      const counts = activityCounts.get(project.id);
       return {
         ...project,
-        activeOwnedCount: ownedCount,
-        activeExternalCount: externalCount,
+        activeOwnedCount: counts?.activeOwnedCount ?? 0,
+        activeExternalCount: counts?.activeExternalCount ?? 0,
       };
     });
 
@@ -143,6 +119,11 @@ export function createProjectsRoutes(deps: ProjectsDeps): Hono {
   routes.get("/:projectId", async (c) => {
     const projectId = c.req.param("projectId");
 
+    // Validate projectId format at API boundary
+    if (!isUrlProjectId(projectId)) {
+      return c.json({ error: "Invalid project ID format" }, 400);
+    }
+
     const project = await deps.scanner.getProject(projectId);
     if (!project) {
       return c.json({ error: "Project not found" }, 404);
@@ -150,7 +131,7 @@ export function createProjectsRoutes(deps: ProjectsDeps): Hono {
 
     // Get sessions for this project using the stored sessionDir
     const reader = deps.readerFactory(project.sessionDir);
-    const sessions = await reader.listSessions(projectId);
+    const sessions = await reader.listSessions(project.id);
 
     return c.json({ project, sessions: enrichSessionsWithStatus(sessions) });
   });
@@ -159,13 +140,18 @@ export function createProjectsRoutes(deps: ProjectsDeps): Hono {
   routes.get("/:projectId/sessions", async (c) => {
     const projectId = c.req.param("projectId");
 
+    // Validate projectId format at API boundary
+    if (!isUrlProjectId(projectId)) {
+      return c.json({ error: "Invalid project ID format" }, 400);
+    }
+
     const project = await deps.scanner.getProject(projectId);
     if (!project) {
       return c.json({ error: "Project not found" }, 404);
     }
 
     const reader = deps.readerFactory(project.sessionDir);
-    const sessions = await reader.listSessions(projectId);
+    const sessions = await reader.listSessions(project.id);
 
     return c.json({ sessions: enrichSessionsWithStatus(sessions) });
   });

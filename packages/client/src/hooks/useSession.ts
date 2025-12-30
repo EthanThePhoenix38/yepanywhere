@@ -221,8 +221,13 @@ export function useSession(projectId: string, sessionId: string) {
         return;
       }
 
-      // Check if file matches current session
-      if (!event.relativePath.includes(sessionId)) {
+      // Check if file matches current session (exact match to avoid false positives)
+      // File format is: projects/<projectId>/<sessionId>.jsonl
+      const filename = event.relativePath.split("/").pop();
+      const fileSessionId = filename?.endsWith(".jsonl")
+        ? filename.slice(0, -6)
+        : null;
+      if (fileSessionId !== sessionId) {
         return;
       }
 

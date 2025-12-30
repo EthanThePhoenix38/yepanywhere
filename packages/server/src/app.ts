@@ -54,15 +54,14 @@ export function createApp(options: AppOptions): Hono {
     ? new ExternalSessionTracker({
         eventBus: options.eventBus,
         supervisor,
+        scanner,
         decayMs: 30000, // 30 seconds
         // Callback to get session summary for new external sessions
-        // Note: projectId here is the directory-based format from file paths
-        // (e.g., "-home-user-project"), not the base64url-encoded projectId
-        getSessionSummary: async (sessionId, dirSuffix) => {
-          const project = await scanner.getProjectBySessionDirSuffix(dirSuffix);
+        // projectId is now UrlProjectId (base64url) - ExternalSessionTracker converts it
+        getSessionSummary: async (sessionId, projectId) => {
+          const project = await scanner.getProject(projectId);
           if (!project) return null;
           const reader = readerFactory(project.sessionDir);
-          // Use the project's actual id (base64url) for the summary
           return reader.getSessionSummary(sessionId, project.id);
         },
       })

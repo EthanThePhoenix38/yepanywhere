@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import type { UrlProjectId } from "@claude-anywhere/shared";
 import type {
   ClaudeSDK,
   PermissionMode,
@@ -86,7 +87,7 @@ export class Supervisor {
    */
   private async startRealSession(
     projectPath: string,
-    projectId: string,
+    projectId: UrlProjectId,
     message: UserMessage,
     resumeSessionId?: string,
     permissionMode?: PermissionMode,
@@ -163,7 +164,7 @@ export class Supervisor {
    */
   private startLegacySession(
     projectPath: string,
-    projectId: string,
+    projectId: UrlProjectId,
     message: UserMessage,
     resumeSessionId?: string,
     permissionMode?: PermissionMode,
@@ -329,7 +330,7 @@ export class Supervisor {
 
   private emitStatusChange(
     sessionId: string,
-    projectId: string,
+    projectId: UrlProjectId,
     status: SessionStatus,
   ): void {
     if (!this.eventBus) return;

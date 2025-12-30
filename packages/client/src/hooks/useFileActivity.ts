@@ -1,3 +1,4 @@
+import type { UrlProjectId } from "@claude-anywhere/shared";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { SessionStatus, SessionSummary } from "../types";
 
@@ -22,7 +23,8 @@ export interface FileChangeEvent {
 export interface SessionStatusEvent {
   type: "session-status-changed";
   sessionId: string;
-  projectId: string;
+  /** Base64url-encoded project path (UrlProjectId format) */
+  projectId: UrlProjectId;
   status: SessionStatus;
   timestamp: string;
 }

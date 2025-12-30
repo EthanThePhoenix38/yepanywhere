@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import type { UrlProjectId } from "@claude-anywhere/shared";
 import type { MessageQueue } from "../sdk/messageQueue.js";
 import type {
   PermissionMode,
@@ -38,7 +39,7 @@ export class Process {
   readonly id: string;
   private _sessionId: string;
   readonly projectPath: string;
-  readonly projectId: string;
+  readonly projectId: UrlProjectId;
   readonly startedAt: Date;
 
   private legacyQueue: UserMessage[] = [];

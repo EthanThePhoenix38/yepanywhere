@@ -17,6 +17,8 @@ export type RenderItem =
 interface RenderItemBase {
   /** Source JSONL messages that contributed to this item (for debugging) */
   sourceMessages: Message[];
+  /** True if this item is from a Task subagent */
+  isSubagent?: boolean;
 }
 
 export interface TextItem extends RenderItemBase {

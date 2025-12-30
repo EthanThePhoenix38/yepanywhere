@@ -56,6 +56,7 @@ function processMessage(
         id: msg.id,
         content,
         sourceMessages: [msg],
+        isSubagent: msg.isSubagent,
       });
       return;
     }
@@ -66,6 +67,7 @@ function processMessage(
         id: msg.id,
         text: content,
         sourceMessages: [msg],
+        isSubagent: msg.isSubagent,
       });
     }
     return;

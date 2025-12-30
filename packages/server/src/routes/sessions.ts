@@ -1,3 +1,4 @@
+import { isUrlProjectId } from "@claude-anywhere/shared";
 import { Hono } from "hono";
 import type { ProjectScanner } from "../projects/scanner.js";
 import type { PermissionMode, SDKMessage, UserMessage } from "../sdk/types.js";
@@ -76,6 +77,11 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
     const sessionId = c.req.param("sessionId");
     const afterMessageId = c.req.query("afterMessageId");
 
+    // Validate projectId format at API boundary
+    if (!isUrlProjectId(projectId)) {
+      return c.json({ error: "Invalid project ID format" }, 400);
+    }
+
     const project = await deps.scanner.getProject(projectId);
     if (!project) {
       return c.json({ error: "Project not found" }, 404);
@@ -95,7 +101,7 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
     const reader = deps.readerFactory(project.sessionDir);
     const session = await reader.getSession(
       sessionId,
-      projectId,
+      project.id,
       afterMessageId,
       {
         // Only include orphaned tool info if:
@@ -154,6 +160,11 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
   routes.post("/projects/:projectId/sessions", async (c) => {
     const projectId = c.req.param("projectId");
 
+    // Validate projectId format at API boundary
+    if (!isUrlProjectId(projectId)) {
+      return c.json({ error: "Invalid project ID format" }, 400);
+    }
+
     const project = await deps.scanner.getProject(projectId);
     if (!project) {
       return c.json({ error: "Project not found" }, 404);
@@ -195,6 +206,11 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
   routes.post("/projects/:projectId/sessions/:sessionId/resume", async (c) => {
     const projectId = c.req.param("projectId");
     const sessionId = c.req.param("sessionId");
+
+    // Validate projectId format at API boundary
+    if (!isUrlProjectId(projectId)) {
+      return c.json({ error: "Invalid project ID format" }, 400);
+    }
 
     const project = await deps.scanner.getProject(projectId);
     if (!project) {

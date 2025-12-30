@@ -1,4 +1,10 @@
 import * as path from "node:path";
+import {
+  type DirProjectId,
+  type UrlProjectId,
+  asDirProjectId,
+} from "@claude-anywhere/shared";
+import type { ProjectScanner } from "../projects/scanner.js";
 import type {
   BusEvent,
   EventBus,
@@ -12,19 +18,21 @@ import type { SessionStatus, SessionSummary } from "./types.js";
 interface ExternalSessionInfo {
   detectedAt: Date;
   lastActivity: Date;
-  projectId: string;
+  /** Directory-format projectId (from file path, NOT base64url) */
+  dirProjectId: DirProjectId;
   timeoutId: ReturnType<typeof setTimeout>;
 }
 
 export interface ExternalSessionTrackerOptions {
   eventBus: EventBus;
   supervisor: Supervisor;
+  scanner: ProjectScanner;
   /** Time in ms before external status decays to idle (default: 30000) */
   decayMs?: number;
   /** Optional callback to get session summary for new external sessions */
   getSessionSummary?: (
     sessionId: string,
-    projectId: string,
+    projectId: UrlProjectId,
   ) => Promise<SessionSummary | null>;
 }
 
@@ -39,16 +47,18 @@ export class ExternalSessionTracker {
   private externalSessions: Map<string, ExternalSessionInfo> = new Map();
   private eventBus: EventBus;
   private supervisor: Supervisor;
+  private scanner: ProjectScanner;
   private decayMs: number;
   private unsubscribe: (() => void) | null = null;
   private getSessionSummary?: (
     sessionId: string,
-    projectId: string,
+    projectId: UrlProjectId,
   ) => Promise<SessionSummary | null>;
 
   constructor(options: ExternalSessionTrackerOptions) {
     this.eventBus = options.eventBus;
     this.supervisor = options.supervisor;
+    this.scanner = options.scanner;
     this.decayMs = options.decayMs ?? 30000;
     this.getSessionSummary = options.getSessionSummary;
 
@@ -69,13 +79,35 @@ export class ExternalSessionTracker {
 
   /**
    * Get info about an external session, or null if not external.
+   * Returns the directory-format projectId (for internal use only).
    */
   getExternalSessionInfo(
     sessionId: string,
-  ): { lastActivity: Date; projectId: string } | null {
+  ): { lastActivity: Date; dirProjectId: DirProjectId } | null {
     const info = this.externalSessions.get(sessionId);
     if (!info) return null;
-    return { lastActivity: info.lastActivity, projectId: info.projectId };
+    return { lastActivity: info.lastActivity, dirProjectId: info.dirProjectId };
+  }
+
+  /**
+   * Get info about an external session with URL-format projectId.
+   * Use this for API responses and events.
+   */
+  async getExternalSessionInfoWithUrlId(
+    sessionId: string,
+  ): Promise<{ lastActivity: Date; projectId: UrlProjectId } | null> {
+    const info = this.externalSessions.get(sessionId);
+    if (!info) return null;
+
+    const project = await this.scanner.getProjectBySessionDirSuffix(
+      info.dirProjectId,
+    );
+    if (!project) return null;
+
+    return {
+      lastActivity: info.lastActivity,
+      projectId: project.id as UrlProjectId,
+    };
   }
 
   /**
@@ -112,7 +144,7 @@ export class ExternalSessionTracker {
     const parsed = this.parseSessionPath(event.relativePath);
     if (!parsed) return;
 
-    const { sessionId, projectId } = parsed;
+    const { sessionId, dirProjectId } = parsed;
 
     // Check if we own this session
     const process = this.supervisor.getProcessForSession(sessionId);
@@ -123,12 +155,12 @@ export class ExternalSessionTracker {
     }
 
     // We don't own it - mark as external
-    this.markExternal(sessionId, projectId);
+    this.markExternal(sessionId, dirProjectId);
   }
 
   private parseSessionPath(
     relativePath: string,
-  ): { sessionId: string; projectId: string } | null {
+  ): { sessionId: string; dirProjectId: DirProjectId } | null {
     // Expected format: projects/<projectId>/<sessionId>.jsonl
     // or: projects/<hostname>/<projectId>/<sessionId>.jsonl
     const parts = relativePath.split(path.sep);
@@ -153,12 +185,12 @@ export class ExternalSessionTracker {
 
     // Use the first part as projectId (encoded project path)
     // In the hostname case, use hostname/encodedPath format
-    const projectId = projectParts.join("/");
+    const dirProjectId = asDirProjectId(projectParts.join("/"));
 
-    return { sessionId, projectId };
+    return { sessionId, dirProjectId };
   }
 
-  private markExternal(sessionId: string, projectId: string): void {
+  private markExternal(sessionId: string, dirProjectId: DirProjectId): void {
     const now = new Date();
     const existing = this.externalSessions.get(sessionId);
 
@@ -172,27 +204,40 @@ export class ExternalSessionTracker {
       const info: ExternalSessionInfo = {
         detectedAt: now,
         lastActivity: now,
-        projectId,
+        dirProjectId,
         timeoutId: this.createDecayTimeout(sessionId),
       };
       this.externalSessions.set(sessionId, info);
 
       // Emit session created event if we can get the summary
-      this.emitSessionCreated(sessionId, projectId);
+      this.emitSessionCreated(sessionId, dirProjectId);
 
       // Emit status change event
-      this.emitStatusChange(sessionId, projectId, { state: "external" });
+      this.emitStatusChange(sessionId, dirProjectId, { state: "external" });
     }
   }
 
   private async emitSessionCreated(
     sessionId: string,
-    projectId: string,
+    dirProjectId: DirProjectId,
   ): Promise<void> {
     if (!this.getSessionSummary) return;
 
+    // Convert directory format to URL format for events
+    const project =
+      await this.scanner.getProjectBySessionDirSuffix(dirProjectId);
+    if (!project) {
+      console.warn(
+        `[ExternalSessionTracker] Cannot emit session-created - project not found: ${dirProjectId}`,
+      );
+      return;
+    }
+
     try {
-      const summary = await this.getSessionSummary(sessionId, projectId);
+      const summary = await this.getSessionSummary(
+        sessionId,
+        project.id as UrlProjectId,
+      );
       if (summary) {
         // Update status to external
         summary.status = { state: "external" };
@@ -220,7 +265,9 @@ export class ExternalSessionTracker {
       this.externalSessions.delete(sessionId);
 
       // Emit status change event
-      this.emitStatusChange(sessionId, existing.projectId, { state: "idle" });
+      this.emitStatusChange(sessionId, existing.dirProjectId, {
+        state: "idle",
+      });
     }
   }
 
@@ -230,20 +277,30 @@ export class ExternalSessionTracker {
       if (info) {
         this.externalSessions.delete(sessionId);
         // Emit status change to idle
-        this.emitStatusChange(sessionId, info.projectId, { state: "idle" });
+        this.emitStatusChange(sessionId, info.dirProjectId, { state: "idle" });
       }
     }, this.decayMs);
   }
 
-  private emitStatusChange(
+  private async emitStatusChange(
     sessionId: string,
-    projectId: string,
+    dirProjectId: DirProjectId,
     status: SessionStatus,
-  ): void {
+  ): Promise<void> {
+    // Convert directory format to URL format for events
+    const project =
+      await this.scanner.getProjectBySessionDirSuffix(dirProjectId);
+    if (!project) {
+      console.warn(
+        `[ExternalSessionTracker] Cannot emit status change - project not found: ${dirProjectId}`,
+      );
+      return;
+    }
+
     const event: SessionStatusEvent = {
       type: "session-status-changed",
       sessionId,
-      projectId,
+      projectId: project.id,
       status,
       timestamp: new Date().toISOString(),
     };

@@ -13,3 +13,14 @@ export {
   needsReorder,
   type DagOrderable,
 } from "./dag.js";
+
+export {
+  type UrlProjectId,
+  type DirProjectId,
+  isUrlProjectId,
+  isDirProjectId,
+  toUrlProjectId,
+  fromUrlProjectId,
+  assertUrlProjectId,
+  asDirProjectId,
+} from "./projectId.js";

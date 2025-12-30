@@ -1,6 +1,10 @@
 import { readFile, readdir, stat } from "node:fs/promises";
 import { join } from "node:path";
-import { isIdeMetadata, stripIdeMetadata } from "@claude-anywhere/shared";
+import {
+  type UrlProjectId,
+  isIdeMetadata,
+  stripIdeMetadata,
+} from "@claude-anywhere/shared";
 import type {
   ContentBlock,
   Message,
@@ -53,7 +57,7 @@ export class SessionReader {
     this.sessionDir = options.sessionDir;
   }
 
-  async listSessions(projectId: string): Promise<SessionSummary[]> {
+  async listSessions(projectId: UrlProjectId): Promise<SessionSummary[]> {
     const summaries: SessionSummary[] = [];
 
     try {
@@ -86,7 +90,7 @@ export class SessionReader {
 
   async getSessionSummary(
     sessionId: string,
-    projectId: string,
+    projectId: UrlProjectId,
   ): Promise<SessionSummary | null> {
     const filePath = join(this.sessionDir, `${sessionId}.jsonl`);
 
@@ -141,7 +145,7 @@ export class SessionReader {
 
   async getSession(
     sessionId: string,
-    projectId: string,
+    projectId: UrlProjectId,
     afterMessageId?: string,
     options?: { includeOrphans?: boolean },
   ): Promise<Session | null> {

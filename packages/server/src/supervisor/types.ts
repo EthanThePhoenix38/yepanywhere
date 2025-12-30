@@ -1,3 +1,4 @@
+import type { UrlProjectId } from "@claude-anywhere/shared";
 import type { PermissionMode, SDKMessage } from "../sdk/types.js";
 
 // Constants
@@ -10,7 +11,7 @@ export { decodeProjectId, encodeProjectId } from "../projects/paths.js";
 
 // Project discovery
 export interface Project {
-  id: string; // base64url encoded path
+  id: UrlProjectId; // base64url encoded path
   path: string; // absolute path
   name: string; // directory name
   sessionCount: number;
@@ -34,7 +35,7 @@ export type SessionStatus =
 // Session metadata (light, for lists)
 export interface SessionSummary {
   id: string;
-  projectId: string;
+  projectId: UrlProjectId;
   title: string | null; // first 50 chars of first user message (truncated with ...)
   fullTitle: string | null; // complete first user message (for hover tooltip)
   createdAt: string; // ISO timestamp
@@ -127,7 +128,7 @@ export type ProcessState =
 export interface ProcessInfo {
   id: string;
   sessionId: string;
-  projectId: string;
+  projectId: UrlProjectId;
   projectPath: string;
   state: ProcessStateType;
   startedAt: string;
@@ -146,7 +147,7 @@ export type ProcessEvent =
 // Process options
 export interface ProcessOptions {
   projectPath: string;
-  projectId: string;
+  projectId: UrlProjectId;
   sessionId: string;
   idleTimeoutMs?: number; // default 5 minutes
   permissionMode?: PermissionMode;

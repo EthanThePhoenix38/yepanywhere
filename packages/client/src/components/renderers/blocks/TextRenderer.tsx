@@ -1,3 +1,5 @@
+import Markdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 import type { ContentBlock, ContentRenderer, RenderContext } from "../types";
 
 interface TextBlock extends ContentBlock {
@@ -6,10 +8,14 @@ interface TextBlock extends ContentBlock {
 }
 
 /**
- * Text renderer - displays text content with pre-wrap formatting
+ * Text renderer - displays text content with markdown rendering
  */
 function TextRendererComponent({ block }: { block: TextBlock }) {
-  return <div className="text-block">{block.text}</div>;
+  return (
+    <div className="text-block">
+      <Markdown remarkPlugins={[remarkGfm]}>{block.text}</Markdown>
+    </div>
+  );
 }
 
 export const textRenderer: ContentRenderer<TextBlock> = {

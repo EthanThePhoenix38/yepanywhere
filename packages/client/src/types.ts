@@ -77,6 +77,8 @@ export interface Message {
   orphanedToolUseIds?: string[];
   // Source tracking for merge
   _source?: "sdk" | "jsonl";
+  // Subagent marker - true if this message is from a Task subagent
+  isSubagent?: boolean;
   // Allow any additional fields
   [key: string]: unknown;
 }

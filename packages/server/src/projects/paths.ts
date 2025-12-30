@@ -60,6 +60,7 @@
 import { readFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { basename, join } from "node:path";
+import type { UrlProjectId } from "@claude-anywhere/shared";
 
 /** The root directory where Claude stores project sessions */
 export const CLAUDE_DIR = join(homedir(), ".claude");
@@ -73,8 +74,8 @@ export const CLAUDE_PROJECTS_DIR = join(CLAUDE_DIR, "projects");
  * encodeProjectId("/home/user/my-project")
  * // => "L2hvbWUvdXNlci9teS1wcm9qZWN0"
  */
-export function encodeProjectId(path: string): string {
-  return Buffer.from(path).toString("base64url");
+export function encodeProjectId(path: string): UrlProjectId {
+  return Buffer.from(path).toString("base64url") as UrlProjectId;
 }
 
 /**
@@ -84,7 +85,7 @@ export function encodeProjectId(path: string): string {
  * decodeProjectId("L2hvbWUvdXNlci9teS1wcm9qZWN0")
  * // => "/home/user/my-project"
  */
-export function decodeProjectId(id: string): string {
+export function decodeProjectId(id: UrlProjectId): string {
   return Buffer.from(id, "base64url").toString("utf-8");
 }
 
