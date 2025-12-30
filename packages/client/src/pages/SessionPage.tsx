@@ -3,6 +3,7 @@ import { Link, useParams } from "react-router-dom";
 import { api } from "../api/client";
 import { MessageInput } from "../components/MessageInput";
 import { MessageList } from "../components/MessageList";
+import { QuestionAnswerPanel } from "../components/QuestionAnswerPanel";
 import { StatusIndicator } from "../components/StatusIndicator";
 import { ToastContainer } from "../components/Toast";
 import { ToolApprovalPanel } from "../components/ToolApprovalPanel";
@@ -125,6 +126,23 @@ function SessionPageContent({
     }
   }, [sessionId, pendingInputRequest]);
 
+  const handleQuestionSubmit = useCallback(
+    async (answers: Record<string, string>) => {
+      if (pendingInputRequest) {
+        await api.respondToInput(
+          sessionId,
+          pendingInputRequest.id,
+          "approve",
+          answers,
+        );
+      }
+    },
+    [sessionId, pendingInputRequest],
+  );
+
+  // Check if pending request is an AskUserQuestion
+  const isAskUserQuestion = pendingInputRequest?.toolName === "AskUserQuestion";
+
   if (loading) return <div className="loading">Loading session...</div>;
   if (error) return <div className="error">Error: {error.message}</div>;
 
@@ -166,7 +184,14 @@ function SessionPageContent({
       </main>
 
       <footer className="session-input">
-        {pendingInputRequest && (
+        {pendingInputRequest && isAskUserQuestion && (
+          <QuestionAnswerPanel
+            request={pendingInputRequest}
+            onSubmit={handleQuestionSubmit}
+            onDeny={handleDeny}
+          />
+        )}
+        {pendingInputRequest && !isAskUserQuestion && (
           <ToolApprovalPanel
             request={pendingInputRequest}
             onApprove={handleApprove}

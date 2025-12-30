@@ -23,6 +23,7 @@ interface StartSessionBody {
 interface InputResponseBody {
   requestId: string;
   response: "approve" | "deny" | string;
+  answers?: Record<string, string>;
 }
 
 /**
@@ -357,7 +358,11 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
         : "deny";
 
     // Call respondToInput which resolves the SDK's canUseTool promise
-    const accepted = process.respondToInput(body.requestId, normalizedResponse);
+    const accepted = process.respondToInput(
+      body.requestId,
+      normalizedResponse,
+      body.answers,
+    );
 
     if (!accepted) {
       return c.json({ error: "Invalid request ID or no pending request" }, 400);

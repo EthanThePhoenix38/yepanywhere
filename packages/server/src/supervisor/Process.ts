@@ -321,8 +321,9 @@ export class Process {
         return { behavior: "allow" };
 
       case "plan": {
-        // In plan mode, allow ExitPlanMode so the plan can be displayed
+        // In plan mode, allow ExitPlanMode and switch back to default mode
         if (toolName === "ExitPlanMode") {
+          this.setPermissionMode("default");
           return { behavior: "allow" };
         }
         // Allow Write to .claude/plans/ directory for saving plans
@@ -385,8 +386,13 @@ export class Process {
   /**
    * Respond to a pending input request (tool approval).
    * Called from the API when user approves/denies a tool.
+   * For AskUserQuestion, answers can be passed to update the tool input.
    */
-  respondToInput(requestId: string, response: "approve" | "deny"): boolean {
+  respondToInput(
+    requestId: string,
+    response: "approve" | "deny",
+    answers?: Record<string, string>,
+  ): boolean {
     if (!this.pendingToolApproval) {
       return false;
     }
@@ -395,10 +401,22 @@ export class Process {
       return false;
     }
 
+    // Build the result with optional updated input for AskUserQuestion
     const result: ToolApprovalResult = {
       behavior: response === "approve" ? "allow" : "deny",
       message: response === "deny" ? "User denied permission" : undefined,
     };
+
+    // If answers provided (AskUserQuestion), pass them as updatedInput
+    if (answers && response === "approve") {
+      const originalInput = this.pendingToolApproval.request.toolInput as {
+        questions?: unknown[];
+      };
+      result.updatedInput = {
+        ...originalInput,
+        answers,
+      };
+    }
 
     this.pendingToolApproval.resolve(result);
     this.pendingToolApproval = null;
