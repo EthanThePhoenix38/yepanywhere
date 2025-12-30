@@ -86,6 +86,9 @@ export function createStreamRoutes(deps: StreamDeps): Hono {
         try {
           switch (event.type) {
             case "message":
+              // Skip subagent messages to match JSONL behavior
+              if (!isMessageForSession(event.message)) break;
+
               await stream.writeSSE({
                 id: String(eventId++),
                 event: "message",
