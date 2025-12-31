@@ -13,6 +13,7 @@ import {
 import { SessionMetadataService } from "./metadata/index.js";
 import { NotificationService } from "./notifications/index.js";
 import { ProjectScanner } from "./projects/scanner.js";
+import { PushService, loadVapidKeys } from "./push/index.js";
 import { createUploadRoutes } from "./routes/upload.js";
 import { detectClaudeCli } from "./sdk/cli-detection.js";
 import { RealClaudeSDK } from "./sdk/real.js";
@@ -59,11 +60,24 @@ if (process.env.NO_BACKEND_RELOAD === "true") {
 // Create and initialize services
 const notificationService = new NotificationService({ eventBus });
 const sessionMetadataService = new SessionMetadataService();
+const pushService = new PushService();
 
 async function startServer() {
   // Initialize services (loads state from disk)
   await notificationService.initialize();
   await sessionMetadataService.initialize();
+  await pushService.initialize();
+
+  // Load VAPID keys if available (run 'pnpm setup-vapid' to generate)
+  const vapidKeys = await loadVapidKeys();
+  if (vapidKeys) {
+    pushService.setVapidKeys(vapidKeys);
+    console.log("[Push] VAPID keys loaded, push notifications enabled");
+  } else {
+    console.log(
+      "[Push] VAPID keys not found. Run 'pnpm setup-vapid' to enable push notifications.",
+    );
+  }
 
   // Determine if we're in production mode (no Vite dev server)
   const isProduction = process.env.NODE_ENV === "production";
@@ -93,6 +107,7 @@ async function startServer() {
     sessionMetadataService,
     maxWorkers: config.maxWorkers,
     idlePreemptThresholdMs: config.idlePreemptThresholdMs,
+    pushService,
     // Note: frontendProxy not passed - will be added below
   });
 

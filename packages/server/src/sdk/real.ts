@@ -81,6 +81,7 @@ export class RealClaudeSDK implements RealClaudeSDKInterface {
           canUseTool,
           systemPrompt: { type: "preset", preset: "claude_code" },
           settingSources: ["user", "project", "local"],
+          includePartialMessages: true,
         },
       });
     } catch (error) {

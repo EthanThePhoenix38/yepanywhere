@@ -7,6 +7,7 @@ import {
   useFontSize,
 } from "../hooks/useFontSize";
 import { useReloadNotifications } from "../hooks/useReloadNotifications";
+import { useStreamingEnabled } from "../hooks/useStreamingEnabled";
 
 export function SettingsPage() {
   const {
@@ -19,6 +20,7 @@ export function SettingsPage() {
     workerActivity,
   } = useReloadNotifications();
   const { fontSize, setFontSize } = useFontSize();
+  const { streamingEnabled, setStreamingEnabled } = useStreamingEnabled();
   const [restarting, setRestarting] = useState(false);
 
   // When SSE reconnects after restart, re-enable the button
@@ -62,6 +64,23 @@ export function SettingsPage() {
                   </button>
                 ))}
               </div>
+            </div>
+            <div className="settings-item">
+              <div className="settings-item-info">
+                <strong>Response Streaming</strong>
+                <p>
+                  Show responses as they are generated, token by token. Disable
+                  for better performance on slower devices.
+                </p>
+              </div>
+              <label className="toggle-switch">
+                <input
+                  type="checkbox"
+                  checked={streamingEnabled}
+                  onChange={(e) => setStreamingEnabled(e.target.checked)}
+                />
+                <span className="toggle-slider" />
+              </label>
             </div>
           </div>
         </section>

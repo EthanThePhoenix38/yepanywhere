@@ -111,6 +111,8 @@ export interface Message {
   _source?: "sdk" | "jsonl";
   // Subagent marker - true if this message is from a Task subagent
   isSubagent?: boolean;
+  // Streaming marker - true if this message is still being streamed
+  _isStreaming?: boolean;
   // Allow any additional fields
   [key: string]: unknown;
 }

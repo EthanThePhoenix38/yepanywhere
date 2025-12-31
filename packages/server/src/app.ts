@@ -6,6 +6,8 @@ import type { SessionMetadataService } from "./metadata/index.js";
 import { corsMiddleware, requireCustomHeader } from "./middleware/security.js";
 import type { NotificationService } from "./notifications/index.js";
 import { ProjectScanner } from "./projects/scanner.js";
+import type { PushService } from "./push/index.js";
+import { createPushRoutes } from "./push/routes.js";
 import { createActivityRoutes } from "./routes/activity.js";
 import { createDevRoutes } from "./routes/dev.js";
 import { health } from "./routes/health.js";
@@ -46,6 +48,8 @@ export interface AppOptions {
   idlePreemptThresholdMs?: number;
   /** Frontend proxy for dev mode (proxies non-API requests to Vite) */
   frontendProxy?: FrontendProxy;
+  /** PushService for web push notifications */
+  pushService?: PushService;
 }
 
 export function createApp(
@@ -127,6 +131,14 @@ export function createApp(
         scanner,
         upgradeWebSocket: options.upgradeWebSocket,
       }),
+    );
+  }
+
+  // Push notification routes
+  if (options.pushService) {
+    app.route(
+      "/api/push",
+      createPushRoutes({ pushService: options.pushService }),
     );
   }
 

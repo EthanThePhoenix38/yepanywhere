@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { api } from "../api/client";
 import { mergeJSONLMessages, mergeSSEMessage } from "../lib/mergeMessages";
 import type {
+  ContentBlock,
   InputRequest,
   Message,
   PermissionMode,
@@ -14,6 +15,7 @@ import {
   useFileActivity,
 } from "./useFileActivity";
 import { useSSE } from "./useSSE";
+import { getStreamingEnabled } from "./useStreamingEnabled";
 
 export type ProcessState = "idle" | "running" | "waiting-input";
 
@@ -87,6 +89,16 @@ export function useSession(projectId: string, sessionId: string) {
 
   // Track temp ID → real ID mappings for parent chain resolution
   const tempIdMappingsRef = useRef<Map<string, string>>(new Map());
+
+  // Streaming state: accumulates content from stream_event messages
+  // Key is the message uuid, value is the accumulated content blocks
+  const streamingContentRef = useRef<
+    Map<string, { blocks: ContentBlock[]; isStreaming: boolean }>
+  >(new Map());
+
+  // Track current streaming message ID (from message_start event)
+  // Each stream_event has its own uuid, but they all belong to the same message
+  const currentStreamingIdRef = useRef<string | null>(null);
 
   // Add user message optimistically with a temp ID
   // Uses SDK message structure: { type, message: { role, content } }
@@ -285,6 +297,39 @@ export function useSession(projectId: string, sessionId: string) {
     };
   }, []);
 
+  // Update messages with streaming content
+  // Creates or updates a streaming placeholder message with accumulated content
+  const updateStreamingMessage = useCallback((messageId: string) => {
+    const streaming = streamingContentRef.current.get(messageId);
+    if (!streaming) return;
+
+    setMessages((prev) => {
+      // Find existing streaming message or create new one
+      const existingIdx = prev.findIndex((m) => m.id === messageId);
+
+      const streamingMessage: Message = {
+        id: messageId,
+        type: "assistant",
+        role: "assistant",
+        message: {
+          role: "assistant",
+          content: streaming.blocks,
+        },
+        _isStreaming: true, // Marker for rendering
+        _source: "sdk",
+      };
+
+      if (existingIdx >= 0) {
+        // Update existing
+        const updated = [...prev];
+        updated[existingIdx] = streamingMessage;
+        return updated;
+      }
+      // Add new
+      return [...prev, streamingMessage];
+    });
+  }, []);
+
   // Subscribe to live updates
   const handleSSEMessage = useCallback(
     (data: { eventType: string; [key: string]: unknown }) => {
@@ -307,6 +352,102 @@ export function useSession(projectId: string, sessionId: string) {
         const msgType =
           typeof sdkMessage.type === "string" ? sdkMessage.type : undefined;
         const msgRole = sdkMessage.role as Message["role"] | undefined;
+
+        // Handle stream_event messages (partial content from streaming API)
+        if (msgType === "stream_event" && getStreamingEnabled()) {
+          const event = sdkMessage.event as Record<string, unknown> | undefined;
+          if (!event) return;
+
+          const eventType = event.type as string | undefined;
+
+          // Handle message_start to capture the message ID for this streaming response
+          // Each stream_event has its own uuid, but they all belong to the same API message
+          if (eventType === "message_start") {
+            const message = event.message as
+              | Record<string, unknown>
+              | undefined;
+            if (message?.id) {
+              currentStreamingIdRef.current = message.id as string;
+            }
+            return;
+          }
+
+          // Use the captured message ID, or fall back to generating one
+          const streamingId =
+            currentStreamingIdRef.current ?? `stream-${Date.now()}`;
+
+          // Handle different stream event types
+          if (eventType === "content_block_start") {
+            // New content block starting
+            const index = event.index as number;
+            const contentBlock = event.content_block as Record<
+              string,
+              unknown
+            > | null;
+            if (contentBlock) {
+              const streaming = streamingContentRef.current.get(
+                streamingId,
+              ) ?? {
+                blocks: [],
+                isStreaming: true,
+              };
+              // Ensure array is long enough
+              while (streaming.blocks.length <= index) {
+                streaming.blocks.push({ type: "text", text: "" });
+              }
+              // Initialize the block with its type
+              streaming.blocks[index] = {
+                type: (contentBlock.type as string) ?? "text",
+                text: (contentBlock.text as string) ?? "",
+                thinking: (contentBlock.thinking as string) ?? undefined,
+              };
+              streamingContentRef.current.set(streamingId, streaming);
+              updateStreamingMessage(streamingId);
+            }
+          } else if (eventType === "content_block_delta") {
+            // Content delta - append to existing block
+            const index = event.index as number;
+            const delta = event.delta as Record<string, unknown> | null;
+            if (delta) {
+              const streaming = streamingContentRef.current.get(streamingId);
+              if (streaming?.blocks[index]) {
+                const block = streaming.blocks[index];
+                const deltaType = delta.type as string;
+                if (deltaType === "text_delta" && delta.text) {
+                  block.text = (block.text ?? "") + (delta.text as string);
+                } else if (deltaType === "thinking_delta" && delta.thinking) {
+                  block.thinking =
+                    (block.thinking ?? "") + (delta.thinking as string);
+                }
+                updateStreamingMessage(streamingId);
+              }
+            }
+          } else if (eventType === "content_block_stop") {
+            // Block complete - nothing special needed, final message will replace
+          } else if (eventType === "message_stop") {
+            // Message complete - clean up streaming state, final message coming
+            streamingContentRef.current.delete(streamingId);
+            currentStreamingIdRef.current = null;
+          }
+          return; // Don't process stream_event as a regular message
+        }
+
+        // For assistant messages, clear streaming state and remove streaming placeholder
+        // The streaming placeholder uses the API message.id, but the final assistant
+        // message uses the SDK uuid - they don't match, so we need to remove the placeholder
+        if (msgType === "assistant") {
+          streamingContentRef.current.delete(id);
+          // Also clear by API message ID if we have one stored
+          if (currentStreamingIdRef.current) {
+            streamingContentRef.current.delete(currentStreamingIdRef.current);
+            // Remove the streaming placeholder from messages since it has a different ID
+            const streamingIdToRemove = currentStreamingIdRef.current;
+            setMessages((prev) =>
+              prev.filter((m) => m.id !== streamingIdToRemove),
+            );
+            currentStreamingIdRef.current = null;
+          }
+        }
 
         // Build message object, preserving all SDK fields
         const incoming: Message = {
@@ -412,7 +553,7 @@ export function useSession(projectId: string, sessionId: string) {
         }
       }
     },
-    [applyServerModeUpdate],
+    [applyServerModeUpdate, updateStreamingMessage],
   );
 
   // Handle SSE errors by checking if process is still alive

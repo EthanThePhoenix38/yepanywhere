@@ -33,7 +33,7 @@ export const RenderItemComponent = memo(function RenderItemComponent({
   const renderContent = () => {
     switch (item.type) {
       case "text":
-        return <TextBlock text={item.text} />;
+        return <TextBlock text={item.text} isStreaming={item.isStreaming} />;
 
       case "thinking":
         return (

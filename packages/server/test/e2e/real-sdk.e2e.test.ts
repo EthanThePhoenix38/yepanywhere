@@ -1,4 +1,10 @@
-import { mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import {
+  mkdtempSync,
+  readFileSync,
+  readdirSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
@@ -212,6 +218,62 @@ describe("Real SDK E2E", () => {
     expect(messages[0]?.type).toBe("system");
   }, 30000);
 
+  it("should receive stream_event messages with includePartialMessages", async () => {
+    if (!cliAvailable) {
+      return; // Skip if CLI not installed
+    }
+
+    const { iterator, abort } = await sdk.startSession({
+      cwd: testDir,
+      initialMessage: { text: 'Say "streaming works" and nothing else' },
+      permissionMode: "bypassPermissions",
+    });
+
+    const messages: SDKMessage[] = [];
+    const streamEvents: SDKMessage[] = [];
+    const timeout = setTimeout(() => abort(), 30000);
+
+    try {
+      for await (const message of iterator) {
+        messages.push(message);
+
+        // Track stream_event messages separately
+        if (message.type === "stream_event") {
+          streamEvents.push(message);
+          const event = (message as { event?: { type?: string } }).event;
+          log(`[stream_event] ${event?.type}`);
+        } else {
+          logMessage(message);
+        }
+
+        if (message.type === "result") break;
+      }
+    } finally {
+      clearTimeout(timeout);
+    }
+
+    // We should have received stream events (content_block_start, content_block_delta, etc.)
+    log(`[stream events count] ${streamEvents.length}`);
+    expect(streamEvents.length).toBeGreaterThan(0);
+
+    // Verify we got text deltas
+    const textDeltas = streamEvents.filter((m) => {
+      const event = (
+        m as { event?: { type?: string; delta?: { type?: string } } }
+      ).event;
+      return (
+        event?.type === "content_block_delta" &&
+        event?.delta?.type === "text_delta"
+      );
+    });
+    log(`[text delta events] ${textDeltas.length}`);
+    expect(textDeltas.length).toBeGreaterThan(0);
+
+    // Also verify we got the final assistant message
+    const assistantMessage = messages.find((m) => m.type === "assistant");
+    expect(assistantMessage).toBeDefined();
+  }, 60000);
+
   it("should echo back user message with attachments unchanged", async () => {
     if (!cliAvailable) {
       return; // Skip if CLI not installed
@@ -242,7 +304,11 @@ describe("Real SDK E2E", () => {
 
     // Also test what Process.buildUserMessageContent produces
     const mockIterator = (async function* () {
-      yield { type: "system", subtype: "init", session_id: "test" } as SDKMessage;
+      yield {
+        type: "system",
+        subtype: "init",
+        session_id: "test",
+      } as SDKMessage;
     })();
     const testProcess = new Process(mockIterator, {
       projectPath: testDir,
@@ -274,7 +340,10 @@ describe("Real SDK E2E", () => {
       (m) => m.type === "user" && m.message?.role === "user",
     );
 
-    log("[all message types]", messages.map((m) => m.type));
+    log(
+      "[all message types]",
+      messages.map((m) => m.type),
+    );
     log("[user message from SDK]", userMessage?.message?.content);
     log("[user message from Process]", processContent);
 
@@ -282,11 +351,7 @@ describe("Real SDK E2E", () => {
     // We need to check the JSONL file to verify what got written
 
     // Find the JSONL file in ~/.claude/projects/<projectId>/
-    const claudeDir = join(
-      process.env.HOME || "",
-      ".claude",
-      "projects",
-    );
+    const claudeDir = join(process.env.HOME || "", ".claude", "projects");
 
     // The session ID is in the init message
     const initMessage = messages.find((m) => m.type === "system");

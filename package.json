@@ -3,6 +3,7 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "setup-vapid": "tsx scripts/setup-vapid.ts",
     "dev": "node scripts/dev.js",
     "dev:auto": "pnpm --filter server dev & pnpm --filter client dev",
     "dev-tailscale": "tailscale serve --bg 3400 && pnpm dev",

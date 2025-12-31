@@ -4,12 +4,19 @@ import remarkGfm from "remark-gfm";
 
 interface Props {
   text: string;
+  isStreaming?: boolean;
 }
 
-export const TextBlock = memo(function TextBlock({ text }: Props) {
+export const TextBlock = memo(function TextBlock({
+  text,
+  isStreaming = false,
+}: Props) {
   return (
-    <div className="text-block timeline-item">
+    <div
+      className={`text-block timeline-item${isStreaming ? " streaming" : ""}`}
+    >
       <Markdown remarkPlugins={[remarkGfm]}>{text}</Markdown>
+      {isStreaming && <span className="streaming-cursor" />}
     </div>
   );
 });

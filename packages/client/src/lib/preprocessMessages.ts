@@ -119,6 +119,7 @@ function processMessage(
           text: block.text,
           sourceMessages: [msg],
           isSubagent: msg.isSubagent,
+          isStreaming: msg._isStreaming,
         });
       }
     } else if (block.type === "thinking") {

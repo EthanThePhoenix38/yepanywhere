@@ -25,6 +25,8 @@ export interface TextItem extends RenderItemBase {
   type: "text";
   id: string;
   text: string;
+  /** True if this text is still being streamed */
+  isStreaming?: boolean;
 }
 
 export interface ThinkingItem extends RenderItemBase {
