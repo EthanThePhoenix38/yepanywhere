@@ -20,6 +20,74 @@ function isPlanFile(filePath: string): boolean {
 }
 
 /**
+ * Create diff lines from old/new strings (for pending state preview)
+ */
+function createDiffLines(oldStr: string, newStr: string): string[] {
+  const oldLines = oldStr ? oldStr.split("\n") : [];
+  const newLines = newStr ? newStr.split("\n") : [];
+  const lines: string[] = [];
+
+  for (const line of oldLines) {
+    lines.push(`-${line}`);
+  }
+  for (const line of newLines) {
+    lines.push(`+${line}`);
+  }
+
+  return lines;
+}
+
+/**
+ * Compute change summary from old/new strings
+ */
+function computeChangeSummaryFromStrings(
+  oldStr: string,
+  newStr: string,
+): string | null {
+  const oldLineCount = oldStr ? oldStr.split("\n").length : 0;
+  const newLineCount = newStr ? newStr.split("\n").length : 0;
+
+  if (oldLineCount === 0 && newLineCount > 0) {
+    return `Adding ${newLineCount} line${newLineCount !== 1 ? "s" : ""}`;
+  }
+  if (newLineCount === 0 && oldLineCount > 0) {
+    return `Removing ${oldLineCount} line${oldLineCount !== 1 ? "s" : ""}`;
+  }
+  if (oldLineCount > 0 && newLineCount > 0) {
+    return `Replacing ${oldLineCount} line${oldLineCount !== 1 ? "s" : ""}`;
+  }
+  return null;
+}
+
+/**
+ * Render diff lines (shared between pending preview and result fallback)
+ */
+function DiffLines({ lines }: { lines: string[] }) {
+  return (
+    <div className="diff-hunk">
+      <pre className="diff-content">
+        {lines.map((line, i) => {
+          const prefix = line[0];
+          const className =
+            prefix === "-"
+              ? "diff-removed"
+              : prefix === "+"
+                ? "diff-added"
+                : "diff-context";
+          // Use line content hash for stable keys
+          const key = `${i}-${line.slice(0, 50)}`;
+          return (
+            <div key={key} className={className}>
+              {line}
+            </div>
+          );
+        })}
+      </pre>
+    </div>
+  );
+}
+
+/**
  * Render a single diff hunk (without @@ header for cleaner display)
  */
 function DiffHunk({ hunk }: { hunk: PatchHunk }) {
@@ -46,17 +114,39 @@ function DiffHunk({ hunk }: { hunk: PatchHunk }) {
 }
 
 /**
- * Edit tool use - shows file path being edited
+ * Edit tool use - shows file path and diff preview
  */
 function EditToolUse({ input }: { input: EditInput }) {
   const fileName = getFileName(input.file_path);
   const isPlan = isPlanFile(input.file_path);
+
+  const diffLines = useMemo(
+    () => createDiffLines(input.old_string, input.new_string),
+    [input.old_string, input.new_string],
+  );
+
+  const changeSummary = useMemo(
+    () => computeChangeSummaryFromStrings(input.old_string, input.new_string),
+    [input.old_string, input.new_string],
+  );
+
+  const isTruncated = diffLines.length > MAX_VISIBLE_LINES;
+
   return (
-    <div className="edit-tool-use">
-      <span className="file-path">{fileName}</span>
-      <span className="edit-action">
-        {isPlan ? "Updating plan..." : "Editing file..."}
-      </span>
+    <div className="edit-result">
+      <div className="edit-header">
+        <span className="file-path">{fileName}</span>
+        {isPlan && <span className="badge badge-muted">Plan</span>}
+      </div>
+      {changeSummary && (
+        <div className="edit-change-summary">{changeSummary}</div>
+      )}
+      <div className={`diff-view-container ${isTruncated ? "truncated" : ""}`}>
+        <div className="diff-view">
+          <DiffLines lines={diffLines} />
+        </div>
+        {isTruncated && <div className="diff-fade-overlay" />}
+      </div>
     </div>
   );
 }

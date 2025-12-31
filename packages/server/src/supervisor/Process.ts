@@ -388,11 +388,13 @@ export class Process {
    * Respond to a pending input request (tool approval).
    * Called from the API when user approves/denies a tool.
    * For AskUserQuestion, answers can be passed to update the tool input.
+   * For deny with feedback, the feedback message is passed to the SDK.
    */
   respondToInput(
     requestId: string,
     response: "approve" | "deny",
     answers?: Record<string, string>,
+    feedback?: string,
   ): boolean {
     if (!this.pendingToolApproval) {
       return false;
@@ -403,9 +405,11 @@ export class Process {
     }
 
     // Build the result with optional updated input for AskUserQuestion
+    // If deny has feedback, use that as the message
+    const denyMessage = feedback || "User denied permission";
     const result: ToolApprovalResult = {
       behavior: response === "approve" ? "allow" : "deny",
-      message: response === "deny" ? "User denied permission" : undefined,
+      message: response === "deny" ? denyMessage : undefined,
     };
 
     // If answers provided (AskUserQuestion), pass them as updatedInput

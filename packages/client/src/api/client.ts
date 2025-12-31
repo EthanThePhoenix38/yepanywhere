@@ -100,12 +100,13 @@ export const api = {
   respondToInput: (
     sessionId: string,
     requestId: string,
-    response: "approve" | "deny",
+    response: "approve" | "approve_accept_edits" | "deny",
     answers?: Record<string, string>,
+    feedback?: string,
   ) =>
     fetchJSON<{ accepted: boolean }>(`/sessions/${sessionId}/input`, {
       method: "POST",
-      body: JSON.stringify({ requestId, response, answers }),
+      body: JSON.stringify({ requestId, response, answers, feedback }),
     }),
 
   setPermissionMode: (sessionId: string, mode: PermissionMode) =>

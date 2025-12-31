@@ -329,4 +329,16 @@ export interface ToolRenderer<TInput = unknown, TResult = unknown> {
     isError: boolean,
     context: RenderContext,
   ): ReactNode;
+  /**
+   * Render inline without the standard tool row wrapper.
+   * When provided, bypasses the entire tool-row structure (no header, chevrons, margins).
+   * The tool has complete control over its rendering.
+   */
+  renderInline?(
+    input: TInput,
+    result: TResult | undefined,
+    isError: boolean,
+    status: "pending" | "complete" | "error" | "aborted",
+    context: RenderContext,
+  ): ReactNode;
 }

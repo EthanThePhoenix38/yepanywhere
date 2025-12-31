@@ -42,6 +42,11 @@ export function getToolSummary(
     return `${inputSummary} → ${resultSummary}`;
   }
 
+  // For Bash, always show description (input summary) since output is in collapsed preview
+  if (toolName === "Bash") {
+    return inputSummary;
+  }
+
   return resultSummary;
 }
 

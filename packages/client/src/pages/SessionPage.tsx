@@ -120,11 +120,39 @@ function SessionPageContent({
     }
   }, [sessionId, pendingInputRequest]);
 
+  const handleApproveAcceptEdits = useCallback(async () => {
+    if (pendingInputRequest) {
+      // Approve and switch to acceptEdits mode
+      await api.respondToInput(
+        sessionId,
+        pendingInputRequest.id,
+        "approve_accept_edits",
+      );
+      // Update local permission mode
+      setPermissionMode("acceptEdits");
+    }
+  }, [sessionId, pendingInputRequest, setPermissionMode]);
+
   const handleDeny = useCallback(async () => {
     if (pendingInputRequest) {
       await api.respondToInput(sessionId, pendingInputRequest.id, "deny");
     }
   }, [sessionId, pendingInputRequest]);
+
+  const handleDenyWithFeedback = useCallback(
+    async (feedback: string) => {
+      if (pendingInputRequest) {
+        await api.respondToInput(
+          sessionId,
+          pendingInputRequest.id,
+          "deny",
+          undefined,
+          feedback,
+        );
+      }
+    },
+    [sessionId, pendingInputRequest],
+  );
 
   const handleQuestionSubmit = useCallback(
     async (answers: Record<string, string>) => {
@@ -196,6 +224,8 @@ function SessionPageContent({
             request={pendingInputRequest}
             onApprove={handleApprove}
             onDeny={handleDeny}
+            onApproveAcceptEdits={handleApproveAcceptEdits}
+            onDenyWithFeedback={handleDenyWithFeedback}
           />
         )}
         <MessageInput

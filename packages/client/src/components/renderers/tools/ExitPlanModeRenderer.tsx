@@ -1,95 +1,10 @@
-import { useState } from "react";
+import Markdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 import type {
   ExitPlanModeInput,
   ExitPlanModeResult,
   ToolRenderer,
 } from "./types";
-
-const MAX_PLAN_LINES = 30;
-
-/**
- * Extract filename from path
- */
-function getFileName(filePath: string): string {
-  return filePath.split("/").pop() || filePath;
-}
-
-/**
- * ExitPlanMode tool use - simple indicator
- */
-function ExitPlanModeToolUse({ input }: { input: ExitPlanModeInput }) {
-  return (
-    <div className="exitplan-tool-use">
-      <span className="exitplan-label">Exiting plan mode</span>
-      {input.plan && (
-        <span className="exitplan-has-plan">(with plan content)</span>
-      )}
-    </div>
-  );
-}
-
-/**
- * ExitPlanMode tool result - shows plan content
- */
-function ExitPlanModeToolResult({
-  result,
-  isError,
-}: {
-  result: ExitPlanModeResult;
-  isError: boolean;
-}) {
-  const [isExpanded, setIsExpanded] = useState(false);
-
-  if (isError) {
-    const errorResult = result as unknown as { content?: unknown } | undefined;
-    return (
-      <div className="exitplan-error">
-        {typeof result === "object" && errorResult?.content
-          ? String(errorResult.content)
-          : "Exit plan mode failed"}
-      </div>
-    );
-  }
-
-  if (!result) {
-    return <div className="exitplan-empty">No plan</div>;
-  }
-
-  const lines = result.plan?.split("\n") || [];
-  const needsCollapse = lines.length > MAX_PLAN_LINES;
-  const displayLines =
-    needsCollapse && !isExpanded ? lines.slice(0, MAX_PLAN_LINES) : lines;
-
-  return (
-    <div className="exitplan-result">
-      <div className="exitplan-header">
-        <span className="exitplan-filepath">
-          {result.filePath ? getFileName(result.filePath) : "Plan"}
-        </span>
-        {result.isAgent && <span className="badge">Agent</span>}
-        {result.filePath && (
-          <span className="exitplan-fullpath">{result.filePath}</span>
-        )}
-      </div>
-      {result.plan && (
-        <>
-          <pre className="exitplan-content code-block">
-            <code>{displayLines.join("\n")}</code>
-          </pre>
-          {needsCollapse && (
-            <button
-              type="button"
-              className="expand-button"
-              onClick={() => setIsExpanded(!isExpanded)}
-            >
-              {isExpanded ? "Show less" : `Show all ${lines.length} lines`}
-            </button>
-          )}
-        </>
-      )}
-    </div>
-  );
-}
 
 export const exitPlanModeRenderer: ToolRenderer<
   ExitPlanModeInput,
@@ -97,16 +12,49 @@ export const exitPlanModeRenderer: ToolRenderer<
 > = {
   tool: "ExitPlanMode",
 
-  renderToolUse(input, _context) {
-    return <ExitPlanModeToolUse input={input as ExitPlanModeInput} />;
+  // These are required by the interface but won't be used since renderInline takes over
+  renderToolUse() {
+    return null;
   },
 
-  renderToolResult(result, isError, _context) {
+  renderToolResult() {
+    return null;
+  },
+
+  // Render inline without any tool-row wrapper - full control over rendering
+  renderInline(input, result, isError, status, _context) {
+    const planInput = input as ExitPlanModeInput;
+    const planResult = result as ExitPlanModeResult;
+
+    // Prefer input.plan (tool use) over result.plan
+    const plan = planInput?.plan || planResult?.plan;
+
+    if (isError) {
+      const errorResult = result as unknown as
+        | { content?: unknown }
+        | undefined;
+      return (
+        <div className="exitplan-error">
+          {typeof result === "object" && errorResult?.content
+            ? String(errorResult.content)
+            : "Exit plan mode failed"}
+        </div>
+      );
+    }
+
+    // Show loading state while pending
+    if (status === "pending") {
+      return <div className="exitplan-pending">Planning...</div>;
+    }
+
+    if (!plan) {
+      return null;
+    }
+
     return (
-      <ExitPlanModeToolResult
-        result={result as ExitPlanModeResult}
-        isError={isError}
-      />
+      <div className="exitplan-inline">
+        <Markdown remarkPlugins={[remarkGfm]}>{plan}</Markdown>
+      </div>
     );
   },
 
@@ -114,9 +62,8 @@ export const exitPlanModeRenderer: ToolRenderer<
     return "Exit plan mode";
   },
 
-  getResultSummary(result, isError) {
+  getResultSummary(_result, isError) {
     if (isError) return "Error";
-    const r = result as ExitPlanModeResult;
-    return r?.filePath ? getFileName(r.filePath) : "Plan saved";
+    return "Plan";
   },
 };

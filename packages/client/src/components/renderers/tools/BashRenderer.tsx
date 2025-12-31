@@ -76,9 +76,6 @@ function BashModalContent({
 function BashToolUse({ input }: { input: BashInput }) {
   return (
     <div className="bash-tool-use">
-      {input.description && (
-        <div className="bash-description">{input.description}</div>
-      )}
       <pre className="code-block">
         <code>{input.command}</code>
       </pre>

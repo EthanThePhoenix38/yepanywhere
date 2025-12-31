@@ -79,6 +79,11 @@
   position: relative;
 }
 
+/* Inline tool rendering - bypasses tool-row structure entirely */
+.tool-inline {
+  /* No extra padding or margins - renders like regular content */
+}
+
 /* Fixed-height header - CRITICAL for no-jump during streaming */
 .tool-row-header {
   display: flex;
@@ -150,9 +155,8 @@
 .tool-summary {
   flex: 1;
   min-width: 0;
-  font-family: var(--font-mono, "SF Mono", Monaco, Consolas, monospace);
   font-size: 13px;
-  color: var(--link-color, #4fc1ff);
+  color: var(--text-muted, #888);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;

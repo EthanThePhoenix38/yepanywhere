@@ -19,6 +19,8 @@ export const ToolCallRow = memo(function ToolCallRow({
   toolResult,
   status,
 }: Props) {
+  // Check if this tool renders inline (bypasses entire tool-row structure)
+  const hasInlineRenderer = toolRegistry.hasInlineRenderer(toolName);
   // Check if this tool has interactive summary (no expand/collapse)
   const hasInteractiveSummary = toolRegistry.hasInteractiveSummary(toolName);
   // Check if this tool has a collapsed preview
@@ -52,6 +54,22 @@ export const ToolCallRow = memo(function ToolCallRow({
 
   // Get structured result for interactive summary
   const structuredResult = toolResult?.structured ?? toolResult?.content;
+
+  // Inline renderers bypass the entire tool-row structure
+  if (hasInlineRenderer) {
+    return (
+      <div className="tool-inline timeline-item">
+        {toolRegistry.renderInline(
+          toolName,
+          toolInput,
+          structuredResult,
+          toolResult?.isError ?? false,
+          status,
+          renderContext,
+        )}
+      </div>
+    );
+  }
 
   return (
     <div

@@ -23,8 +23,9 @@ interface StartSessionBody {
 
 interface InputResponseBody {
   requestId: string;
-  response: "approve" | "deny" | string;
+  response: "approve" | "approve_accept_edits" | "deny" | string;
   answers?: Record<string, string>;
+  feedback?: string;
 }
 
 /**
@@ -367,9 +368,14 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
       return c.json({ error: "requestId and response are required" }, 400);
     }
 
+    // Handle approve_accept_edits: approve and switch permission mode
+    const isApproveAcceptEdits = body.response === "approve_accept_edits";
+
     // Normalize response to approve/deny
     const normalizedResponse =
-      body.response === "approve" || body.response === "allow"
+      body.response === "approve" ||
+      body.response === "allow" ||
+      body.response === "approve_accept_edits"
         ? "approve"
         : "deny";
 
@@ -378,10 +384,16 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
       body.requestId,
       normalizedResponse,
       body.answers,
+      body.feedback,
     );
 
     if (!accepted) {
       return c.json({ error: "Invalid request ID or no pending request" }, 400);
+    }
+
+    // If approve_accept_edits, switch the permission mode
+    if (isApproveAcceptEdits) {
+      process.setPermissionMode("acceptEdits");
     }
 
     return c.json({ accepted: true });

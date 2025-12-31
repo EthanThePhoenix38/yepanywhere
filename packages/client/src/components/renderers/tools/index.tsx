@@ -77,6 +77,26 @@ class ToolRendererRegistry {
     return null;
   }
 
+  hasInlineRenderer(toolName: string): boolean {
+    const renderer = this.get(toolName);
+    return typeof renderer.renderInline === "function";
+  }
+
+  renderInline(
+    toolName: string,
+    input: unknown,
+    result: unknown,
+    isError: boolean,
+    status: "pending" | "complete" | "error" | "aborted",
+    context: RenderContext,
+  ): ReactNode {
+    const renderer = this.get(toolName);
+    if (renderer.renderInline) {
+      return renderer.renderInline(input, result, isError, status, context);
+    }
+    return null;
+  }
+
   getDisplayName(toolName: string): string {
     const renderer = this.get(toolName);
     return renderer.displayName || toolName;
