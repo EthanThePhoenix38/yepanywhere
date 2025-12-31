@@ -1,5 +1,9 @@
-import { type KeyboardEvent, useEffect, useState } from "react";
+import { type KeyboardEvent, useCallback, useEffect } from "react";
 import { ENTER_SENDS_MESSAGE } from "../constants";
+import {
+  type DraftControls,
+  useDraftPersistence,
+} from "../hooks/useDraftPersistence";
 import type { PermissionMode } from "../types";
 
 const MODE_ORDER: PermissionMode[] = [
@@ -26,8 +30,10 @@ interface Props {
   isRunning?: boolean;
   isThinking?: boolean;
   onStop?: () => void;
-  restoredText?: string | null; // Text to restore after failed send
+  draftKey: string; // localStorage key for draft persistence
   hidden?: boolean; // Hide but keep mounted to preserve state
+  /** Callback to receive draft controls for success/failure handling */
+  onDraftControlsReady?: (controls: DraftControls) => void;
 }
 
 export function MessageInput({
@@ -40,24 +46,25 @@ export function MessageInput({
   isRunning,
   isThinking,
   onStop,
-  restoredText,
+  draftKey,
   hidden,
+  onDraftControlsReady,
 }: Props) {
-  const [text, setText] = useState("");
+  const [text, setText, controls] = useDraftPersistence(draftKey);
 
-  // Restore text when a send fails (e.g., process died)
+  // Provide controls to parent via callback
   useEffect(() => {
-    if (restoredText) {
-      setText(restoredText);
-    }
-  }, [restoredText]);
+    onDraftControlsReady?.(controls);
+  }, [controls, onDraftControlsReady]);
 
-  const handleSubmit = () => {
+  const handleSubmit = useCallback(() => {
     if (text.trim() && !disabled) {
-      onSend(text.trim());
-      setText("");
+      const message = text.trim();
+      // Clear input state but keep localStorage for failure recovery
+      controls.clearInput();
+      onSend(message);
     }
-  };
+  }, [text, disabled, controls, onSend]);
 
   const handleKeyDown = (e: KeyboardEvent) => {
     if (e.key === "Enter") {

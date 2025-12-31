@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { api } from "../api/client";
 import { MessageInput } from "../components/MessageInput";
@@ -7,6 +7,7 @@ import { QuestionAnswerPanel } from "../components/QuestionAnswerPanel";
 import { StatusIndicator } from "../components/StatusIndicator";
 import { ToastContainer } from "../components/Toast";
 import { ToolApprovalPanel } from "../components/ToolApprovalPanel";
+import type { DraftControls } from "../hooks/useDraftPersistence";
 import { useSession } from "../hooks/useSession";
 import { useToast } from "../hooks/useToast";
 import type { Project } from "../types";
@@ -52,7 +53,10 @@ function SessionPageContent({
   const [sending, setSending] = useState(false);
   const [project, setProject] = useState<Project | null>(null);
   const [scrollTrigger, setScrollTrigger] = useState(0);
-  const [restoredText, setRestoredText] = useState<string | null>(null);
+  const draftControlsRef = useRef<DraftControls | null>(null);
+  const handleDraftControlsReady = useCallback((controls: DraftControls) => {
+    draftControlsRef.current = controls;
+  }, []);
   const { toasts, showToast, dismissToast } = useToast();
 
   // Fetch project info for breadcrumb
@@ -62,7 +66,6 @@ function SessionPageContent({
 
   const handleSend = async (text: string) => {
     setSending(true);
-    setRestoredText(null); // Clear any previously restored text
     addUserMessage(text); // Optimistic display with temp ID
     setProcessState("running"); // Optimistic: show processing indicator immediately
     setScrollTrigger((prev) => prev + 1); // Force scroll to bottom
@@ -81,11 +84,13 @@ function SessionPageContent({
         // Queue to existing process with current permission mode
         await api.queueMessage(sessionId, text, permissionMode);
       }
+      // Success - clear the draft from localStorage
+      draftControlsRef.current?.clearDraft();
     } catch (err) {
       console.error("Failed to send:", err);
-      // Always restore the message and clean up on error
+      // Restore the message from localStorage and clean up
       removeOptimisticMessage(text);
-      setRestoredText(text);
+      draftControlsRef.current?.restoreFromStorage();
       setProcessState("idle");
 
       // Check if process is dead (404)
@@ -244,7 +249,8 @@ function SessionPageContent({
           isRunning={status.state === "owned"}
           isThinking={processState === "running"}
           onStop={handleAbort}
-          restoredText={restoredText}
+          draftKey={`draft-message-${sessionId}`}
+          onDraftControlsReady={handleDraftControlsReady}
           hidden={!!pendingInputRequest}
         />
       </footer>

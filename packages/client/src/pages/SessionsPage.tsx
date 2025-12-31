@@ -3,24 +3,31 @@ import { Link, useNavigate, useParams } from "react-router-dom";
 import { api } from "../api/client";
 import { SessionStatusBadge } from "../components/StatusBadge";
 import { ENTER_SENDS_MESSAGE } from "../constants";
+import { useDraftPersistence } from "../hooks/useDraftPersistence";
 import { useSessions } from "../hooks/useSessions";
 
 export function SessionsPage() {
   const { projectId } = useParams<{ projectId: string }>();
   const navigate = useNavigate();
   const { project, sessions, loading, error } = useSessions(projectId);
-  const [newMessage, setNewMessage] = useState("");
+  const [newMessage, setNewMessage, draftControls] = useDraftPersistence(
+    `draft-new-session-${projectId}`,
+  );
   const [starting, setStarting] = useState(false);
 
   const handleStartSession = async () => {
     if (!projectId || !newMessage.trim()) return;
 
+    const message = newMessage.trim();
     setStarting(true);
+    draftControls.clearInput(); // Clear input but keep localStorage
     try {
-      const { sessionId } = await api.startSession(projectId, newMessage);
+      const { sessionId } = await api.startSession(projectId, message);
+      draftControls.clearDraft(); // Success - clear localStorage
       navigate(`/projects/${projectId}/sessions/${sessionId}`);
     } catch (err) {
       console.error("Failed to start session:", err);
+      draftControls.restoreFromStorage(); // Restore on failure
       setStarting(false);
     }
   };
