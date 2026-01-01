@@ -1,6 +1,7 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { Outlet, useOutletContext, useParams } from "react-router-dom";
 import { Sidebar } from "../components/Sidebar";
+import { useDrafts } from "../hooks/useDrafts";
 import type { ProcessStateType } from "../hooks/useFileActivity";
 import { useMediaQuery } from "../hooks/useMediaQuery";
 import { useSessions } from "../hooks/useSessions";
@@ -20,6 +21,8 @@ export interface ProjectLayoutContext {
   isSidebarCollapsed: boolean;
   /** Desktop mode: callback to toggle sidebar expanded/collapsed state */
   toggleSidebar: () => void;
+  /** Add an optimistic session to the sidebar before SSE event arrives */
+  addOptimisticSession: (sessionId: string, title: string) => void;
 }
 
 /**
@@ -36,8 +39,18 @@ export function ProjectLayout() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const isWideScreen = useMediaQuery("(min-width: 1100px)");
   const { isExpanded, toggleExpanded } = useSidebarPreference();
-  const { project, sessions, loading, error, processStates } =
-    useSessions(projectId);
+  const {
+    project,
+    sessions,
+    loading,
+    error,
+    processStates,
+    addOptimisticSession,
+  } = useSessions(projectId);
+
+  // Track which sessions have draft messages
+  const sessionIds = useMemo(() => sessions.map((s) => s.id), [sessions]);
+  const sessionDrafts = useDrafts(sessionIds);
 
   // Guard against missing projectId
   if (!projectId) {
@@ -56,6 +69,7 @@ export function ProjectLayout() {
     isWideScreen,
     isSidebarCollapsed: !isExpanded,
     toggleSidebar: toggleExpanded,
+    addOptimisticSession,
   };
 
   return (
@@ -76,6 +90,7 @@ export function ProjectLayout() {
             isDesktop={true}
             isCollapsed={!isExpanded}
             onToggleExpanded={toggleExpanded}
+            sessionDrafts={sessionDrafts}
           />
         </aside>
       )}
@@ -90,6 +105,7 @@ export function ProjectLayout() {
           sessions={sessions}
           processStates={processStates}
           onNavigate={() => setSidebarOpen(false)}
+          sessionDrafts={sessionDrafts}
         />
       )}
 

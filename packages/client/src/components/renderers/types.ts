@@ -28,6 +28,8 @@ export interface RenderContext {
   isStreaming: boolean;
   /** Current theme */
   theme: "light" | "dark";
+  /** Tool use ID (for Task renderer to look up agentId mapping during streaming) */
+  toolUseId?: string;
   /** Lookup tool_use by ID (for tool_result rendering) */
   getToolUse?: (id: string) => { name: string; input: unknown } | undefined;
   /** Structured tool result data (from message.toolUseResult) */

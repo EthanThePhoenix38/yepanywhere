@@ -579,7 +579,7 @@ describe("Real SDK E2E", () => {
     // ExitPlanMode should trigger the approval callback
     log(`[exitPlanModeRequested] ${exitPlanModeRequested}`);
     log(
-      `[toolRequests]`,
+      "[toolRequests]",
       toolRequests.map((r) => r.toolName),
     );
 
@@ -647,7 +647,7 @@ describe("Real SDK E2E", () => {
     }
 
     log(`[askUserQuestionCalled] ${askUserQuestionCalled}`);
-    log(`[receivedQuestions]`, receivedQuestions);
+    log("[receivedQuestions]", receivedQuestions);
 
     // AskUserQuestion should have been called and we should have received the questions
     expect(askUserQuestionCalled).toBe(true);
@@ -721,7 +721,7 @@ describe("Real SDK E2E", () => {
 
     log(`[askUserQuestionInPlanMode] ${askUserQuestionInPlanMode}`);
     log(
-      `[toolRequests]`,
+      "[toolRequests]",
       toolRequests.map((r) => r.toolName),
     );
 
@@ -898,4 +898,148 @@ describe("Real SDK E2E", () => {
       rmSync(outsideDir, { recursive: true, force: true });
     }
   }, 120000);
+
+  it("should mark subagent messages with session_id for Task tool", async () => {
+    if (!cliAvailable) {
+      return; // Skip if CLI not installed
+    }
+
+    // This test verifies that messages from subagents (Task tool) have session_id set
+    // correctly so they can be properly routed on the client side
+
+    const toolRequests: Array<{ toolName: string; input: unknown }> = [];
+    const { iterator, abort } = await sdk.startSession({
+      cwd: testDir,
+      initialMessage: {
+        text: `You MUST use the Task tool NOW. Call the Task tool with these EXACT parameters:
+- description: "File exploration"
+- prompt: "Use the Glob tool to search for *.txt files in the current directory, then use Read to read one of them. Report what you find."
+- subagent_type: "Explore"
+
+DO NOT say anything else. DO NOT explain. Just invoke the Task tool immediately.`,
+      },
+      permissionMode: "bypassPermissions", // Allow all tools
+      onToolApproval: async (toolName, input) => {
+        toolRequests.push({ toolName, input });
+        log(`[tool_approval] ${toolName}`, JSON.stringify(input, null, 2));
+        return { behavior: "allow" as const };
+      },
+    });
+
+    const messages: SDKMessage[] = [];
+    const timeout = setTimeout(() => abort(), 120000);
+
+    // Track different session_ids we see
+    const sessionIds = new Map<string, { type: string; count: number }[]>();
+
+    // Write all messages to a file for inspection
+    const logFile = join(testDir, "subagent-messages.json");
+
+    try {
+      for await (const message of iterator) {
+        messages.push(message);
+
+        // Log full message structure to file
+        const logEntry = {
+          type: message.type,
+          session_id: (message as { session_id?: string }).session_id,
+          parent_tool_use_id: (message as { parent_tool_use_id?: string })
+            .parent_tool_use_id,
+          subtype: (message as { subtype?: string }).subtype,
+          event: (message as { event?: unknown }).event,
+          message: message.message,
+        };
+        writeFileSync(logFile, `${JSON.stringify(logEntry, null, 2)}\n---\n`, {
+          flag: "a",
+        });
+        log(`[full] ${JSON.stringify(logEntry).slice(0, 200)}...`);
+
+        // Track session_id for each message
+        const msgSessionId = (message as { session_id?: string }).session_id;
+        const msgType = message.type;
+
+        if (msgSessionId) {
+          const existing = sessionIds.get(msgSessionId) || [];
+          existing.push({ type: msgType, count: existing.length + 1 });
+          sessionIds.set(msgSessionId, existing);
+        }
+
+        // Log all messages with more detail
+        if (msgType === "assistant" && message.message?.content) {
+          const content = message.message.content;
+          if (Array.isArray(content)) {
+            for (const block of content as Array<{
+              type: string;
+              name?: string;
+              text?: string;
+            }>) {
+              if (block.type === "tool_use") {
+                log(
+                  `[${msgType}] session_id=${msgSessionId} TOOL_USE: ${block.name}`,
+                );
+              } else if (block.type === "text") {
+                log(
+                  `[${msgType}] session_id=${msgSessionId} TEXT: ${block.text?.slice(0, 100)}...`,
+                );
+              }
+            }
+          }
+        } else {
+          log(
+            `[${msgType}] session_id=${msgSessionId || "none"}`,
+            msgType === "system"
+              ? (message as { subtype?: string }).subtype
+              : undefined,
+          );
+        }
+
+        if (message.type === "result") break;
+      }
+    } finally {
+      clearTimeout(timeout);
+    }
+
+    // Log session ID breakdown
+    log("\n[Session IDs found]:");
+    for (const [sessionId, msgs] of sessionIds) {
+      log(`  ${sessionId}: ${msgs.length} messages`);
+      for (const m of msgs) {
+        log(`    - ${m.type}`);
+      }
+    }
+
+    // CRITICAL ASSERTIONS:
+    // 1. Subagent messages are identified by parent_tool_use_id being set
+    const messagesWithParentToolUseId = messages.filter(
+      (m) => (m as { parent_tool_use_id?: string }).parent_tool_use_id,
+    );
+    log(
+      `[messages with parent_tool_use_id] ${messagesWithParentToolUseId.length}`,
+    );
+
+    for (const m of messagesWithParentToolUseId) {
+      const parentToolUseId = (m as { parent_tool_use_id?: string })
+        .parent_tool_use_id;
+      log(`  - ${m.type}: parent_tool_use_id=${parentToolUseId}`);
+    }
+
+    // 2. Verify subagent messages exist (messages with parent_tool_use_id)
+    // These should include: user (subagent prompt), assistant (subagent response), etc.
+    // Note: Task tool may be auto-approved by SDK, so we can't rely on onToolApproval
+    expect(messagesWithParentToolUseId.length).toBeGreaterThan(0);
+
+    // 3. All subagent messages should point to the same Task tool_use_id
+    const parentToolUseIds = new Set(
+      messagesWithParentToolUseId.map(
+        (m) => (m as { parent_tool_use_id?: string }).parent_tool_use_id,
+      ),
+    );
+    log(`[unique parent_tool_use_ids] ${parentToolUseIds.size}`);
+    // Should all point to the single Task invocation
+    expect(parentToolUseIds.size).toBe(1);
+
+    // 4. All messages share the same session_id (this is SDK behavior)
+    log(`[unique session_ids] ${sessionIds.size}`);
+    expect(sessionIds.size).toBe(1); // All messages share parent session_id
+  }, 180000);
 });

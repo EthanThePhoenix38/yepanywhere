@@ -32,6 +32,52 @@
   font-size: var(--font-size-base);
   line-height: 1.5;
   color: var(--text-primary);
+  position: relative;
+}
+
+/* Copy button for text blocks */
+.text-block-copy {
+  position: absolute;
+  top: 0;
+  right: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  background: var(--bg-secondary, #252525);
+  border: 1px solid var(--border-color, #333);
+  border-radius: var(--radius-sm, 4px);
+  color: var(--text-muted, #888);
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.15s, background 0.15s, color 0.15s;
+  z-index: 10;
+}
+
+.text-block:hover .text-block-copy,
+.text-block-copy:focus {
+  opacity: 1;
+}
+
+.text-block-copy:hover {
+  background: var(--bg-tertiary, #333);
+  color: var(--text-primary, #ccc);
+}
+
+.text-block-copy:active {
+  background: var(--bg-tertiary, #444);
+}
+
+.text-block-copy:focus {
+  outline: 1px solid var(--focus-border, #007acc);
+  outline-offset: -1px;
+}
+
+.text-block-copy.copied {
+  color: #4a4;
+  opacity: 1;
 }
 
 .text-block p {
@@ -555,13 +601,12 @@ details[open] .collapsible__icon {
 
 .file-content-with-lines {
   display: grid;
-  grid-template-columns: auto 1fr;
+  grid-template-columns: auto minmax(0, 1fr);
   font-family: "SF Mono", Monaco, monospace;
   font-size: var(--font-size-base);
   background: #1e1e1e;
   border: 1px solid #333;
   border-radius: 6px;
-  overflow: hidden;
 }
 
 .line-numbers {
@@ -722,6 +767,7 @@ details[open] .collapsible__icon {
   margin: 0;
   padding: 0;
   background: #1e1e1e;
+  overflow-x: auto;
 }
 
 .diff-content > div {
@@ -1370,6 +1416,155 @@ details[open] .collapsible__icon {
   font-size: var(--font-size-lg);
 }
 
+/* Task Inline - Subtle Subagent Card */
+.task-inline {
+  border: 1px solid #2a2a2a;
+  border-radius: 6px;
+  margin: 0.5rem 0;
+  background: transparent;
+  overflow: hidden;
+}
+
+.task-inline.expanded {
+  border-color: #333;
+}
+
+.task-inline.status-running {
+  border-color: #3a4a6a;
+}
+
+/* Completed tasks use default border - they should fade into background */
+
+.task-inline.status-failed,
+.task-inline.status-error {
+  border-color: #4a2a2a;
+}
+
+/* Task Header - Clickable Row */
+.task-inline-header {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 0.75rem;
+  background: transparent;
+  border: none;
+  width: 100%;
+  text-align: left;
+  cursor: pointer;
+  font-size: var(--font-size-base);
+  color: inherit;
+  transition: background 0.15s;
+}
+
+.task-inline-header:hover {
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.task-inline-header:focus {
+  outline: none;
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.task-expand-icon {
+  color: #666;
+  font-size: 0.625rem;
+  width: 1rem;
+  flex-shrink: 0;
+  transition: transform 0.15s;
+}
+
+.task-inline.expanded .task-expand-icon {
+  color: #888;
+}
+
+.task-inline-title {
+  flex: 1;
+  min-width: 0;
+  color: #ccc;
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.task-agent-type {
+  flex-shrink: 0;
+}
+
+.task-model {
+  flex-shrink: 0;
+  background: #2a2a2a;
+  color: #888;
+}
+
+/* Spinner Animation */
+.task-spinner {
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
+}
+
+.spinner {
+  animation: spin 1s linear infinite;
+  color: #88aaff;
+}
+
+@keyframes spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* Badge for running status */
+.badge-running {
+  background: #1a2a4a;
+  color: #88aaff;
+}
+
+.badge-pending {
+  background: #2a2a2a;
+  color: #888;
+}
+
+/* Task Inline Content - Expanded View */
+.task-inline-content {
+  border-top: 1px solid #2a2a2a;
+  background: transparent;
+  max-height: 500px;
+  overflow-y: auto;
+}
+
+/* Task Nested Content - Full Agent Messages */
+.task-nested-content {
+  padding: 0.75rem;
+}
+
+.task-nested-content > * + * {
+  margin-top: 0.5rem;
+}
+
+/* Loading State */
+.task-loading {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 1rem;
+  color: #888;
+  font-size: var(--font-size-base);
+  border-top: 1px solid #2a2a2a;
+}
+
+/* Task Stats in Header */
+.task-stats {
+  color: #555;
+  font-size: var(--font-size-sm);
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
 /* ==========================================================================
    WebSearch Tool
    ========================================================================== */
@@ -1976,4 +2171,440 @@ details[open] .collapsible__icon {
 
 .subagent-item .tool-row-header {
   background: rgba(74, 74, 106, 0.12);
+}
+
+/* ==========================================================================
+   File Viewer
+   ========================================================================== */
+
+.file-viewer {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  background: var(--vscode-editor-background, #1e1e1e);
+}
+
+.file-viewer-standalone {
+  min-height: 100%;
+}
+
+.file-viewer-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.75rem 1rem;
+  background: var(--vscode-sideBar-background, #181818);
+  border-bottom: 1px solid var(--vscode-widget-border, #454545);
+  flex-shrink: 0;
+}
+
+.file-viewer-info {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  min-width: 0;
+  flex: 1;
+}
+
+.file-viewer-path {
+  font-family: "SF Mono", Monaco, monospace;
+  font-size: var(--font-size-base);
+  color: var(--vscode-textLink-foreground, #3794ff);
+  word-break: break-all;
+}
+
+.file-viewer-meta {
+  font-size: var(--font-size-sm);
+  color: var(--text-muted, #888);
+}
+
+.file-viewer-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  flex-shrink: 0;
+}
+
+.file-viewer-action {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  background: transparent;
+  border: none;
+  border-radius: 4px;
+  color: var(--text-muted, #888);
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+
+.file-viewer-action:hover {
+  background: var(--vscode-toolbar-hoverBackground, #5a5d5e50);
+  color: var(--text-primary, #ccc);
+}
+
+.file-viewer-action.copied {
+  color: #4a4;
+}
+
+.file-viewer-close {
+  margin-left: 0.5rem;
+}
+
+.file-viewer-body {
+  flex: 1;
+  overflow: auto;
+  padding: 0;
+}
+
+.file-viewer-loading,
+.file-viewer-error {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2rem;
+  color: var(--text-muted, #888);
+}
+
+.file-viewer-error {
+  color: var(--vscode-errorForeground, #f48771);
+}
+
+/* Code display with line numbers */
+.file-viewer-code {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  font-family: "SF Mono", Monaco, "Cascadia Code", "Consolas", monospace;
+  font-size: var(--font-size-base);
+  line-height: 1.5;
+}
+
+.file-viewer-line-numbers {
+  text-align: right;
+  padding: 0.75rem 0.5rem;
+  color: #555;
+  user-select: none;
+  border-right: 1px solid #333;
+  background: #1a1a1a;
+}
+
+.file-viewer-line-numbers > div {
+  line-height: 1.5;
+}
+
+.file-viewer-content {
+  padding: 0.75rem;
+  margin: 0;
+  overflow-x: auto;
+  line-height: 1.5;
+  background: #1e1e1e;
+}
+
+.file-viewer-content code {
+  display: block;
+  white-space: pre;
+}
+
+/* Markdown display */
+.file-viewer-markdown {
+  padding: 1rem;
+  line-height: 1.6;
+  color: var(--text-primary, #ccc);
+}
+
+.file-viewer-markdown h1,
+.file-viewer-markdown h2,
+.file-viewer-markdown h3,
+.file-viewer-markdown h4,
+.file-viewer-markdown h5,
+.file-viewer-markdown h6 {
+  margin-top: 1.5rem;
+  margin-bottom: 0.5rem;
+  font-weight: 600;
+}
+
+.file-viewer-markdown h1:first-child,
+.file-viewer-markdown h2:first-child,
+.file-viewer-markdown h3:first-child {
+  margin-top: 0;
+}
+
+.file-viewer-markdown p {
+  margin: 0.75rem 0;
+}
+
+.file-viewer-markdown ul,
+.file-viewer-markdown ol {
+  margin: 0.75rem 0;
+  padding-left: 1.5rem;
+}
+
+.file-viewer-markdown li {
+  margin: 0.25rem 0;
+}
+
+.file-viewer-markdown code {
+  background: #2a2a2a;
+  padding: 0.125rem 0.25rem;
+  border-radius: 3px;
+  font-size: 0.9em;
+}
+
+.file-viewer-markdown pre {
+  background: #2a2a2a;
+  padding: 0.75rem;
+  border-radius: 6px;
+  overflow-x: auto;
+  margin: 0.75rem 0;
+}
+
+.file-viewer-markdown pre code {
+  background: none;
+  padding: 0;
+}
+
+.file-viewer-markdown blockquote {
+  border-left: 3px solid var(--border-color, #333);
+  padding-left: 1rem;
+  margin: 0.75rem 0;
+  color: var(--text-muted, #888);
+}
+
+.file-viewer-markdown a {
+  color: var(--link-color, #3794ff);
+  text-decoration: none;
+}
+
+.file-viewer-markdown a:hover {
+  text-decoration: underline;
+}
+
+.file-viewer-markdown table {
+  border-collapse: collapse;
+  margin: 0.75rem 0;
+  width: 100%;
+}
+
+.file-viewer-markdown th,
+.file-viewer-markdown td {
+  border: 1px solid var(--border-color, #333);
+  padding: 0.5rem;
+  text-align: left;
+}
+
+.file-viewer-markdown th {
+  background: var(--bg-secondary, #252525);
+}
+
+/* Image display */
+.file-viewer-image {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+  min-height: 200px;
+}
+
+.file-viewer-image img {
+  max-width: 100%;
+  max-height: 80vh;
+  object-fit: contain;
+  border-radius: 4px;
+}
+
+/* Binary file display */
+.file-viewer-binary {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1rem;
+  padding: 2rem;
+  text-align: center;
+  color: var(--text-muted, #888);
+}
+
+.file-viewer-download-btn {
+  padding: 0.5rem 1rem;
+  background: var(--vscode-button-background, #0e639c);
+  color: var(--vscode-button-foreground, #fff);
+  border: none;
+  border-radius: 4px;
+  font-size: var(--font-size-base);
+  cursor: pointer;
+}
+
+.file-viewer-download-btn:hover {
+  background: var(--vscode-button-hoverBackground, #1177bb);
+}
+
+/* ==========================================================================
+   File Path Link
+   ========================================================================== */
+
+.file-path-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  background: transparent;
+  border: none;
+  padding: 0;
+  font-family: "SF Mono", Monaco, monospace;
+  font-size: inherit;
+  color: var(--vscode-textLink-foreground, #3794ff);
+  cursor: pointer;
+  text-decoration: underline;
+  text-decoration-color: transparent;
+  transition: text-decoration-color 0.15s;
+}
+
+.file-path-link:hover {
+  text-decoration-color: currentColor;
+}
+
+.file-path-link-name {
+  word-break: break-all;
+}
+
+.file-path-link-line {
+  color: var(--text-muted, #888);
+  text-decoration: none;
+}
+
+/* ==========================================================================
+   File Viewer Modal
+   ========================================================================== */
+
+.file-viewer-modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.75);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 9999;
+}
+
+.file-viewer-modal {
+  background: var(--vscode-editor-background, #1e1e1e);
+  border: 1px solid var(--vscode-widget-border, #454545);
+  border-radius: 8px;
+  width: 90vw;
+  max-width: 1200px;
+  max-height: 85vh;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+  overflow: hidden;
+}
+
+.file-viewer-modal .file-viewer {
+  height: 100%;
+  max-height: 85vh;
+}
+
+.file-viewer-modal .file-viewer-header {
+  border-radius: 8px 8px 0 0;
+}
+
+/* ==========================================================================
+   File Page (Standalone)
+   ========================================================================== */
+
+.file-page {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  background: var(--vscode-editor-background, #1e1e1e);
+}
+
+.file-page-error {
+  align-items: center;
+  justify-content: center;
+}
+
+.file-page-error-content {
+  text-align: center;
+  color: var(--text-muted, #888);
+}
+
+.file-page-error-content h1 {
+  margin: 0 0 1rem 0;
+  font-size: 1.25rem;
+  color: var(--text-primary, #ccc);
+}
+
+.file-page-nav {
+  display: flex;
+  align-items: center;
+  padding: 0.5rem 1rem;
+  background: var(--vscode-sideBar-background, #181818);
+  border-bottom: 1px solid var(--vscode-widget-border, #454545);
+}
+
+.file-page-back-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  color: var(--vscode-textLink-foreground, #3794ff);
+  text-decoration: none;
+  font-size: var(--font-size-base);
+  padding: 0.25rem 0.5rem;
+  margin: -0.25rem -0.5rem;
+  border-radius: 4px;
+  transition: background 0.15s;
+}
+
+.file-page-back-link:hover {
+  background: var(--vscode-toolbar-hoverBackground, #5a5d5e50);
+}
+
+.file-page-content {
+  flex: 1;
+  overflow: hidden;
+}
+
+.file-page-content .file-viewer {
+  height: 100%;
+}
+
+.file-page-content .file-viewer-header {
+  border-radius: 0;
+}
+
+/* Mobile adjustments */
+@media (max-width: 600px) {
+  .file-viewer-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.5rem;
+    padding: 0.5rem 0.75rem;
+  }
+
+  .file-viewer-actions {
+    align-self: flex-end;
+  }
+
+  .file-viewer-code {
+    font-size: var(--font-size-sm);
+  }
+
+  .file-viewer-line-numbers {
+    padding: 0.5rem 0.25rem;
+  }
+
+  .file-viewer-content {
+    padding: 0.5rem;
+  }
+
+  .file-viewer-modal {
+    width: 95vw;
+    max-height: 90vh;
+  }
 }

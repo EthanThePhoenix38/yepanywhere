@@ -5,6 +5,7 @@ import { api, uploadFile } from "../api/client";
 import { MessageInput, type UploadProgress } from "../components/MessageInput";
 import { MessageList } from "../components/MessageList";
 import { QuestionAnswerPanel } from "../components/QuestionAnswerPanel";
+import { SessionMenu } from "../components/SessionMenu";
 import { StatusIndicator } from "../components/StatusIndicator";
 import { ToastContainer } from "../components/Toast";
 import { ToolApprovalPanel } from "../components/ToolApprovalPanel";
@@ -16,6 +17,7 @@ import { useSession } from "../hooks/useSession";
 import { useToast } from "../hooks/useToast";
 import { useProjectLayout } from "../layouts";
 import { preprocessMessages } from "../lib/preprocessMessages";
+import { truncateText } from "../lib/text";
 import { getSessionDisplayTitle } from "../types";
 
 export function SessionPage() {
@@ -50,24 +52,30 @@ function SessionPageContent({
     useProjectLayout();
   const navigate = useNavigate();
   const location = useLocation();
-  // Get initial status from navigation state (passed by NewSessionPage)
-  // This allows SSE to connect immediately without waiting for getSession
-  const initialStatus = (
-    location.state as { initialStatus?: { state: "owned"; processId: string } }
-  )?.initialStatus;
+  // Get initial status and title from navigation state (passed by NewSessionPage)
+  // This allows SSE to connect immediately and show optimistic title without waiting for getSession
+  const navState = location.state as {
+    initialStatus?: { state: "owned"; processId: string };
+    initialTitle?: string;
+  } | null;
+  const initialStatus = navState?.initialStatus;
+  const initialTitle = navState?.initialTitle;
   const {
     session,
     messages,
     agentContent,
     setAgentContent,
+    toolUseToAgent,
     status,
     processState,
     pendingInputRequest,
+    actualSessionId,
     permissionMode,
     isModePending,
     loading,
     error,
     connected,
+    lastSSEActivityAt,
     setStatus,
     setProcessState,
     setPermissionMode,
@@ -87,10 +95,7 @@ function SessionPageContent({
   const [renameValue, setRenameValue] = useState("");
   const [isRenaming, setIsRenaming] = useState(false);
   const renameInputRef = useRef<HTMLInputElement>(null);
-
-  // Session menu dropdown state
-  const [showSessionMenu, setShowSessionMenu] = useState(false);
-  const sessionMenuRef = useRef<HTMLDivElement>(null);
+  const isSavingTitleRef = useRef(false);
 
   // Local metadata state (for optimistic updates)
   // Reset when session changes to avoid showing stale data from previous session
@@ -118,27 +123,25 @@ function SessionPageContent({
 
   // Track user engagement to mark session as "seen"
   // Only enabled when not in external session (we own or it's idle)
+  // Use the max of session.updatedAt and lastSSEActivityAt to ensure we track
+  // activity from subagent content (which doesn't update parent session file mtime)
+  const sessionUpdatedAt = session?.updatedAt ?? null;
+  const activityAt = useMemo(() => {
+    if (!sessionUpdatedAt && !lastSSEActivityAt) return null;
+    if (!sessionUpdatedAt) return lastSSEActivityAt;
+    if (!lastSSEActivityAt) return sessionUpdatedAt;
+    // Return the more recent timestamp
+    return sessionUpdatedAt > lastSSEActivityAt
+      ? sessionUpdatedAt
+      : lastSSEActivityAt;
+  }, [sessionUpdatedAt, lastSSEActivityAt]);
+
   useEngagementTracking({
     sessionId,
-    updatedAt: session?.updatedAt ?? null,
+    updatedAt: activityAt,
     lastSeenAt: session?.lastSeenAt,
     enabled: status.state !== "external",
   });
-
-  // Close session menu when clicking outside
-  useEffect(() => {
-    if (!showSessionMenu) return;
-    const handleClickOutside = (e: MouseEvent) => {
-      if (
-        sessionMenuRef.current &&
-        !sessionMenuRef.current.contains(e.target as Node)
-      ) {
-        setShowSessionMenu(false);
-      }
-    };
-    document.addEventListener("mousedown", handleClickOutside);
-    return () => document.removeEventListener("mousedown", handleClickOutside);
-  }, [showSessionMenu]);
 
   const handleSend = async (text: string) => {
     setSending(true);
@@ -331,8 +334,17 @@ function SessionPageContent({
     );
   }, [messages, status.state]);
 
-  // Compute display title - use local override if set, otherwise use utility
-  const displayTitle = localCustomTitle ?? getSessionDisplayTitle(session);
+  // Compute display title - priority:
+  // 1. Local custom title (user renamed in this session)
+  // 2. Session title from server
+  // 3. Initial title from navigation state (optimistic, before server responds)
+  // 4. "Untitled" as final fallback
+  const sessionTitle = getSessionDisplayTitle(session);
+  const displayTitle =
+    localCustomTitle ??
+    (sessionTitle !== "Untitled" ? sessionTitle : null) ??
+    initialTitle ??
+    "Untitled";
   const isArchived = localIsArchived ?? session?.isArchived ?? false;
   const isStarred = localIsStarred ?? session?.isStarred ?? false;
 
@@ -347,12 +359,28 @@ function SessionPageContent({
   };
 
   const handleCancelEditingTitle = () => {
+    // Don't cancel if we're in the middle of saving
+    if (isSavingTitleRef.current) return;
     setIsEditingTitle(false);
     setRenameValue("");
   };
 
+  // On blur, save if value changed (handles mobile keyboard dismiss on Enter)
+  const handleTitleBlur = () => {
+    // Don't interfere if we're already saving
+    if (isSavingTitleRef.current) return;
+    // If value is empty or unchanged, just cancel
+    if (!renameValue.trim() || renameValue.trim() === displayTitle) {
+      handleCancelEditingTitle();
+      return;
+    }
+    // Otherwise save (handles mobile Enter which blurs before keydown fires)
+    handleSaveTitle();
+  };
+
   const handleSaveTitle = async () => {
     if (!renameValue.trim() || isRenaming) return;
+    isSavingTitleRef.current = true;
     setIsRenaming(true);
     try {
       await api.updateSessionMetadata(sessionId, { title: renameValue.trim() });
@@ -364,6 +392,7 @@ function SessionPageContent({
       showToast("Failed to rename session", "error");
     } finally {
       setIsRenaming(false);
+      isSavingTitleRef.current = false;
     }
   };
 
@@ -407,7 +436,6 @@ function SessionPageContent({
     }
   };
 
-  if (loading) return <div className="loading">Loading session...</div>;
   if (error) return <div className="error">Error: {error.message}</div>;
 
   // Sidebar icon component
@@ -473,7 +501,9 @@ function SessionPageContent({
                     <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
                   </svg>
                 )}
-                {isEditingTitle ? (
+                {loading ? (
+                  <span className="session-title-skeleton" />
+                ) : isEditingTitle ? (
                   <input
                     ref={renameInputRef}
                     type="text"
@@ -481,7 +511,7 @@ function SessionPageContent({
                     value={renameValue}
                     onChange={(e) => setRenameValue(e.target.value)}
                     onKeyDown={handleTitleKeyDown}
-                    onBlur={handleCancelEditingTitle}
+                    onBlur={handleTitleBlur}
                     disabled={isRenaming}
                   />
                 ) : (
@@ -491,99 +521,23 @@ function SessionPageContent({
                     onClick={handleStartEditingTitle}
                     title={session?.fullTitle ?? "Click to rename"}
                   >
-                    {displayTitle}
+                    {truncateText(displayTitle)}
                   </button>
                 )}
-                {isArchived && <span className="archived-badge">Archived</span>}
-                <div className="session-menu-wrapper" ref={sessionMenuRef}>
-                  <button
-                    type="button"
-                    className="session-menu-trigger"
-                    onClick={() => setShowSessionMenu(!showSessionMenu)}
-                    title="Session options"
-                    aria-label="Session options"
-                    aria-expanded={showSessionMenu}
-                  >
-                    <svg
-                      width="16"
-                      height="16"
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth="2"
-                      aria-hidden="true"
-                    >
-                      <polyline points="6 9 12 15 18 9" />
-                    </svg>
-                  </button>
-                  {showSessionMenu && (
-                    <div className="session-menu-dropdown">
-                      <button
-                        type="button"
-                        onClick={() => {
-                          handleToggleStar();
-                          setShowSessionMenu(false);
-                        }}
-                      >
-                        <svg
-                          width="14"
-                          height="14"
-                          viewBox="0 0 24 24"
-                          fill={isStarred ? "currentColor" : "none"}
-                          stroke="currentColor"
-                          strokeWidth="2"
-                          aria-hidden="true"
-                        >
-                          <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
-                        </svg>
-                        {isStarred ? "Unstar" : "Star"}
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          handleStartEditingTitle();
-                          setShowSessionMenu(false);
-                        }}
-                      >
-                        <svg
-                          width="14"
-                          height="14"
-                          viewBox="0 0 24 24"
-                          fill="none"
-                          stroke="currentColor"
-                          strokeWidth="2"
-                          aria-hidden="true"
-                        >
-                          <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
-                          <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
-                        </svg>
-                        Rename
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          handleToggleArchive();
-                          setShowSessionMenu(false);
-                        }}
-                      >
-                        <svg
-                          width="14"
-                          height="14"
-                          viewBox="0 0 24 24"
-                          fill="none"
-                          stroke="currentColor"
-                          strokeWidth="2"
-                          aria-hidden="true"
-                        >
-                          <polyline points="21 8 21 21 3 21 3 8" />
-                          <rect x="1" y="3" width="22" height="5" />
-                          <line x1="10" y1="12" x2="14" y2="12" />
-                        </svg>
-                        {isArchived ? "Unarchive" : "Archive"}
-                      </button>
-                    </div>
-                  )}
-                </div>
+                {!loading && isArchived && (
+                  <span className="archived-badge">Archived</span>
+                )}
+                {!loading && (
+                  <SessionMenu
+                    sessionId={sessionId}
+                    isStarred={isStarred}
+                    isArchived={isArchived}
+                    onToggleStar={handleToggleStar}
+                    onToggleArchive={handleToggleArchive}
+                    onRename={handleStartEditingTitle}
+                    useFixedPositioning
+                  />
+                )}
               </div>
             </div>
             <StatusIndicator
@@ -612,26 +566,31 @@ function SessionPageContent({
           data-project-id={projectId}
           data-session-id={sessionId}
         >
-          <AgentContentProvider
-            agentContent={agentContent}
-            setAgentContent={setAgentContent}
-            projectId={projectId}
-            sessionId={sessionId}
-          >
-            <MessageList
-              messages={messages}
-              isProcessing={
-                status.state === "owned" && processState === "running"
-              }
-              scrollTrigger={scrollTrigger}
-            />
-          </AgentContentProvider>
+          {loading ? (
+            <div className="loading">Loading session...</div>
+          ) : (
+            <AgentContentProvider
+              agentContent={agentContent}
+              setAgentContent={setAgentContent}
+              toolUseToAgent={toolUseToAgent}
+              projectId={projectId}
+              sessionId={sessionId}
+            >
+              <MessageList
+                messages={messages}
+                isProcessing={
+                  status.state === "owned" && processState === "running"
+                }
+                scrollTrigger={scrollTrigger}
+              />
+            </AgentContentProvider>
+          )}
         </main>
 
         <footer className="session-input">
           <div className="session-input-inner">
             {pendingInputRequest &&
-              pendingInputRequest.sessionId === sessionId &&
+              pendingInputRequest.sessionId === actualSessionId &&
               isAskUserQuestion && (
                 <QuestionAnswerPanel
                   request={pendingInputRequest}
@@ -640,7 +599,7 @@ function SessionPageContent({
                 />
               )}
             {pendingInputRequest &&
-              pendingInputRequest.sessionId === sessionId &&
+              pendingInputRequest.sessionId === actualSessionId &&
               !isAskUserQuestion && (
                 <ToolApprovalPanel
                   request={pendingInputRequest}
@@ -651,7 +610,11 @@ function SessionPageContent({
                   draftKey={`draft-message-${sessionId}`}
                 />
               )}
-            {!(pendingInputRequest && !isAskUserQuestion) && (
+            {!(
+              pendingInputRequest &&
+              pendingInputRequest.sessionId === actualSessionId &&
+              !isAskUserQuestion
+            ) && (
               <MessageInput
                 onSend={handleSend}
                 disabled={sending}
@@ -670,7 +633,12 @@ function SessionPageContent({
                 onStop={handleAbort}
                 draftKey={`draft-message-${sessionId}`}
                 onDraftControlsReady={handleDraftControlsReady}
-                collapsed={!!pendingInputRequest}
+                collapsed={
+                  !!(
+                    pendingInputRequest &&
+                    pendingInputRequest.sessionId === actualSessionId
+                  )
+                }
                 contextUsage={session?.contextUsage}
                 projectId={projectId}
                 sessionId={sessionId}

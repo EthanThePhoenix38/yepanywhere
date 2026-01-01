@@ -40,16 +40,19 @@ export function createStreamRoutes(deps: StreamDeps): Hono {
       });
 
       // Helper to mark subagent messages
-      // Subagent messages have a different session_id than the parent session
-      const markSubagent = <T extends { session_id?: string }>(
+      // Subagent messages have parent_tool_use_id set (pointing to Task tool_use id)
+      const markSubagent = <T extends { parent_tool_use_id?: string | null }>(
         message: T,
-      ): T & { isSubagent?: boolean } => {
-        // No session_id means system message or old format - not a subagent
-        if (!message.session_id) return message;
-        // If session_id matches, it's from this session
-        if (message.session_id === sessionId) return message;
-        // Different session_id means it's from a subagent
-        return { ...message, isSubagent: true };
+      ): T & { isSubagent?: boolean; parentToolUseId?: string } => {
+        // If parent_tool_use_id is set, it's a subagent message
+        if (message.parent_tool_use_id) {
+          return {
+            ...message,
+            isSubagent: true,
+            parentToolUseId: message.parent_tool_use_id,
+          };
+        }
+        return message;
       };
 
       // Replay buffered messages (for mock SDK that doesn't persist to disk)

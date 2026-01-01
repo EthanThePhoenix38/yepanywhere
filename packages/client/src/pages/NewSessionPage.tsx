@@ -1,5 +1,6 @@
 import {
   type ChangeEvent,
+  type ClipboardEvent,
   type KeyboardEvent,
   useEffect,
   useRef,
@@ -59,6 +60,7 @@ export function NewSessionPage() {
     isWideScreen,
     toggleSidebar,
     isSidebarCollapsed,
+    addOptimisticSession,
   } = useProjectLayout();
   const navigate = useNavigate();
   const [message, setMessage, draftControls] = useDraftPersistence(
@@ -109,7 +111,8 @@ export function NewSessionPage() {
   };
 
   const handleStartSession = async () => {
-    if (!projectId || !message.trim() || isStarting) return;
+    const hasContent = message.trim() || pendingFiles.length > 0;
+    if (!projectId || !hasContent || isStarting) return;
 
     const trimmedMessage = message.trim();
     setIsStarting(true);
@@ -183,10 +186,16 @@ export function NewSessionPage() {
       }
 
       draftControls.clearDraft();
+      // Add optimistic session to sidebar before navigation
+      addOptimisticSession(sessionId, trimmedMessage);
       // Pass initial status so SessionPage can connect SSE immediately
       // without waiting for getSession to complete
+      // Also pass initial message as optimistic title (session name = first message)
       navigate(`/projects/${projectId}/sessions/${sessionId}`, {
-        state: { initialStatus: { state: "owned", processId } },
+        state: {
+          initialStatus: { state: "owned", processId },
+          initialTitle: trimmedMessage,
+        },
       });
     } catch (err) {
       console.error("Failed to start session:", err);
@@ -207,6 +216,33 @@ export function NewSessionPage() {
           handleStartSession();
         }
       }
+    }
+  };
+
+  const handlePaste = (e: ClipboardEvent) => {
+    const items = e.clipboardData?.items;
+    if (!items) return;
+
+    const files: File[] = [];
+    for (const item of items) {
+      if (item.kind === "file") {
+        const file = item.getAsFile();
+        if (file) {
+          files.push(file);
+        }
+      }
+    }
+
+    if (files.length > 0) {
+      e.preventDefault();
+      const newPendingFiles: PendingFile[] = files.map((file) => ({
+        id: `pending-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+        file,
+        previewUrl: file.type.startsWith("image/")
+          ? URL.createObjectURL(file)
+          : undefined,
+      }));
+      setPendingFiles((prev) => [...prev, ...newPendingFiles]);
     }
   };
 
@@ -279,6 +315,7 @@ export function NewSessionPage() {
                 value={message}
                 onChange={(e) => setMessage(e.target.value)}
                 onKeyDown={handleKeyDown}
+                onPaste={handlePaste}
                 placeholder="Describe what you'd like Claude to help you with..."
                 disabled={isStarting}
                 rows={6}
@@ -405,7 +442,9 @@ export function NewSessionPage() {
               <button
                 type="button"
                 onClick={handleStartSession}
-                disabled={isStarting || !message.trim()}
+                disabled={
+                  isStarting || (!message.trim() && pendingFiles.length === 0)
+                }
                 className="start-session-button"
               >
                 {isStarting ? (

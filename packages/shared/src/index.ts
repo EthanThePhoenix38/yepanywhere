@@ -11,6 +11,8 @@ export type {
   SessionStatus,
   ModelOption,
   ThinkingOption,
+  FileMetadata,
+  FileContentResponse,
 } from "./types.js";
 export { thinkingOptionToTokens } from "./types.js";
 

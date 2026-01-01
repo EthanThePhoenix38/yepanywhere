@@ -27,7 +27,7 @@ function loadTheme(): Theme {
   if (stored && THEMES.includes(stored as Theme)) {
     return stored as Theme;
   }
-  return "verydark";
+  return "auto";
 }
 
 function saveTheme(theme: Theme) {

@@ -6,6 +6,7 @@ import { initializeFontSize } from "./hooks/useFontSize";
 import { initializeTheme } from "./hooks/useTheme";
 import { ProjectLayout } from "./layouts";
 import { ActivityPage } from "./pages/ActivityPage";
+import { FilePage } from "./pages/FilePage";
 import { NewSessionPage } from "./pages/NewSessionPage";
 import { ProjectsPage } from "./pages/ProjectsPage";
 import { SessionPage } from "./pages/SessionPage";
@@ -33,6 +34,7 @@ createRoot(rootElement).render(
             <Route index element={<SessionsPage />} />
             <Route path="new-session" element={<NewSessionPage />} />
             <Route path="sessions/:sessionId" element={<SessionPage />} />
+            <Route path="file" element={<FilePage />} />
           </Route>
           <Route path="/activity" element={<ActivityPage />} />
           <Route path="/settings" element={<SettingsPage />} />

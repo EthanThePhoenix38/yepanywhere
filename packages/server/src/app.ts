@@ -10,6 +10,7 @@ import { PushNotifier, type PushService } from "./push/index.js";
 import { createPushRoutes } from "./push/routes.js";
 import { createActivityRoutes } from "./routes/activity.js";
 import { createDevRoutes } from "./routes/dev.js";
+import { createFilesRoutes } from "./routes/files.js";
 import { health } from "./routes/health.js";
 import { createProcessesRoutes } from "./routes/processes.js";
 import { createProjectsRoutes } from "./routes/projects.js";
@@ -137,6 +138,9 @@ export function createApp(
   );
   app.route("/api/processes", createProcessesRoutes({ supervisor }));
   app.route("/api", createStreamRoutes({ supervisor }));
+
+  // Files routes (file browser)
+  app.route("/api/projects", createFilesRoutes({ scanner }));
 
   // Upload routes (WebSocket file uploads)
   if (options.upgradeWebSocket) {

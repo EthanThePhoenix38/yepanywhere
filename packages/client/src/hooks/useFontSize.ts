@@ -44,7 +44,7 @@ function loadFontSize(): FontSize {
   if (stored && FONT_SIZES.includes(stored as FontSize)) {
     return stored as FontSize;
   }
-  return "default";
+  return "large";
 }
 
 function saveFontSize(size: FontSize) {

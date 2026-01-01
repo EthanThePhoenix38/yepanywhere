@@ -1,5 +1,6 @@
 import type { UploadedFile } from "@claude-anywhere/shared";
 import {
+  type ClipboardEvent,
   type KeyboardEvent,
   useCallback,
   useEffect,
@@ -124,13 +125,14 @@ export function MessageInput({
   }, [controls, onDraftControlsReady]);
 
   const handleSubmit = useCallback(() => {
-    if (text.trim() && !disabled) {
+    const hasContent = text.trim() || attachments.length > 0;
+    if (hasContent && !disabled) {
       const message = text.trim();
       // Clear input state but keep localStorage for failure recovery
       controls.clearInput();
       onSend(message);
     }
-  }, [text, disabled, controls, onSend]);
+  }, [text, disabled, controls, onSend, attachments.length]);
 
   const handleKeyDown = (e: KeyboardEvent) => {
     if (e.key === "Enter") {
@@ -149,6 +151,30 @@ export function MessageInput({
           handleSubmit();
         }
       }
+    }
+  };
+
+  const handlePaste = (e: ClipboardEvent) => {
+    if (!canAttach || !onAttach) return;
+
+    const items = e.clipboardData?.items;
+    if (!items) return;
+
+    const files: File[] = [];
+    for (const item of items) {
+      if (item.kind === "file") {
+        const file = item.getAsFile();
+        if (file) {
+          files.push(file);
+        }
+      }
+    }
+
+    if (files.length > 0) {
+      // Prevent default only if we have files to handle
+      // This allows text paste to still work normally
+      e.preventDefault();
+      onAttach(files);
     }
   };
 
@@ -198,6 +224,7 @@ export function MessageInput({
           value={text}
           onChange={(e) => setText(e.target.value)}
           onKeyDown={handleKeyDown}
+          onPaste={handlePaste}
           placeholder={
             externalCollapsed
               ? "Continue typing while responding above..."
@@ -315,7 +342,12 @@ export function MessageInput({
             </div>
             <div className="message-input-actions">
               <ContextUsageIndicator usage={contextUsage} size={16} />
-              {isRunning && onStop && isThinking && (
+              {/* Show stop button when thinking and input is empty, otherwise show send */}
+              {isRunning &&
+              onStop &&
+              isThinking &&
+              !text.trim() &&
+              attachments.length === 0 ? (
                 <button
                   type="button"
                   onClick={onStop}
@@ -324,16 +356,19 @@ export function MessageInput({
                 >
                   <span className="stop-icon" />
                 </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={handleSubmit}
+                  disabled={
+                    disabled || (!text.trim() && attachments.length === 0)
+                  }
+                  className="send-button"
+                  aria-label="Send"
+                >
+                  <span className="send-icon">↑</span>
+                </button>
               )}
-              <button
-                type="button"
-                onClick={handleSubmit}
-                disabled={disabled || !text.trim()}
-                className="send-button"
-                aria-label="Send"
-              >
-                <span className="send-icon">↑</span>
-              </button>
             </div>
           </div>
         )}

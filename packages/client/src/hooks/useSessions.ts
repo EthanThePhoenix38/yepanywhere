@@ -256,5 +256,39 @@ export function useSessions(projectId: string | undefined) {
     };
   }, []);
 
-  return { project, sessions, loading, error, refetch: fetch, processStates };
+  // Add an optimistic session (used when creating a new session before SSE event arrives)
+  const addOptimisticSession = useCallback(
+    (sessionId: string, title: string) => {
+      if (!projectId) return;
+
+      const now = new Date().toISOString();
+      const optimisticSession: SessionSummary = {
+        id: sessionId,
+        projectId,
+        title,
+        fullTitle: title,
+        createdAt: now,
+        updatedAt: now,
+        messageCount: 0,
+        status: { state: "idle" },
+      };
+
+      setSessions((prev) => {
+        // Don't add if already exists
+        if (prev.some((s) => s.id === sessionId)) return prev;
+        return [optimisticSession, ...prev];
+      });
+    },
+    [projectId],
+  );
+
+  return {
+    project,
+    sessions,
+    loading,
+    error,
+    refetch: fetch,
+    processStates,
+    addOptimisticSession,
+  };
 }

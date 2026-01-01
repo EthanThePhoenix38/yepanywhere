@@ -11,10 +11,10 @@
 .timeline-item::before {
   content: "";
   position: absolute;
-  left: -16px;
+  left: -11px;
   top: 10px;
-  width: 8px;
-  height: 8px;
+  width: 6px;
+  height: 6px;
   border-radius: 50%;
   background: var(--timeline-dot-default);
 }
@@ -23,8 +23,8 @@
 .timeline-item::after {
   content: "";
   position: absolute;
-  left: -12px; /* Center of the dot */
-  top: 18px; /* Just below the dot (dot is at top:10, height:8) */
+  left: -8px; /* Center of the dot */
+  top: 16px; /* Just below the dot */
   bottom: -10px; /* Extend into next item's space to meet its dot */
   width: 1px;
   background: var(--timeline-line-color);
@@ -35,13 +35,19 @@
   display: none;
 }
 
+/* Last item in task nested content - hide the line below */
+.task-nested-content > :last-child.timeline-item::after,
+.task-nested-content > :last-child .timeline-item::after {
+  display: none;
+}
+
 /* Text and thinking blocks - align dot with first line of text */
 .text-block.timeline-item::before {
   top: 8px;
 }
 
 .text-block.timeline-item::after {
-  top: 16px; /* Adjust line start for new dot position */
+  top: 14px; /* Adjust line start for new dot position */
 }
 
 /* Add small top padding so text aligns with tool row text */
@@ -54,7 +60,7 @@
 }
 
 .thinking-block.timeline-item::after {
-  top: 16px;
+  top: 14px;
 }
 
 .thinking-block.timeline-item {
@@ -67,7 +73,7 @@
 }
 
 .tool-row.timeline-item::after {
-  top: 16px; /* Adjust line start for new dot position */
+  top: 14px; /* Adjust line start for new dot position */
 }
 
 /* Tool row status-specific dot colors */

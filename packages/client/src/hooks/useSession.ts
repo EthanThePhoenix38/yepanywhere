@@ -51,9 +51,28 @@ export function useSession(
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<Error | null>(null);
 
+  // Actual session ID from server (may differ from URL sessionId during temp→real ID transition)
+  // This happens when createSession returns before the SDK sends the real session ID
+  const [actualSessionId, setActualSessionId] = useState<string>(sessionId);
+
   // Subagent content: messages from Task tool agents, keyed by agentId (session_id)
   // These are kept separate from main messages to maintain clean DAG structure
   const [agentContent, setAgentContent] = useState<AgentContentMap>({});
+
+  // Mapping from Task tool_use_id → subagent session_id (agentId)
+  // Built during streaming when we receive system/init messages with parent_tool_use_id
+  // This allows TaskRenderer to access agentContent before the tool_result arrives
+  const [toolUseToAgent, setToolUseToAgent] = useState<Map<string, string>>(
+    () => new Map(),
+  );
+
+  // Track last SSE activity timestamp for engagement tracking
+  // This includes both main session and subagent messages, so we can properly
+  // mark sessions as "seen" even when subagent content arrives (which doesn't
+  // update the parent session file's mtime until completion)
+  const [lastSSEActivityAt, setLastSSEActivityAt] = useState<string | null>(
+    null,
+  );
 
   // Permission mode state: localMode is UI-selected, serverMode is confirmed by server
   const [localMode, setLocalMode] = useState<PermissionMode>("default");
@@ -117,12 +136,18 @@ export function useSession(
   // Streaming state: accumulates content from stream_event messages
   // Key is the message uuid, value is the accumulated content blocks
   const streamingContentRef = useRef<
-    Map<string, { blocks: ContentBlock[]; isStreaming: boolean }>
+    Map<
+      string,
+      { blocks: ContentBlock[]; isStreaming: boolean; agentId?: string }
+    >
   >(new Map());
 
   // Track current streaming message ID (from message_start event)
   // Each stream_event has its own uuid, but they all belong to the same message
   const currentStreamingIdRef = useRef<string | null>(null);
+
+  // Track current streaming agentId (if this is a subagent stream)
+  const currentStreamingAgentIdRef = useRef<string | null>(null);
 
   // Add user message optimistically with a temp ID
   // Uses SDK message structure: { type, message: { role, content } }
@@ -222,13 +247,25 @@ export function useSession(
       try {
         // Get agent mappings (toolUseId → agentId)
         const { mappings } = await api.getAgentMappings(projectId, sessionId);
-        const toolUseToAgent = new Map(
+        const mappingsMap = new Map(
           mappings.map((m) => [m.toolUseId, m.agentId]),
         );
 
+        // Update the toolUseToAgent state with loaded mappings
+        // This allows TaskRenderer to access agentContent even after page reload
+        setToolUseToAgent((prev) => {
+          const next = new Map(prev);
+          for (const [toolUseId, agentId] of mappingsMap) {
+            if (!next.has(toolUseId)) {
+              next.set(toolUseId, agentId);
+            }
+          }
+          return next;
+        });
+
         // Load content for each pending task that has an agent file
         for (const task of pendingTasks) {
-          const agentId = toolUseToAgent.get(task.toolUseId);
+          const agentId = mappingsMap.get(task.toolUseId);
           if (!agentId) continue;
 
           try {
@@ -398,25 +435,60 @@ export function useSession(
 
   // Update messages with streaming content
   // Creates or updates a streaming placeholder message with accumulated content
+  // Routes to agentContent if this is a subagent stream
   const updateStreamingMessage = useCallback((messageId: string) => {
     const streaming = streamingContentRef.current.get(messageId);
     if (!streaming) return;
 
+    const streamingMessage: Message = {
+      id: messageId,
+      type: "assistant",
+      role: "assistant",
+      message: {
+        role: "assistant",
+        content: streaming.blocks,
+      },
+      _isStreaming: true, // Marker for rendering
+      _source: "sdk",
+    };
+
+    // Route to agentContent if this is a subagent stream
+    if (streaming.agentId) {
+      const agentId = streaming.agentId;
+      setAgentContent((prev) => {
+        const existing = prev[agentId] ?? {
+          messages: [],
+          status: "running" as const,
+        };
+        const existingIdx = existing.messages.findIndex(
+          (m) => m.id === messageId,
+        );
+
+        if (existingIdx >= 0) {
+          // Update existing
+          const updated = [...existing.messages];
+          updated[existingIdx] = streamingMessage;
+          return {
+            ...prev,
+            [agentId]: { ...existing, messages: updated },
+          };
+        }
+        // Add new
+        return {
+          ...prev,
+          [agentId]: {
+            ...existing,
+            messages: [...existing.messages, streamingMessage],
+          },
+        };
+      });
+      return;
+    }
+
+    // Route to main messages
     setMessages((prev) => {
       // Find existing streaming message or create new one
       const existingIdx = prev.findIndex((m) => m.id === messageId);
-
-      const streamingMessage: Message = {
-        id: messageId,
-        type: "assistant",
-        role: "assistant",
-        message: {
-          role: "assistant",
-          content: streaming.blocks,
-        },
-        _isStreaming: true, // Marker for rendering
-        _source: "sdk",
-      };
 
       if (existingIdx >= 0) {
         // Update existing
@@ -433,6 +505,11 @@ export function useSession(
   const handleSSEMessage = useCallback(
     (data: { eventType: string; [key: string]: unknown }) => {
       if (data.eventType === "message") {
+        // Track SSE activity for engagement tracking
+        // This ensures sessions are marked as "seen" even when receiving
+        // subagent content (which doesn't update parent session file mtime)
+        setLastSSEActivityAt(new Date().toISOString());
+
         // The message event contains the SDK message directly
         // Pass through all fields without stripping
         const sdkMessage = data as Record<string, unknown> & {
@@ -459,6 +536,25 @@ export function useSession(
 
           const eventType = event.type as string | undefined;
 
+          // Check if this is a subagent stream (marked by server in stream.ts)
+          // Use parentToolUseId as the routing key (it's the Task tool_use id)
+          const isSubagentStream =
+            sdkMessage.isSubagent &&
+            typeof sdkMessage.parentToolUseId === "string";
+          const streamAgentId = isSubagentStream
+            ? (sdkMessage.parentToolUseId as string)
+            : undefined;
+
+          // Set toolUseToAgent mapping for subagent streams so TaskRenderer can find content
+          if (streamAgentId) {
+            setToolUseToAgent((prev) => {
+              if (prev.has(streamAgentId)) return prev;
+              const next = new Map(prev);
+              next.set(streamAgentId, streamAgentId);
+              return next;
+            });
+          }
+
           // Handle message_start to capture the message ID for this streaming response
           // Each stream_event has its own uuid, but they all belong to the same API message
           if (eventType === "message_start") {
@@ -467,6 +563,8 @@ export function useSession(
               | undefined;
             if (message?.id) {
               currentStreamingIdRef.current = message.id as string;
+              // Also track if this is a subagent stream
+              currentStreamingAgentIdRef.current = streamAgentId ?? null;
             }
             return;
           }
@@ -474,6 +572,8 @@ export function useSession(
           // Use the captured message ID, or fall back to generating one
           const streamingId =
             currentStreamingIdRef.current ?? `stream-${Date.now()}`;
+          // Use tracked agentId, falling back to current message's agentId
+          const agentId = currentStreamingAgentIdRef.current ?? streamAgentId;
 
           // Handle different stream event types
           if (eventType === "content_block_start") {
@@ -489,6 +589,7 @@ export function useSession(
               ) ?? {
                 blocks: [],
                 isStreaming: true,
+                agentId, // Track which agent this stream belongs to
               };
               // Ensure array is long enough
               while (streaming.blocks.length <= index) {
@@ -536,11 +637,36 @@ export function useSession(
         // Due to race conditions (message_start arriving after content_block_start),
         // placeholders might have different IDs than currentStreamingIdRef
         if (msgType === "assistant") {
-          // Clear all streaming content refs
+          // Check if this is a subagent message
+          // Use parentToolUseId as the routing key (it's the Task tool_use id)
+          const isSubagentMsg =
+            sdkMessage.isSubagent &&
+            typeof sdkMessage.parentToolUseId === "string";
+          const msgAgentId = isSubagentMsg
+            ? (sdkMessage.parentToolUseId as string)
+            : undefined;
+
+          // Clear streaming refs for this stream
           streamingContentRef.current.clear();
           currentStreamingIdRef.current = null;
-          // Remove ALL streaming placeholder messages (those with _isStreaming flag)
-          setMessages((prev) => prev.filter((m) => !m._isStreaming));
+          currentStreamingAgentIdRef.current = null;
+
+          if (msgAgentId) {
+            // Remove streaming placeholders from this agent's content
+            setAgentContent((prev) => {
+              const existing = prev[msgAgentId];
+              if (!existing) return prev;
+              const filtered = existing.messages.filter((m) => !m._isStreaming);
+              if (filtered.length === existing.messages.length) return prev;
+              return {
+                ...prev,
+                [msgAgentId]: { ...existing, messages: filtered },
+              };
+            });
+          } else {
+            // Remove ALL streaming placeholder messages from main messages
+            setMessages((prev) => prev.filter((m) => !m._isStreaming));
+          }
         }
 
         // Build message object, preserving all SDK fields
@@ -561,11 +687,23 @@ export function useSession(
 
         // Route subagent messages to agentContent instead of main messages
         // This keeps the parent session's DAG clean and allows proper nesting in UI
+        // Use parentToolUseId as the routing key (it's the Task tool_use id)
         if (
           sdkMessage.isSubagent &&
-          typeof sdkMessage.session_id === "string"
+          typeof sdkMessage.parentToolUseId === "string"
         ) {
-          const agentId = sdkMessage.session_id;
+          const agentId = sdkMessage.parentToolUseId;
+
+          // Capture toolUseId → agentId mapping on first subagent message
+          // This allows TaskRenderer to access agentContent immediately
+          // Note: Since agentId === parentToolUseId === toolUseId, the mapping is identity
+          setToolUseToAgent((prev) => {
+            if (prev.has(agentId)) return prev;
+            const next = new Map(prev);
+            next.set(agentId, agentId);
+            return next;
+          });
+
           setAgentContent((prev) => {
             const existing = prev[agentId] ?? {
               messages: [],
@@ -616,6 +754,15 @@ export function useSession(
         // Capture pending input request when waiting for user input
         if (statusData.state === "waiting-input" && statusData.request) {
           setPendingInputRequest(statusData.request);
+          // Also update actualSessionId from request in case it differs from URL
+          // This handles the temp→real ID transition when state-change arrives
+          // after the connected event (which may have had the temp ID)
+          if (
+            statusData.request.sessionId &&
+            statusData.request.sessionId !== sessionId
+          ) {
+            setActualSessionId(statusData.request.sessionId);
+          }
         } else {
           // Clear pending request when state changes away from waiting-input
           setPendingInputRequest(null);
@@ -634,11 +781,23 @@ export function useSession(
         // Sync state and permission mode from connected event
         const connectedData = data as {
           eventType: string;
+          sessionId?: string;
           state?: string;
           permissionMode?: PermissionMode;
           modeVersion?: number;
           request?: InputRequest;
         };
+
+        // Update actual session ID if server reports a different one
+        // This handles the temp→real ID transition when createSession returns
+        // before the SDK sends the real session ID
+        // Check both the connected event's sessionId and the request's sessionId
+        const serverSessionId =
+          connectedData.sessionId ?? connectedData.request?.sessionId;
+        if (serverSessionId && serverSessionId !== sessionId) {
+          setActualSessionId(serverSessionId);
+        }
+
         // Sync process state so watching tabs see "processing" indicator
         if (
           connectedData.state === "idle" ||
@@ -675,7 +834,7 @@ export function useSession(
         }
       }
     },
-    [applyServerModeUpdate, updateStreamingMessage],
+    [applyServerModeUpdate, sessionId, updateStreamingMessage],
   );
 
   // Handle SSE errors by checking if process is still alive
@@ -706,15 +865,18 @@ export function useSession(
     messages,
     agentContent, // Subagent messages keyed by agentId (for Task tool)
     setAgentContent, // Setter for merging lazy-loaded agent content
+    toolUseToAgent, // Mapping from Task tool_use_id → agentId (for rendering during streaming)
     status,
     processState,
     pendingInputRequest,
+    actualSessionId, // Real session ID from server (may differ from URL during temp→real transition)
     permissionMode: localMode, // UI-selected mode (sent with next message)
     isModePending, // True when local mode differs from server-confirmed
     modeVersion,
     loading,
     error,
     connected,
+    lastSSEActivityAt, // Last SSE message timestamp for engagement tracking
     setStatus,
     setProcessState,
     setPermissionMode,

@@ -1,8 +1,8 @@
 /**
  * Permission mode for tool approvals.
- * - "default": Ask user before executing each tool
+ * - "default": Auto-approve read-only tools (Read, Glob, Grep, etc.), ask for mutating tools
  * - "acceptEdits": Auto-approve file editing tools (Edit, Write, NotebookEdit), ask for others
- * - "plan": Deny all tools (planning/analysis only)
+ * - "plan": Auto-approve read-only tools, ask for others (planning/analysis mode)
  * - "bypassPermissions": Auto-approve all tools (full autonomous mode)
  */
 export type PermissionMode =
@@ -63,3 +63,29 @@ export type SessionStatus =
       modeVersion?: number;
     }
   | { state: "external" };
+
+/**
+ * Metadata about a file in a project.
+ */
+export interface FileMetadata {
+  /** File path relative to project root */
+  path: string;
+  /** File size in bytes */
+  size: number;
+  /** MIME type (e.g., "text/typescript", "image/png") */
+  mimeType: string;
+  /** Whether the file is a text file (can be displayed inline) */
+  isText: boolean;
+}
+
+/**
+ * Response from the file content API.
+ */
+export interface FileContentResponse {
+  /** File metadata */
+  metadata: FileMetadata;
+  /** File content (only for text files under size limit) */
+  content?: string;
+  /** URL to fetch raw file content */
+  rawUrl: string;
+}

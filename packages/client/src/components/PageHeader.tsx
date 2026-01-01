@@ -1,4 +1,5 @@
 import { Link } from "react-router-dom";
+import { truncateText } from "../lib/text";
 
 interface PageHeaderProps {
   title: string;
@@ -63,7 +64,12 @@ export function PageHeader({
               <SidebarToggleIcon />
             </button>
           )}
-          <span className="session-title">{title}</span>
+          <span
+            className="session-title"
+            title={title.length > 60 ? title : undefined}
+          >
+            {truncateText(title)}
+          </span>
         </div>
         {!hideSettingsLink && (
           <Link to="/settings" className="settings-link" aria-label="Settings">

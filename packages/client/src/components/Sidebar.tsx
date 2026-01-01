@@ -1,10 +1,14 @@
 import { useMemo, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
+import { api } from "../api/client";
 import type { ProcessStateType } from "../hooks/useFileActivity";
 import { type SessionSummary, getSessionDisplayTitle } from "../types";
+import { SessionMenu } from "./SessionMenu";
 
 const SWIPE_THRESHOLD = 50; // Minimum distance to trigger close
 const SWIPE_ENGAGE_THRESHOLD = 15; // Minimum horizontal distance before swipe engages
+const RECENT_SESSIONS_INITIAL = 12; // Initial number of recent sessions to show
+const RECENT_SESSIONS_INCREMENT = 10; // How many more to show on each expand
 
 // Time threshold for stable sorting: sessions within this window use ID as tiebreaker
 // This prevents rapid shuffling when multiple active sessions update frequently
@@ -41,6 +45,8 @@ interface SidebarProps {
   isCollapsed?: boolean;
   /** Desktop mode: callback to toggle expanded/collapsed state */
   onToggleExpanded?: () => void;
+  /** Set of session IDs that have unsent draft messages */
+  sessionDrafts?: Set<string>;
 }
 
 export function Sidebar({
@@ -54,6 +60,7 @@ export function Sidebar({
   isDesktop = false,
   isCollapsed = false,
   onToggleExpanded,
+  sessionDrafts,
 }: SidebarProps) {
   const navigate = useNavigate();
   const sidebarRef = useRef<HTMLElement>(null);
@@ -61,6 +68,9 @@ export function Sidebar({
   const touchStartY = useRef<number | null>(null);
   const swipeEngaged = useRef<boolean>(false);
   const [swipeOffset, setSwipeOffset] = useState(0);
+  const [recentSessionsLimit, setRecentSessionsLimit] = useState(
+    RECENT_SESSIONS_INITIAL,
+  );
 
   const handleTouchStart = (e: React.TouchEvent) => {
     touchStartX.current = e.touches[0]?.clientX ?? null;
@@ -134,8 +144,7 @@ export function Sidebar({
           !s.isArchived &&
           isWithinLastDay(new Date(s.updatedAt)),
       )
-      .sort(stableSort)
-      .slice(0, 10);
+      .sort(stableSort);
   }, [sessions]);
 
   // Older sessions (non-starred, non-archived, NOT in last 24 hours, limit 10)
@@ -365,6 +374,7 @@ export function Sidebar({
                     isCurrent={session.id === currentSessionId}
                     processState={processStates[session.id]}
                     onNavigate={onNavigate}
+                    hasDraft={sessionDrafts?.has(session.id)}
                   />
                 ))}
               </ul>
@@ -375,17 +385,38 @@ export function Sidebar({
             <div className="sidebar-section">
               <h3 className="sidebar-section-title">Last 24 Hours</h3>
               <ul className="sidebar-session-list">
-                {recentDaySessions.map((session) => (
-                  <SidebarSessionItem
-                    key={session.id}
-                    session={session}
-                    projectId={projectId}
-                    isCurrent={session.id === currentSessionId}
-                    processState={processStates[session.id]}
-                    onNavigate={onNavigate}
-                  />
-                ))}
+                {recentDaySessions
+                  .slice(0, recentSessionsLimit)
+                  .map((session) => (
+                    <SidebarSessionItem
+                      key={session.id}
+                      session={session}
+                      projectId={projectId}
+                      isCurrent={session.id === currentSessionId}
+                      processState={processStates[session.id]}
+                      onNavigate={onNavigate}
+                      hasDraft={sessionDrafts?.has(session.id)}
+                    />
+                  ))}
               </ul>
+              {recentDaySessions.length > recentSessionsLimit && (
+                <button
+                  type="button"
+                  className="sidebar-show-more"
+                  onClick={() =>
+                    setRecentSessionsLimit(
+                      (prev) => prev + RECENT_SESSIONS_INCREMENT,
+                    )
+                  }
+                >
+                  Show{" "}
+                  {Math.min(
+                    RECENT_SESSIONS_INCREMENT,
+                    recentDaySessions.length - recentSessionsLimit,
+                  )}{" "}
+                  more
+                </button>
+              )}
             </div>
           )}
 
@@ -401,6 +432,7 @@ export function Sidebar({
                     isCurrent={session.id === currentSessionId}
                     processState={processStates[session.id]}
                     onNavigate={onNavigate}
+                    hasDraft={sessionDrafts?.has(session.id)}
                   />
                 ))}
               </ul>
@@ -448,6 +480,7 @@ interface SidebarSessionItemProps {
   isCurrent: boolean;
   processState?: ProcessStateType;
   onNavigate: () => void;
+  hasDraft?: boolean;
 }
 
 function SidebarSessionItem({
@@ -456,7 +489,47 @@ function SidebarSessionItem({
   isCurrent,
   processState,
   onNavigate,
+  hasDraft,
 }: SidebarSessionItemProps) {
+  const navigate = useNavigate();
+  const [localIsStarred, setLocalIsStarred] = useState<boolean | undefined>(
+    undefined,
+  );
+  const [localIsArchived, setLocalIsArchived] = useState<boolean | undefined>(
+    undefined,
+  );
+
+  const isStarred = localIsStarred ?? session.isStarred;
+  const isArchived = localIsArchived ?? session.isArchived;
+
+  const handleToggleStar = async () => {
+    const newStarred = !isStarred;
+    setLocalIsStarred(newStarred);
+    try {
+      await api.updateSessionMetadata(session.id, { starred: newStarred });
+    } catch (err) {
+      console.error("Failed to update star status:", err);
+      setLocalIsStarred(undefined); // Revert on error
+    }
+  };
+
+  const handleToggleArchive = async () => {
+    const newArchived = !isArchived;
+    setLocalIsArchived(newArchived);
+    try {
+      await api.updateSessionMetadata(session.id, { archived: newArchived });
+    } catch (err) {
+      console.error("Failed to update archive status:", err);
+      setLocalIsArchived(undefined); // Revert on error
+    }
+  };
+
+  const handleRename = () => {
+    // Navigate to the session page - user can rename there
+    onNavigate();
+    navigate(`/projects/${projectId}/sessions/${session.id}`);
+  };
+
   // Determine activity indicator
   const getActivityIndicator = () => {
     // External sessions always show external badge
@@ -499,7 +572,7 @@ function SidebarSessionItem({
         title={session.fullTitle || getSessionDisplayTitle(session)}
       >
         <span className="sidebar-session-title">
-          {session.isStarred && (
+          {isStarred && (
             <svg
               className="sidebar-star"
               width="10"
@@ -513,10 +586,24 @@ function SidebarSessionItem({
               <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
             </svg>
           )}
-          {getSessionDisplayTitle(session)}
+          <span className="sidebar-session-title-text">
+            {getSessionDisplayTitle(session)}
+          </span>
+          {hasDraft && <span className="sidebar-draft">(draft)</span>}
         </span>
         {getActivityIndicator()}
       </Link>
+      <SessionMenu
+        sessionId={session.id}
+        isStarred={isStarred ?? false}
+        isArchived={isArchived ?? false}
+        onToggleStar={handleToggleStar}
+        onToggleArchive={handleToggleArchive}
+        onRename={handleRename}
+        useEllipsisIcon
+        useFixedPositioning
+        className="sidebar-session-menu"
+      />
     </li>
   );
 }

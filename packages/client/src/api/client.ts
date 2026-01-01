@@ -1,4 +1,5 @@
 import type {
+  FileContentResponse,
   ModelOption,
   ThinkingOption,
   UploadedFile,
@@ -249,4 +250,16 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ deviceId, message }),
     }),
+
+  // File API
+  getFile: (projectId: string, path: string) =>
+    fetchJSON<FileContentResponse>(
+      `/projects/${projectId}/files?path=${encodeURIComponent(path)}`,
+    ),
+
+  getFileRawUrl: (projectId: string, path: string, download = false) => {
+    const params = new URLSearchParams({ path });
+    if (download) params.set("download", "true");
+    return `/api/projects/${projectId}/files/raw?${params.toString()}`;
+  },
 };

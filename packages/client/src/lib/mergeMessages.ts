@@ -2,11 +2,34 @@ import { orderByParentChain } from "@claude-anywhere/shared";
 import type { Message } from "../types";
 
 /**
+ * Strip the "User uploaded files:" section from message text for comparison.
+ * This allows matching temp messages (without attachment info) to server messages
+ * (with attachment info appended).
+ */
+function stripUploadedFilesSection(text: string): string {
+  const marker = "\n\nUser uploaded files:\n";
+  const idx = text.indexOf(marker);
+  return idx === -1 ? text : text.slice(0, idx);
+}
+
+/**
  * Helper to get content from a message, handling both top-level and SDK nested structure.
  * SDK messages have content nested in message.content.
  */
 export function getMessageContent(m: Message): unknown {
   return m.content ?? (m.message as { content?: unknown } | undefined)?.content;
+}
+
+/**
+ * Normalize message content for comparison by stripping attachment suffixes.
+ * Returns a JSON string for comparison.
+ */
+function normalizeContentForComparison(content: unknown): string {
+  if (typeof content === "string") {
+    return JSON.stringify(stripUploadedFilesSection(content));
+  }
+  // For non-string content, just stringify as-is
+  return JSON.stringify(content);
 }
 
 /**
@@ -136,15 +159,17 @@ export function mergeJSONLMessages(
     // Check if this is a user message that should replace a temp or SDK message
     // This handles the case where SSE and JSONL have different UUIDs for the same message
     if (incomingMsg.type === "user") {
-      const incomingContent = getMessageContent(incomingMsg);
+      const incomingContentNorm = normalizeContentForComparison(
+        getMessageContent(incomingMsg),
+      );
       const duplicateMsg = existing.find(
         (m) =>
           m.id !== incomingMsg.id && // Different ID
           !replacedIds.has(m.id) && // Not already matched by a previous JSONL message
           (m.id.startsWith("temp-") || m._source === "sdk") && // Temp or SDK-sourced
           m.type === "user" &&
-          JSON.stringify(getMessageContent(m)) ===
-            JSON.stringify(incomingContent) &&
+          normalizeContentForComparison(getMessageContent(m)) ===
+            incomingContentNorm &&
           parentsMatch(m, incomingMsg, allMappings), // Parents must match too
       );
       if (duplicateMsg) {
@@ -223,7 +248,9 @@ function findMatchingTempMessage(
   incoming: Message,
   tempIdMappings: Map<string, string>,
 ): number {
-  const incomingContent = JSON.stringify(getMessageContent(incoming));
+  const incomingContentNorm = normalizeContentForComparison(
+    getMessageContent(incoming),
+  );
 
   // Find all temp user messages with matching content
   const tempCandidates: { index: number; msg: Message }[] = [];
@@ -232,7 +259,8 @@ function findMatchingTempMessage(
     if (
       m?.id.startsWith("temp-") &&
       m.type === "user" &&
-      JSON.stringify(getMessageContent(m)) === incomingContent
+      normalizeContentForComparison(getMessageContent(m)) ===
+        incomingContentNorm
     ) {
       tempCandidates.push({ index: i, msg: m });
     }

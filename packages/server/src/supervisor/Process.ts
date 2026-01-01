@@ -410,9 +410,25 @@ export class Process {
         break;
       }
 
-      default:
-        // Fall through to ask user
+      default: {
+        // Read-only tools are auto-allowed - no need to prompt for reads
+        // "Ask before edits" means ask before WRITES, not reads
+        const readOnlyTools = [
+          "Read",
+          "Glob",
+          "Grep",
+          "LSP",
+          "WebFetch",
+          "WebSearch",
+          "Task", // Subagent exploration
+          "TaskOutput", // Reading subagent results
+        ];
+        if (readOnlyTools.includes(toolName)) {
+          return { behavior: "allow" };
+        }
+        // Fall through to ask user for mutating tools
         break;
+      }
     }
 
     // Default behavior: ask user for approval

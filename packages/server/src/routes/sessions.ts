@@ -224,19 +224,27 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
         );
         // Get metadata even for new sessions (in case it was set before file was written)
         const metadata = deps.sessionMetadataService?.getMetadata(sessionId);
+        // Get notification data for new sessions too
+        const lastSeenEntry = deps.notificationService?.getLastSeen(sessionId);
+        const newSessionUpdatedAt = new Date().toISOString();
+        const hasUnread = deps.notificationService
+          ? deps.notificationService.hasUnread(sessionId, newSessionUpdatedAt)
+          : undefined;
         return c.json({
           session: {
             id: sessionId,
             projectId,
             title: null,
             createdAt: new Date().toISOString(),
-            updatedAt: new Date().toISOString(),
+            updatedAt: newSessionUpdatedAt,
             messageCount: processMessages.length,
             status,
             messages: processMessages,
             customTitle: metadata?.customTitle,
             isArchived: metadata?.isArchived,
             isStarred: metadata?.isStarred,
+            lastSeenAt: lastSeenEntry?.timestamp,
+            hasUnread,
           },
           messages: processMessages,
           status,
@@ -248,6 +256,13 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
     // Get session metadata (custom title, archived, starred)
     const metadata = deps.sessionMetadataService?.getMetadata(sessionId);
 
+    // Get notification data (lastSeenAt, hasUnread)
+    const lastSeenEntry = deps.notificationService?.getLastSeen(sessionId);
+    const lastSeenAt = lastSeenEntry?.timestamp;
+    const hasUnread = deps.notificationService
+      ? deps.notificationService.hasUnread(sessionId, session.updatedAt)
+      : undefined;
+
     return c.json({
       session: {
         ...session,
@@ -255,6 +270,8 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
         customTitle: metadata?.customTitle,
         isArchived: metadata?.isArchived,
         isStarred: metadata?.isStarred,
+        lastSeenAt,
+        hasUnread,
       },
       messages: session.messages,
       status,

@@ -2,13 +2,11 @@ import { useCallback, useContext, useMemo, useState } from "react";
 import { AgentContentContext } from "../../../contexts/AgentContentContext";
 import { preprocessMessages } from "../../../lib/preprocessMessages";
 import type { Message } from "../../../types";
-import type { RenderItem } from "../../../types/renderItems";
 import { RenderItemComponent } from "../../RenderItemComponent";
 import { ContentBlockRenderer } from "../ContentBlockRenderer";
 import type { TaskInput, TaskResult, ToolRenderer } from "./types";
 
 const MAX_PROMPT_LENGTH = 200;
-const PREVIEW_ITEM_COUNT = 3;
 
 /**
  * Format duration in ms to human readable
@@ -57,69 +55,6 @@ function TaskToolUse({ input }: { input: TaskInput }) {
 }
 
 /**
- * Get a brief summary of a render item for preview display
- */
-function getItemSummary(item: RenderItem): string {
-  switch (item.type) {
-    case "tool_call":
-      return `[${item.toolName}] ${getToolInputSummary(item.toolName, item.toolInput)}`;
-    case "text":
-      return item.text.slice(0, 80) + (item.text.length > 80 ? "..." : "");
-    case "thinking":
-      return "Thinking...";
-    case "user_prompt":
-      return "[User input]";
-    default:
-      return "";
-  }
-}
-
-/**
- * Get a brief summary of tool input for preview
- */
-function getToolInputSummary(toolName: string, input: unknown): string {
-  if (!input || typeof input !== "object") return "";
-  const obj = input as Record<string, unknown>;
-
-  switch (toolName) {
-    case "Read":
-      return typeof obj.file_path === "string" ? obj.file_path : "";
-    case "Grep":
-      return typeof obj.pattern === "string" ? `"${obj.pattern}"` : "";
-    case "Glob":
-      return typeof obj.pattern === "string" ? obj.pattern : "";
-    case "Edit":
-      return typeof obj.file_path === "string" ? obj.file_path : "";
-    case "Bash":
-      return typeof obj.command === "string"
-        ? obj.command.slice(0, 40) + (obj.command.length > 40 ? "..." : "")
-        : "";
-    default:
-      return "";
-  }
-}
-
-/**
- * Task preview - shows last N items as a compact summary
- */
-function TaskPreview({ items }: { items: RenderItem[] }) {
-  const previewItems = items.slice(-PREVIEW_ITEM_COUNT);
-
-  return (
-    <div className="task-preview">
-      {previewItems.map((item, i) => (
-        <div key={item.id} className="task-preview-item">
-          <span className="task-preview-connector">
-            {i === previewItems.length - 1 ? "└─" : "├─"}
-          </span>
-          <span className="task-preview-text">{getItemSummary(item)}</span>
-        </div>
-      ))}
-    </div>
-  );
-}
-
-/**
  * Task nested content - renders full agent messages
  */
 function TaskNestedContent({
@@ -159,40 +94,49 @@ function TaskInline({
   result,
   isError,
   status,
+  toolUseId,
 }: {
   input: TaskInput;
   result: TaskResult | undefined;
   isError: boolean;
   status: "pending" | "complete" | "error" | "aborted";
+  toolUseId?: string;
 }) {
   const context = useContext(AgentContentContext);
-  const agentId = result?.agentId;
+  // Get agentId from result, or look it up from toolUseToAgent mapping during streaming
+  // The mapping is built when we receive system/init messages with parent_tool_use_id
+  const agentId =
+    result?.agentId ??
+    (toolUseId ? context?.toolUseToAgent.get(toolUseId) : undefined);
 
   // Get live content from context if available
   const liveContent = agentId ? context?.agentContent[agentId] : undefined;
 
-  // Determine if task is running (no result yet, or content status is running)
-  const isRunning = status === "pending" || liveContent?.status === "running";
+  // Determine if task is running
+  // If we have a terminal result status, it's definitely not running
+  const hasTerminalResult =
+    result?.status === "completed" || result?.status === "failed";
+  const isRunning =
+    !hasTerminalResult &&
+    (status === "pending" || liveContent?.status === "running");
 
   // Start expanded if running, otherwise collapsed for completed tasks
   const [isExpanded, setIsExpanded] = useState(isRunning);
   const [isLoadingContent, setIsLoadingContent] = useState(false);
 
-  // Get render items from live content for preview/full display
-  const renderItems = useMemo(() => {
-    if (!liveContent?.messages.length) return [];
-    return preprocessMessages(liveContent.messages);
-  }, [liveContent?.messages]);
-
   // Handle expand with lazy-loading
   const handleExpand = async () => {
-    if (!isExpanded && agentId && context && !liveContent?.messages.length) {
-      // Need to lazy-load content
+    // Always lazy-load agent content if we have an agentId but no live content
+    // Note: result.content is just the summary text, not the full agent interaction
+    // The full tool calls (Glob, Read, etc.) are in the agent's JSONL file
+    const hasLiveContent =
+      liveContent?.messages && liveContent.messages.length > 0;
+
+    if (!isExpanded && agentId && context && !hasLiveContent) {
+      // Need to lazy-load content - toggle expand first so user sees loading in expanded area
+      setIsExpanded(true);
       setIsLoadingContent(true);
       try {
-        // Get projectId and sessionId from somewhere... we need to pass these
-        // For now, the context has them captured in the loadAgentContent closure
-        // We'll need to read from a data attribute or similar
         const sessionEl = document.querySelector("[data-session-id]");
         const projectEl = document.querySelector("[data-project-id]");
         const projectId = projectEl?.getAttribute("data-project-id") || "";
@@ -201,8 +145,9 @@ function TaskInline({
       } finally {
         setIsLoadingContent(false);
       }
+    } else {
+      setIsExpanded(!isExpanded);
     }
-    setIsExpanded(!isExpanded);
   };
 
   // Determine status badge and styling
@@ -231,30 +176,28 @@ function TaskInline({
         onClick={handleExpand}
       >
         <span className="task-expand-icon">{isExpanded ? "▼" : "▶"}</span>
+        <span className="badge badge-info task-agent-type">
+          {input.subagent_type}
+        </span>
+        <span className="task-inline-title">{input.description}</span>
+        {input.model && <span className="badge task-model">{input.model}</span>}
         {isRunning && (
           <span className="task-spinner" aria-label="Running">
             <Spinner />
           </span>
         )}
-        <span className="task-inline-title">Task: {input.description}</span>
-        <span className="badge badge-info task-agent-type">
-          {input.subagent_type}
-        </span>
-        {input.model && <span className="badge task-model">{input.model}</span>}
-        <span className={`badge ${statusBadge.class}`}>{statusBadge.text}</span>
+        {!isRunning && (
+          <span className={`badge ${statusBadge.class}`}>
+            {statusBadge.text}
+          </span>
+        )}
         {result && (
           <span className="task-stats">
             {formatDuration(result.totalDurationMs)} ·{" "}
-            {result.totalTokens.toLocaleString()} tokens ·{" "}
-            {result.totalToolUseCount} tools
+            {result.totalTokens.toLocaleString()} tokens
           </span>
         )}
       </button>
-
-      {/* Preview (shown when collapsed and has content) */}
-      {!isExpanded && renderItems.length > 0 && (
-        <TaskPreview items={renderItems} />
-      )}
 
       {/* Loading indicator */}
       {isLoadingContent && (
@@ -411,13 +354,14 @@ export const taskRenderer: ToolRenderer<TaskInput, TaskResult> = {
 
   // Use inline rendering to bypass standard tool row structure
   // This gives us full control over expand/collapse and nested content display
-  renderInline(input, result, isError, status, _context) {
+  renderInline(input, result, isError, status, context) {
     return (
       <TaskInline
         input={input as TaskInput}
         result={result as TaskResult | undefined}
         isError={isError}
         status={status}
+        toolUseId={context.toolUseId}
       />
     );
   },

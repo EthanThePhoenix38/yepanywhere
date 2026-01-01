@@ -48,8 +48,9 @@ export const ToolCallRow = memo(function ToolCallRow({
     () => ({
       isStreaming: status === "pending",
       theme: "dark",
+      toolUseId: id,
     }),
-    [status],
+    [status, id],
   );
 
   // Get structured result for interactive summary

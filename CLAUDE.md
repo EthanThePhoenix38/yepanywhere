@@ -1,14 +1,16 @@
 # Claude Anywhere
 
-## Required Reading
+A mobile-first supervisor for Claude Code agents. Like the VS Code Claude extension, but designed for phones and multi-session workflows.
 
-This is a new project. Before starting any task, read all files in `docs/project/` to understand the project vision and architecture:
+**Key ideas:**
+- **Server-owned processes** — Claude runs on your dev machine; client disconnects don't interrupt work
+- **Multi-session dashboard** — See all projects at a glance, no window cycling
+- **Mobile supervision** — Push notifications for approvals, respond from your lock screen
+- **Zero external dependencies** — No Firebase, no accounts, just Tailscale for network access
 
-- `docs/project/claude-anywhere-vision.md` - Core vision and goals
-- `docs/project/project-vision.md` - Project overview
-- `docs/project/security-setup.md` - Security configuration
+**Architecture:** Hono server manages Claude SDK processes. React client connects via SSE for real-time streaming. Sessions persist to jsonl files (handled by SDK).
 
-This ensures all agents have a shared understanding of what we're building.
+For detailed overview, see `docs/project/`. Historical vision docs in `docs/archive/`.
 
 ## After Editing Code
 

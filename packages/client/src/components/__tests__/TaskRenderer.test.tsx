@@ -43,15 +43,18 @@ const sampleAgentMessages: Message[] = [
 function TestWrapper({
   children,
   agentContent = {},
+  toolUseToAgent = new Map(),
 }: {
   children: React.ReactNode;
   agentContent?: AgentContentMap;
+  toolUseToAgent?: Map<string, string>;
 }) {
   return (
     <div data-project-id="proj-1" data-session-id="session-1">
       <AgentContentProvider
         agentContent={agentContent}
         setAgentContent={() => {}}
+        toolUseToAgent={toolUseToAgent}
         projectId="proj-1"
         sessionId="session-1"
       >

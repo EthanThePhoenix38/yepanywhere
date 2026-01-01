@@ -12,6 +12,8 @@ import type { Message } from "../types";
 interface AgentContentContextValue {
   /** Map of agentId → agent content (messages + status) */
   agentContent: AgentContentMap;
+  /** Mapping from Task tool_use_id → agentId (for rendering during streaming) */
+  toolUseToAgent: Map<string, string>;
   /** Load agent content from server (for lazy-loading completed tasks) */
   loadAgentContent: (
     projectId: string,
@@ -20,6 +22,8 @@ interface AgentContentContextValue {
   ) => Promise<AgentContent>;
   /** Check if content is currently being loaded for an agent */
   isLoading: (agentId: string) => boolean;
+  /** The current project ID */
+  projectId: string;
 }
 
 export const AgentContentContext =
@@ -31,6 +35,8 @@ interface AgentContentProviderProps {
   agentContent: AgentContentMap;
   /** Update agentContent state (for merging loaded content) */
   setAgentContent: React.Dispatch<React.SetStateAction<AgentContentMap>>;
+  /** Mapping from Task tool_use_id → agentId (for rendering during streaming) */
+  toolUseToAgent: Map<string, string>;
   projectId: string;
   sessionId: string;
 }
@@ -39,6 +45,7 @@ export function AgentContentProvider({
   children,
   agentContent,
   setAgentContent,
+  toolUseToAgent,
   projectId,
   sessionId,
 }: AgentContentProviderProps) {
@@ -118,8 +125,10 @@ export function AgentContentProvider({
 
   const value: AgentContentContextValue = {
     agentContent,
+    toolUseToAgent,
     loadAgentContent,
     isLoading,
+    projectId,
   };
 
   return (

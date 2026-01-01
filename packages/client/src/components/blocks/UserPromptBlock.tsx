@@ -1,5 +1,9 @@
 import { memo, useState } from "react";
-import { getFilename, parseUserPrompt } from "../../lib/parseUserPrompt";
+import {
+  type UploadedFileInfo,
+  getFilename,
+  parseUserPrompt,
+} from "../../lib/parseUserPrompt";
 import type { ContentBlock } from "../../types";
 
 const MAX_LINES = 12;
@@ -24,6 +28,27 @@ function OpenedFilesMetadata({ files }: { files: string[] }) {
           title={`file was opened in editor: ${filePath}`}
         >
           {getFilename(filePath)}
+        </span>
+      ))}
+    </div>
+  );
+}
+
+/**
+ * Renders uploaded file attachments below the user prompt
+ */
+function UploadedFilesMetadata({ files }: { files: UploadedFileInfo[] }) {
+  if (files.length === 0) return null;
+
+  return (
+    <div className="user-prompt-metadata">
+      {files.map((file) => (
+        <span
+          key={file.path}
+          className="uploaded-file"
+          title={`${file.mimeType}, ${file.size}`}
+        >
+          📎 {file.originalName}
         </span>
       ))}
     </div>
@@ -86,12 +111,16 @@ export const UserPromptBlock = memo(function UserPromptBlock({
   content,
 }: Props) {
   if (typeof content === "string") {
-    const { text, openedFiles } = parseUserPrompt(content);
+    const { text, openedFiles, uploadedFiles } = parseUserPrompt(content);
 
     // Don't render if there's no actual text content
     if (!text) {
-      return openedFiles.length > 0 ? (
-        <OpenedFilesMetadata files={openedFiles} />
+      const hasMetadata = openedFiles.length > 0 || uploadedFiles.length > 0;
+      return hasMetadata ? (
+        <>
+          <UploadedFilesMetadata files={uploadedFiles} />
+          <OpenedFilesMetadata files={openedFiles} />
+        </>
       ) : null;
     }
 
@@ -100,6 +129,7 @@ export const UserPromptBlock = memo(function UserPromptBlock({
         <div className="message message-user-prompt">
           <div className="message-content">
             <CollapsibleText text={text} />
+            <UploadedFilesMetadata files={uploadedFiles} />
           </div>
         </div>
         <OpenedFilesMetadata files={openedFiles} />
@@ -114,11 +144,15 @@ export const UserPromptBlock = memo(function UserPromptBlock({
     .join("\n");
 
   // Parse the combined text content for metadata
-  const { text, openedFiles } = parseUserPrompt(textContent);
+  const { text, openedFiles, uploadedFiles } = parseUserPrompt(textContent);
 
   if (!text) {
-    return openedFiles.length > 0 ? (
-      <OpenedFilesMetadata files={openedFiles} />
+    const hasMetadata = openedFiles.length > 0 || uploadedFiles.length > 0;
+    return hasMetadata ? (
+      <>
+        <UploadedFilesMetadata files={uploadedFiles} />
+        <OpenedFilesMetadata files={openedFiles} />
+      </>
     ) : (
       <div className="message message-user-prompt">
         <div className="message-content">
@@ -133,6 +167,7 @@ export const UserPromptBlock = memo(function UserPromptBlock({
       <div className="message message-user-prompt">
         <div className="message-content">
           <CollapsibleText text={text} />
+          <UploadedFilesMetadata files={uploadedFiles} />
         </div>
       </div>
       <OpenedFilesMetadata files={openedFiles} />

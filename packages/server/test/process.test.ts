@@ -447,7 +447,7 @@ describe("Process", () => {
       const pendingRequest = process.getPendingInputRequest();
       expect(pendingRequest).not.toBeNull();
       expect(pendingRequest?.toolName).toBe("ExitPlanMode");
-      process.respondToInput(pendingRequest!.id, "approve");
+      process.respondToInput(pendingRequest?.id, "approve");
 
       const result = await approvalPromise;
       expect(result.behavior).toBe("allow");
@@ -481,7 +481,7 @@ describe("Process", () => {
       const pendingRequest = process.getPendingInputRequest();
       expect(pendingRequest).not.toBeNull();
       expect(pendingRequest?.toolName).toBe("AskUserQuestion");
-      process.respondToInput(pendingRequest!.id, "approve", { "test?": "Yes" });
+      process.respondToInput(pendingRequest?.id, "approve", { "test?": "Yes" });
 
       const result = await approvalPromise;
       expect(result.behavior).toBe("allow");
@@ -523,6 +523,72 @@ describe("Process", () => {
       expect(writeResult.behavior).toBe("allow");
     });
 
+    it("handleToolApproval auto-allows read-only tools in default mode", async () => {
+      const iterator = createMockIterator([]);
+      const process = new Process(iterator, {
+        projectPath: "/test",
+        projectId: "proj-1",
+        sessionId: "sess-1",
+        idleTimeoutMs: 100,
+        permissionMode: "default",
+      });
+
+      const abortController = new AbortController();
+
+      // Read-only tools should be auto-allowed in default mode (ask before EDITS, not reads)
+      for (const tool of [
+        "Read",
+        "Glob",
+        "Grep",
+        "LSP",
+        "WebFetch",
+        "WebSearch",
+        "Task",
+        "TaskOutput",
+      ]) {
+        const result = await process.handleToolApproval(
+          tool,
+          {},
+          { signal: abortController.signal },
+        );
+        expect(result.behavior).toBe("allow");
+      }
+    });
+
+    it("handleToolApproval prompts user for mutating tools in default mode", async () => {
+      const iterator = createMockIterator([]);
+      const process = new Process(iterator, {
+        projectPath: "/test",
+        projectId: "proj-1",
+        sessionId: "sess-1",
+        idleTimeoutMs: 100,
+        permissionMode: "default",
+      });
+
+      const abortController = new AbortController();
+
+      // Edit should prompt the user in default mode
+      const approvalPromise = process.handleToolApproval(
+        "Edit",
+        { file: "test.ts" },
+        { signal: abortController.signal },
+      );
+
+      // Should be in waiting-input state (prompting user)
+      expect(process.state.type).toBe("waiting-input");
+
+      // Simulate user approving
+      const pendingRequest = process.getPendingInputRequest();
+      expect(pendingRequest).not.toBeNull();
+      expect(pendingRequest?.toolName).toBe("Edit");
+      if (pendingRequest) {
+        process.respondToInput(pendingRequest.id, "approve");
+      }
+
+      const result = await approvalPromise;
+      expect(result.behavior).toBe("allow");
+    });
+
     it("handles concurrent tool approvals (queues them)", async () => {
       const iterator = createMockIterator([]);
       const process = new Process(iterator, {
@@ -535,28 +601,29 @@ describe("Process", () => {
 
       const abortController = new AbortController();
 
-      // Start two concurrent tool approvals
+      // Start two concurrent tool approvals for tools that require approval (Bash, not Read)
       const approval1 = process.handleToolApproval(
-        "Read",
-        { file_path: "/tmp/file1.txt" },
+        "Bash",
+        { command: "ls -la" },
         { signal: abortController.signal },
       );
       const approval2 = process.handleToolApproval(
-        "Read",
-        { file_path: "/tmp/file2.txt" },
+        "Bash",
+        { command: "pwd" },
         { signal: abortController.signal },
       );
 
       // Both should be pending - first one should be shown
       const firstRequest = process.getPendingInputRequest();
       expect(firstRequest).not.toBeNull();
-      expect(firstRequest?.toolName).toBe("Read");
+      expect(firstRequest?.toolName).toBe("Bash");
 
       // Process should be in waiting-input state
       expect(process.state.type).toBe("waiting-input");
 
       // Approve the first request
-      const firstId = firstRequest!.id;
+      if (!firstRequest) throw new Error("firstRequest should not be null");
+      const firstId = firstRequest.id;
       const responded1 = process.respondToInput(firstId, "approve");
       expect(responded1).toBe(true);
 
@@ -570,7 +637,8 @@ describe("Process", () => {
       expect(secondRequest?.id).not.toBe(firstId);
 
       // Approve the second request
-      const responded2 = process.respondToInput(secondRequest!.id, "approve");
+      if (!secondRequest) throw new Error("secondRequest should not be null");
+      const responded2 = process.respondToInput(secondRequest.id, "approve");
       expect(responded2).toBe(true);
 
       // Second approval should resolve
