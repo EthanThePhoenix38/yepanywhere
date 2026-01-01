@@ -5,21 +5,17 @@ import { api, uploadFile } from "../api/client";
 import { MessageInput, type UploadProgress } from "../components/MessageInput";
 import { MessageList } from "../components/MessageList";
 import { QuestionAnswerPanel } from "../components/QuestionAnswerPanel";
-import { Sidebar } from "../components/Sidebar";
 import { StatusIndicator } from "../components/StatusIndicator";
 import { ToastContainer } from "../components/Toast";
 import { ToolApprovalPanel } from "../components/ToolApprovalPanel";
-import { Modal } from "../components/ui/Modal";
 import type { DraftControls } from "../hooks/useDraftPersistence";
 import { useEngagementTracking } from "../hooks/useEngagementTracking";
-import { useMediaQuery } from "../hooks/useMediaQuery";
 import { getModelSetting, getThinkingSetting } from "../hooks/useModelSettings";
 import { useSession } from "../hooks/useSession";
-import { useSessions } from "../hooks/useSessions";
-import { useSidebarPreference } from "../hooks/useSidebarPreference";
 import { useToast } from "../hooks/useToast";
+import { useProjectLayout } from "../layouts";
 import { preprocessMessages } from "../lib/preprocessMessages";
-import { type Project, getSessionDisplayTitle } from "../types";
+import { getSessionDisplayTitle } from "../types";
 
 export function SessionPage() {
   const { projectId, sessionId } = useParams<{
@@ -49,6 +45,7 @@ function SessionPageContent({
   projectId: string;
   sessionId: string;
 }) {
+  const { openSidebar, isWideScreen } = useProjectLayout();
   const navigate = useNavigate();
   const location = useLocation();
   // Get initial status from navigation state (passed by NewSessionPage)
@@ -73,26 +70,19 @@ function SessionPageContent({
     addUserMessage,
     removeOptimisticMessage,
   } = useSession(projectId, sessionId, initialStatus);
-  const { sessions: allSessions, processStates } = useSessions(projectId);
   const [sending, setSending] = useState(false);
-  const [project, setProject] = useState<Project | null>(null);
   const [scrollTrigger, setScrollTrigger] = useState(0);
-  const [sidebarOpen, setSidebarOpen] = useState(false);
-
-  // Desktop layout hooks
-  const isWideScreen = useMediaQuery("(min-width: 1100px)");
-  const { isExpanded, toggleExpanded } = useSidebarPreference();
   const draftControlsRef = useRef<DraftControls | null>(null);
   const handleDraftControlsReady = useCallback((controls: DraftControls) => {
     draftControlsRef.current = controls;
   }, []);
   const { toasts, showToast, dismissToast } = useToast();
 
-  // Rename modal state
-  const [showRenameModal, setShowRenameModal] = useState(false);
+  // Inline title editing state
+  const [isEditingTitle, setIsEditingTitle] = useState(false);
   const [renameValue, setRenameValue] = useState("");
   const [isRenaming, setIsRenaming] = useState(false);
-  const renameInputRef = useRef<HTMLTextAreaElement>(null);
+  const renameInputRef = useRef<HTMLInputElement>(null);
 
   // Session menu dropdown state
   const [showSessionMenu, setShowSessionMenu] = useState(false);
@@ -130,11 +120,6 @@ function SessionPageContent({
     lastSeenAt: session?.lastSeenAt,
     enabled: status.state !== "external",
   });
-
-  // Fetch project info
-  useEffect(() => {
-    api.getProject(projectId).then((data) => setProject(data.project));
-  }, [projectId]);
 
   // Close session menu when clicking outside
   useEffect(() => {
@@ -347,29 +332,44 @@ function SessionPageContent({
   const isArchived = localIsArchived ?? session?.isArchived ?? false;
   const isStarred = localIsStarred ?? session?.isStarred ?? false;
 
-  const handleOpenRename = () => {
+  const handleStartEditingTitle = () => {
     setRenameValue(displayTitle);
-    setShowRenameModal(true);
-    // Focus the input and select all text after modal opens
+    setIsEditingTitle(true);
+    // Focus the input and select all text after it renders
     setTimeout(() => {
       renameInputRef.current?.focus();
       renameInputRef.current?.select();
     }, 0);
   };
 
-  const handleRename = async () => {
-    if (!renameValue.trim()) return;
+  const handleCancelEditingTitle = () => {
+    setIsEditingTitle(false);
+    setRenameValue("");
+  };
+
+  const handleSaveTitle = async () => {
+    if (!renameValue.trim() || isRenaming) return;
     setIsRenaming(true);
     try {
       await api.updateSessionMetadata(sessionId, { title: renameValue.trim() });
       setLocalCustomTitle(renameValue.trim());
-      setShowRenameModal(false);
+      setIsEditingTitle(false);
       showToast("Session renamed", "success");
     } catch (err) {
       console.error("Failed to rename session:", err);
       showToast("Failed to rename session", "error");
     } finally {
       setIsRenaming(false);
+    }
+  };
+
+  const handleTitleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      handleSaveTitle();
+    } else if (e.key === "Escape") {
+      e.preventDefault();
+      handleCancelEditingTitle();
     }
   };
 
@@ -425,313 +425,242 @@ function SessionPageContent({
   );
 
   return (
-    <div className={`session-page ${isWideScreen ? "desktop-layout" : ""}`}>
+    <div
+      className={isWideScreen ? "main-content-wrapper" : "main-content-mobile"}
+    >
       <ToastContainer toasts={toasts} onDismiss={dismissToast} />
-
-      {/* Desktop sidebar - always visible on wide screens */}
-      {isWideScreen && (
-        <aside
-          className={`sidebar-desktop ${!isExpanded ? "sidebar-collapsed" : ""}`}
-        >
-          <Sidebar
-            isOpen={true}
-            onClose={() => {}}
-            projectId={projectId}
-            currentSessionId={sessionId}
-            sessions={allSessions}
-            processStates={processStates}
-            onNavigate={() => {}}
-            isDesktop={true}
-            isCollapsed={!isExpanded}
-            onToggleExpanded={toggleExpanded}
-          />
-        </aside>
-      )}
-
-      {/* Mobile sidebar - modal overlay */}
-      {!isWideScreen && (
-        <Sidebar
-          isOpen={sidebarOpen}
-          onClose={() => setSidebarOpen(false)}
-          projectId={projectId}
-          currentSessionId={sessionId}
-          sessions={allSessions}
-          processStates={processStates}
-          onNavigate={() => setSidebarOpen(false)}
-        />
-      )}
-
-      {/* Main content wrapper for desktop centering */}
       <div
         className={
-          isWideScreen ? "main-content-wrapper" : "main-content-mobile"
+          isWideScreen
+            ? "main-content-constrained"
+            : "main-content-mobile-inner"
         }
       >
-        <div
-          className={
-            isWideScreen
-              ? "main-content-constrained"
-              : "main-content-mobile-inner"
-          }
-        >
-          <header className="session-header">
-            <div className="session-header-inner">
-              <div className="session-header-left">
-                {/* Sidebar toggle - only visible on mobile */}
-                <button
-                  type="button"
-                  className="sidebar-toggle"
-                  onClick={() => setSidebarOpen(true)}
-                  title="Open sidebar"
-                  aria-label="Open sidebar"
-                >
-                  <SidebarIcon />
-                </button>
-                <div className="session-title-row">
-                  {isStarred && (
-                    <svg
-                      className="star-indicator-inline"
-                      width="12"
-                      height="12"
-                      viewBox="0 0 24 24"
-                      fill="currentColor"
-                      stroke="currentColor"
-                      strokeWidth="2"
-                      role="img"
-                      aria-label="Starred"
-                    >
-                      <title>Starred</title>
-                      <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
-                    </svg>
-                  )}
-                  <span
+        <header className="session-header">
+          <div className="session-header-inner">
+            <div className="session-header-left">
+              {/* Sidebar toggle - only visible on mobile */}
+              <button
+                type="button"
+                className="sidebar-toggle"
+                onClick={openSidebar}
+                title="Open sidebar"
+                aria-label="Open sidebar"
+              >
+                <SidebarIcon />
+              </button>
+              <div className="session-title-row">
+                {isStarred && (
+                  <svg
+                    className="star-indicator-inline"
+                    width="12"
+                    height="12"
+                    viewBox="0 0 24 24"
+                    fill="currentColor"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    role="img"
+                    aria-label="Starred"
+                  >
+                    <title>Starred</title>
+                    <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
+                  </svg>
+                )}
+                {isEditingTitle ? (
+                  <input
+                    ref={renameInputRef}
+                    type="text"
+                    className="session-title-input"
+                    value={renameValue}
+                    onChange={(e) => setRenameValue(e.target.value)}
+                    onKeyDown={handleTitleKeyDown}
+                    onBlur={handleCancelEditingTitle}
+                    disabled={isRenaming}
+                  />
+                ) : (
+                  <button
+                    type="button"
                     className="session-title"
-                    title={session?.fullTitle ?? undefined}
+                    onClick={handleStartEditingTitle}
+                    title={session?.fullTitle ?? "Click to rename"}
                   >
                     {displayTitle}
-                  </span>
-                  {isArchived && (
-                    <span className="archived-badge">Archived</span>
-                  )}
-                  <div className="session-menu-wrapper" ref={sessionMenuRef}>
-                    <button
-                      type="button"
-                      className="session-menu-trigger"
-                      onClick={() => setShowSessionMenu(!showSessionMenu)}
-                      title="Session options"
-                      aria-label="Session options"
-                      aria-expanded={showSessionMenu}
+                  </button>
+                )}
+                {isArchived && <span className="archived-badge">Archived</span>}
+                <div className="session-menu-wrapper" ref={sessionMenuRef}>
+                  <button
+                    type="button"
+                    className="session-menu-trigger"
+                    onClick={() => setShowSessionMenu(!showSessionMenu)}
+                    title="Session options"
+                    aria-label="Session options"
+                    aria-expanded={showSessionMenu}
+                  >
+                    <svg
+                      width="16"
+                      height="16"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                      aria-hidden="true"
                     >
-                      <svg
-                        width="16"
-                        height="16"
-                        viewBox="0 0 24 24"
-                        fill="none"
-                        stroke="currentColor"
-                        strokeWidth="2"
-                        aria-hidden="true"
+                      <polyline points="6 9 12 15 18 9" />
+                    </svg>
+                  </button>
+                  {showSessionMenu && (
+                    <div className="session-menu-dropdown">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          handleToggleStar();
+                          setShowSessionMenu(false);
+                        }}
                       >
-                        <polyline points="6 9 12 15 18 9" />
-                      </svg>
-                    </button>
-                    {showSessionMenu && (
-                      <div className="session-menu-dropdown">
-                        <button
-                          type="button"
-                          onClick={() => {
-                            handleToggleStar();
-                            setShowSessionMenu(false);
-                          }}
+                        <svg
+                          width="14"
+                          height="14"
+                          viewBox="0 0 24 24"
+                          fill={isStarred ? "currentColor" : "none"}
+                          stroke="currentColor"
+                          strokeWidth="2"
+                          aria-hidden="true"
                         >
-                          <svg
-                            width="14"
-                            height="14"
-                            viewBox="0 0 24 24"
-                            fill={isStarred ? "currentColor" : "none"}
-                            stroke="currentColor"
-                            strokeWidth="2"
-                            aria-hidden="true"
-                          >
-                            <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
-                          </svg>
-                          {isStarred ? "Unstar" : "Star"}
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            handleOpenRename();
-                            setShowSessionMenu(false);
-                          }}
+                          <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
+                        </svg>
+                        {isStarred ? "Unstar" : "Star"}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          handleStartEditingTitle();
+                          setShowSessionMenu(false);
+                        }}
+                      >
+                        <svg
+                          width="14"
+                          height="14"
+                          viewBox="0 0 24 24"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="2"
+                          aria-hidden="true"
                         >
-                          <svg
-                            width="14"
-                            height="14"
-                            viewBox="0 0 24 24"
-                            fill="none"
-                            stroke="currentColor"
-                            strokeWidth="2"
-                            aria-hidden="true"
-                          >
-                            <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
-                            <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
-                          </svg>
-                          Rename
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            handleToggleArchive();
-                            setShowSessionMenu(false);
-                          }}
+                          <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
+                          <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
+                        </svg>
+                        Rename
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          handleToggleArchive();
+                          setShowSessionMenu(false);
+                        }}
+                      >
+                        <svg
+                          width="14"
+                          height="14"
+                          viewBox="0 0 24 24"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="2"
+                          aria-hidden="true"
                         >
-                          <svg
-                            width="14"
-                            height="14"
-                            viewBox="0 0 24 24"
-                            fill="none"
-                            stroke="currentColor"
-                            strokeWidth="2"
-                            aria-hidden="true"
-                          >
-                            <polyline points="21 8 21 21 3 21 3 8" />
-                            <rect x="1" y="3" width="22" height="5" />
-                            <line x1="10" y1="12" x2="14" y2="12" />
-                          </svg>
-                          {isArchived ? "Unarchive" : "Archive"}
-                        </button>
-                      </div>
-                    )}
-                  </div>
+                          <polyline points="21 8 21 21 3 21 3 8" />
+                          <rect x="1" y="3" width="22" height="5" />
+                          <line x1="10" y1="12" x2="14" y2="12" />
+                        </svg>
+                        {isArchived ? "Unarchive" : "Archive"}
+                      </button>
+                    </div>
+                  )}
                 </div>
               </div>
-              <StatusIndicator
-                status={status}
-                connected={connected}
-                processState={processState}
-              />
             </div>
-          </header>
-
-          {showRenameModal && (
-            <Modal
-              title="Rename Session"
-              onClose={() => setShowRenameModal(false)}
-            >
-              <div className="rename-modal-content">
-                <textarea
-                  ref={renameInputRef}
-                  value={renameValue}
-                  onChange={(e) => setRenameValue(e.target.value)}
-                  placeholder="Enter session title..."
-                  className="rename-input"
-                  rows={3}
-                  onKeyDown={(e) => {
-                    if (
-                      e.key === "Enter" &&
-                      (e.metaKey || e.ctrlKey) &&
-                      !isRenaming
-                    ) {
-                      handleRename();
-                    }
-                  }}
-                />
-                <div className="rename-modal-actions">
-                  <button
-                    type="button"
-                    onClick={() => setShowRenameModal(false)}
-                    className="btn-secondary"
-                    disabled={isRenaming}
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    type="button"
-                    onClick={handleRename}
-                    className="btn-primary"
-                    disabled={isRenaming || !renameValue.trim()}
-                  >
-                    {isRenaming ? "Saving..." : "Save"}
-                  </button>
-                </div>
-              </div>
-            </Modal>
-          )}
-
-          {status.state === "external" && (
-            <div className="external-session-warning">
-              External session active - enter messages at your own risk!
-            </div>
-          )}
-
-          {hasPendingToolCalls && (
-            <div className="external-session-warning pending-tool-warning">
-              This session may be waiting for input in another process (VS Code,
-              CLI). Check there before sending a message.
-            </div>
-          )}
-
-          <main className="session-messages">
-            <MessageList
-              messages={messages}
-              isProcessing={
-                status.state === "owned" && processState === "running"
-              }
-              scrollTrigger={scrollTrigger}
+            <StatusIndicator
+              status={status}
+              connected={connected}
+              processState={processState}
             />
-          </main>
+          </div>
+        </header>
 
-          <footer className="session-input">
-            <div className="session-input-inner">
-              {pendingInputRequest &&
-                pendingInputRequest.sessionId === sessionId &&
-                isAskUserQuestion && (
-                  <QuestionAnswerPanel
-                    request={pendingInputRequest}
-                    onSubmit={handleQuestionSubmit}
-                    onDeny={handleDeny}
-                  />
-                )}
-              {pendingInputRequest &&
-                pendingInputRequest.sessionId === sessionId &&
-                !isAskUserQuestion && (
-                  <ToolApprovalPanel
-                    request={pendingInputRequest}
-                    onApprove={handleApprove}
-                    onDeny={handleDeny}
-                    onApproveAcceptEdits={handleApproveAcceptEdits}
-                    onDenyWithFeedback={handleDenyWithFeedback}
-                  />
-                )}
-              <MessageInput
-                onSend={handleSend}
-                disabled={sending}
-                placeholder={
-                  status.state === "idle"
-                    ? "Send a message to resume..."
-                    : status.state === "external"
-                      ? "External session - send at your own risk..."
-                      : "Queue a message..."
-                }
-                mode={permissionMode}
-                onModeChange={setPermissionMode}
-                isModePending={isModePending}
-                isRunning={status.state === "owned"}
-                isThinking={processState === "running"}
-                onStop={handleAbort}
-                draftKey={`draft-message-${sessionId}`}
-                onDraftControlsReady={handleDraftControlsReady}
-                collapsed={!!pendingInputRequest}
-                contextUsage={session?.contextUsage}
-                projectId={projectId}
-                sessionId={sessionId}
-                attachments={attachments}
-                onAttach={handleAttach}
-                onRemoveAttachment={handleRemoveAttachment}
-                uploadProgress={uploadProgress}
-              />
-            </div>
-          </footer>
-        </div>
+        {status.state === "external" && (
+          <div className="external-session-warning">
+            External session active - enter messages at your own risk!
+          </div>
+        )}
+
+        {hasPendingToolCalls && (
+          <div className="external-session-warning pending-tool-warning">
+            This session may be waiting for input in another process (VS Code,
+            CLI). Check there before sending a message.
+          </div>
+        )}
+
+        <main className="session-messages">
+          <MessageList
+            messages={messages}
+            isProcessing={
+              status.state === "owned" && processState === "running"
+            }
+            scrollTrigger={scrollTrigger}
+          />
+        </main>
+
+        <footer className="session-input">
+          <div className="session-input-inner">
+            {pendingInputRequest &&
+              pendingInputRequest.sessionId === sessionId &&
+              isAskUserQuestion && (
+                <QuestionAnswerPanel
+                  request={pendingInputRequest}
+                  onSubmit={handleQuestionSubmit}
+                  onDeny={handleDeny}
+                />
+              )}
+            {pendingInputRequest &&
+              pendingInputRequest.sessionId === sessionId &&
+              !isAskUserQuestion && (
+                <ToolApprovalPanel
+                  request={pendingInputRequest}
+                  onApprove={handleApprove}
+                  onDeny={handleDeny}
+                  onApproveAcceptEdits={handleApproveAcceptEdits}
+                  onDenyWithFeedback={handleDenyWithFeedback}
+                />
+              )}
+            <MessageInput
+              onSend={handleSend}
+              disabled={sending}
+              placeholder={
+                status.state === "idle"
+                  ? "Send a message to resume..."
+                  : status.state === "external"
+                    ? "External session - send at your own risk..."
+                    : "Queue a message..."
+              }
+              mode={permissionMode}
+              onModeChange={setPermissionMode}
+              isModePending={isModePending}
+              isRunning={status.state === "owned"}
+              isThinking={processState === "running"}
+              onStop={handleAbort}
+              draftKey={`draft-message-${sessionId}`}
+              onDraftControlsReady={handleDraftControlsReady}
+              collapsed={!!pendingInputRequest}
+              contextUsage={session?.contextUsage}
+              projectId={projectId}
+              sessionId={sessionId}
+              attachments={attachments}
+              onAttach={handleAttach}
+              onRemoveAttachment={handleRemoveAttachment}
+              uploadProgress={uploadProgress}
+            />
+          </div>
+        </footer>
       </div>
     </div>
   );

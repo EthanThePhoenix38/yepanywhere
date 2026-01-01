@@ -340,7 +340,7 @@ export class Process {
    * Behavior depends on current permission mode:
    * - default: Ask user for approval
    * - acceptEdits: Auto-approve Edit/Write tools, ask for others
-   * - plan: Deny all tools (planning only)
+   * - plan: Auto-approve read-only tools (Read, Glob, Grep, etc.), prompt for others
    * - bypassPermissions: Auto-approve all tools
    */
   async handleToolApproval(

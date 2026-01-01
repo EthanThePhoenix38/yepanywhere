@@ -4,6 +4,7 @@ import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
 import { App } from "./App";
 import { initializeFontSize } from "./hooks/useFontSize";
 import { initializeTheme } from "./hooks/useTheme";
+import { ProjectLayout } from "./layouts";
 import { ActivityPage } from "./pages/ActivityPage";
 import { NewSessionPage } from "./pages/NewSessionPage";
 import { ProjectsPage } from "./pages/ProjectsPage";
@@ -28,15 +29,11 @@ createRoot(rootElement).render(
         <Routes>
           <Route path="/" element={<Navigate to="/projects" replace />} />
           <Route path="/projects" element={<ProjectsPage />} />
-          <Route path="/projects/:projectId" element={<SessionsPage />} />
-          <Route
-            path="/projects/:projectId/new-session"
-            element={<NewSessionPage />}
-          />
-          <Route
-            path="/projects/:projectId/sessions/:sessionId"
-            element={<SessionPage />}
-          />
+          <Route path="/projects/:projectId" element={<ProjectLayout />}>
+            <Route index element={<SessionsPage />} />
+            <Route path="new-session" element={<NewSessionPage />} />
+            <Route path="sessions/:sessionId" element={<SessionPage />} />
+          </Route>
           <Route path="/activity" element={<ActivityPage />} />
           <Route path="/settings" element={<SettingsPage />} />
         </Routes>

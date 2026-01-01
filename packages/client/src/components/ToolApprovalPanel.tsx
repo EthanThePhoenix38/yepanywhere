@@ -5,6 +5,10 @@ import { getToolSummary } from "./tools/summaries";
 // Tools that can be auto-approved with "accept edits" mode
 const EDIT_TOOLS = ["Edit", "Write", "NotebookEdit"];
 
+// Check if this is an ExitPlanMode approval (needs custom UI)
+const isExitPlanMode = (toolName: string | undefined) =>
+  toolName === "ExitPlanMode";
+
 interface Props {
   request: InputRequest;
   onApprove: () => Promise<void>;
@@ -93,24 +97,47 @@ export function ToolApprovalPanel({
         return;
       }
 
-      if (e.key === "1") {
-        e.preventDefault();
-        handleApprove();
-      } else if (e.key === "2" && isEditTool && onApproveAcceptEdits) {
-        e.preventDefault();
-        handleApproveAcceptEdits();
-      } else if (
-        e.key === "3" ||
-        (e.key === "2" && (!isEditTool || !onApproveAcceptEdits))
-      ) {
-        e.preventDefault();
-        handleDeny();
-      } else if (e.key === "Enter" && !e.shiftKey) {
-        e.preventDefault();
-        handleApprove();
-      } else if (e.key === "Escape") {
-        e.preventDefault();
-        handleDeny();
+      const isPlanMode = isExitPlanMode(request.toolName);
+
+      if (isPlanMode) {
+        // ExitPlanMode: 1=auto-accept, 2=manual, 3=deny
+        if (e.key === "1" && onApproveAcceptEdits) {
+          e.preventDefault();
+          handleApproveAcceptEdits();
+        } else if (e.key === "2") {
+          e.preventDefault();
+          handleApprove();
+        } else if (e.key === "3") {
+          e.preventDefault();
+          handleDeny();
+        } else if (e.key === "Enter" && !e.shiftKey && onApproveAcceptEdits) {
+          e.preventDefault();
+          handleApproveAcceptEdits();
+        } else if (e.key === "Escape") {
+          e.preventDefault();
+          handleDeny();
+        }
+      } else {
+        // Standard tool approval: 1=yes, 2=yes+auto (edit tools), 2/3=no
+        if (e.key === "1") {
+          e.preventDefault();
+          handleApprove();
+        } else if (e.key === "2" && isEditTool && onApproveAcceptEdits) {
+          e.preventDefault();
+          handleApproveAcceptEdits();
+        } else if (
+          e.key === "3" ||
+          (e.key === "2" && (!isEditTool || !onApproveAcceptEdits))
+        ) {
+          e.preventDefault();
+          handleDeny();
+        } else if (e.key === "Enter" && !e.shiftKey) {
+          e.preventDefault();
+          handleApprove();
+        } else if (e.key === "Escape") {
+          e.preventDefault();
+          handleDeny();
+        }
       }
     };
 
@@ -126,6 +153,7 @@ export function ToolApprovalPanel({
     feedback,
     isEditTool,
     onApproveAcceptEdits,
+    request.toolName,
   ]);
 
   const summary = request.toolName
@@ -137,7 +165,7 @@ export function ToolApprovalPanel({
       {/* Floating toggle button */}
       <button
         type="button"
-        className="tool-approval-toggle"
+        className={`tool-approval-toggle ${collapsed ? "has-pending" : ""}`}
         onClick={() => setCollapsed(!collapsed)}
         aria-label={
           collapsed ? "Expand approval panel" : "Collapse approval panel"
@@ -160,48 +188,105 @@ export function ToolApprovalPanel({
         </svg>
       </button>
 
+      {/* Collapsed indicator bar */}
+      {collapsed && (
+        <button
+          type="button"
+          className="tool-approval-collapsed-bar"
+          onClick={() => setCollapsed(false)}
+        >
+          <span className="tool-approval-collapsed-indicator" />
+          <span className="tool-approval-collapsed-text">
+            Waiting for approval
+          </span>
+        </button>
+      )}
+
       {!collapsed && (
         <div className="tool-approval-panel">
           <div className="tool-approval-header">
-            <span className="tool-approval-question">
-              Allow{" "}
-              <span className="tool-approval-name">{request.toolName}</span>{" "}
-              {summary}?
-            </span>
+            {isExitPlanMode(request.toolName) ? (
+              <>
+                <span className="tool-approval-title">Accept this plan?</span>
+                <span className="tool-approval-subtitle">
+                  Review the plan above and decide whether to proceed
+                </span>
+              </>
+            ) : (
+              <span className="tool-approval-question">
+                Allow{" "}
+                <span className="tool-approval-name">{request.toolName}</span>{" "}
+                {summary}?
+              </span>
+            )}
           </div>
 
           <div className="tool-approval-options">
-            <button
-              type="button"
-              className="tool-approval-option primary"
-              onClick={handleApprove}
-              disabled={submitting}
-            >
-              <kbd>1</kbd>
-              <span>Yes</span>
-            </button>
+            {isExitPlanMode(request.toolName) ? (
+              <>
+                <button
+                  type="button"
+                  className="tool-approval-option primary"
+                  onClick={handleApproveAcceptEdits}
+                  disabled={submitting || !onApproveAcceptEdits}
+                >
+                  <kbd>1</kbd>
+                  <span>Yes, and auto-accept</span>
+                </button>
+                <button
+                  type="button"
+                  className="tool-approval-option"
+                  onClick={handleApprove}
+                  disabled={submitting}
+                >
+                  <kbd>2</kbd>
+                  <span>Yes, and manually approve edits</span>
+                </button>
+                <button
+                  type="button"
+                  className="tool-approval-option"
+                  onClick={handleDeny}
+                  disabled={submitting}
+                >
+                  <kbd>3</kbd>
+                  <span>No, keep planning</span>
+                </button>
+              </>
+            ) : (
+              <>
+                <button
+                  type="button"
+                  className="tool-approval-option primary"
+                  onClick={handleApprove}
+                  disabled={submitting}
+                >
+                  <kbd>1</kbd>
+                  <span>Yes</span>
+                </button>
 
-            {isEditTool && onApproveAcceptEdits && (
-              <button
-                type="button"
-                className="tool-approval-option"
-                onClick={handleApproveAcceptEdits}
-                disabled={submitting}
-              >
-                <kbd>2</kbd>
-                <span>Yes, and don't ask again</span>
-              </button>
+                {isEditTool && onApproveAcceptEdits && (
+                  <button
+                    type="button"
+                    className="tool-approval-option"
+                    onClick={handleApproveAcceptEdits}
+                    disabled={submitting}
+                  >
+                    <kbd>2</kbd>
+                    <span>Yes, and don't ask again</span>
+                  </button>
+                )}
+
+                <button
+                  type="button"
+                  className="tool-approval-option"
+                  onClick={handleDeny}
+                  disabled={submitting}
+                >
+                  <kbd>{isEditTool && onApproveAcceptEdits ? "3" : "2"}</kbd>
+                  <span>No</span>
+                </button>
+              </>
             )}
-
-            <button
-              type="button"
-              className="tool-approval-option"
-              onClick={handleDeny}
-              disabled={submitting}
-            >
-              <kbd>{isEditTool && onApproveAcceptEdits ? "3" : "2"}</kbd>
-              <span>No</span>
-            </button>
 
             {onDenyWithFeedback && !showFeedback && (
               <button

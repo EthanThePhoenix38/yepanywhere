@@ -5,16 +5,13 @@ import {
   useRef,
   useState,
 } from "react";
-import { Link, useNavigate, useParams } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { type UploadedFile, api, uploadFile } from "../api/client";
 import { PageHeader } from "../components/PageHeader";
-import { Sidebar } from "../components/Sidebar";
 import { ENTER_SENDS_MESSAGE } from "../constants";
 import { useDraftPersistence } from "../hooks/useDraftPersistence";
-import { useMediaQuery } from "../hooks/useMediaQuery";
 import { getModelSetting, getThinkingSetting } from "../hooks/useModelSettings";
-import { useSessions } from "../hooks/useSessions";
-import { useSidebarPreference } from "../hooks/useSidebarPreference";
+import { useProjectLayout } from "../layouts";
 import type { PermissionMode } from "../types";
 
 interface PendingFile {
@@ -53,10 +50,9 @@ function formatSize(bytes: number): string {
 }
 
 export function NewSessionPage() {
-  const { projectId } = useParams<{ projectId: string }>();
+  const { projectId, project, loading, error, openSidebar, isWideScreen } =
+    useProjectLayout();
   const navigate = useNavigate();
-  const { project, sessions, loading, error, processStates } =
-    useSessions(projectId);
   const [message, setMessage, draftControls] = useDraftPersistence(
     `draft-new-session-${projectId}`,
   );
@@ -66,13 +62,8 @@ export function NewSessionPage() {
   const [uploadProgress, setUploadProgress] = useState<
     Record<string, { uploaded: number; total: number }>
   >({});
-  const [sidebarOpen, setSidebarOpen] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
-
-  // Desktop layout hooks
-  const isWideScreen = useMediaQuery("(min-width: 1100px)");
-  const { isExpanded, toggleExpanded } = useSidebarPreference();
 
   // Focus textarea on mount
   useEffect(() => {
@@ -114,7 +105,6 @@ export function NewSessionPage() {
 
     const trimmedMessage = message.trim();
     setIsStarting(true);
-    draftControls.clearInput();
 
     try {
       let sessionId: string;
@@ -212,54 +202,9 @@ export function NewSessionPage() {
     }
   };
 
-  if (loading)
+  // Render loading/error states
+  if (loading || error) {
     return (
-      <div className="new-session-page">
-        <div className="loading">Loading...</div>
-      </div>
-    );
-
-  if (error)
-    return (
-      <div className="new-session-page">
-        <div className="error">Error: {error.message}</div>
-      </div>
-    );
-
-  return (
-    <div className={`session-page ${isWideScreen ? "desktop-layout" : ""}`}>
-      {/* Desktop sidebar - always visible on wide screens */}
-      {isWideScreen && (
-        <aside
-          className={`sidebar-desktop ${!isExpanded ? "sidebar-collapsed" : ""}`}
-        >
-          <Sidebar
-            isOpen={true}
-            onClose={() => {}}
-            projectId={projectId ?? ""}
-            sessions={sessions}
-            processStates={processStates}
-            onNavigate={() => {}}
-            isDesktop={true}
-            isCollapsed={!isExpanded}
-            onToggleExpanded={toggleExpanded}
-          />
-        </aside>
-      )}
-
-      {/* Mobile sidebar - modal overlay */}
-      {!isWideScreen && (
-        <Sidebar
-          isOpen={sidebarOpen}
-          onClose={() => setSidebarOpen(false)}
-          projectId={projectId ?? ""}
-          sessions={sessions}
-          processStates={processStates}
-          onNavigate={() => setSidebarOpen(false)}
-        />
-      )}
-
-      {/* Main content wrapper for desktop centering */}
       <div
         className={
           isWideScreen ? "main-content-wrapper" : "main-content-mobile"
@@ -272,49 +217,188 @@ export function NewSessionPage() {
               : "main-content-mobile-inner"
           }
         >
-          <PageHeader
-            title={project?.name ?? "New Session"}
-            onOpenSidebar={() => setSidebarOpen(true)}
-          />
-
+          <PageHeader title="New Session" onOpenSidebar={openSidebar} />
           <main className="sessions-page-content">
-            <div className="new-session-container">
-              <div className="new-session-header">
-                <h1>Start a New Session</h1>
-                <p className="new-session-subtitle">
-                  What would you like to work on?
-                </p>
-              </div>
+            {loading ? (
+              <div className="loading">Loading...</div>
+            ) : (
+              <div className="error">Error: {error?.message}</div>
+            )}
+          </main>
+        </div>
+      </div>
+    );
+  }
 
-              {/* Message Input Area */}
-              <div className="new-session-input-area">
-                <textarea
-                  ref={textareaRef}
-                  value={message}
-                  onChange={(e) => setMessage(e.target.value)}
-                  onKeyDown={handleKeyDown}
-                  placeholder="Describe what you'd like Claude to help you with..."
-                  disabled={isStarting}
-                  rows={6}
-                  className="new-session-textarea"
+  return (
+    <div
+      className={isWideScreen ? "main-content-wrapper" : "main-content-mobile"}
+    >
+      <div
+        className={
+          isWideScreen
+            ? "main-content-constrained"
+            : "main-content-mobile-inner"
+        }
+      >
+        <PageHeader
+          title={project?.name ?? "New Session"}
+          onOpenSidebar={openSidebar}
+        />
+
+        <main className="sessions-page-content">
+          <div className="new-session-container">
+            <div className="new-session-header">
+              <h1>Start a New Session</h1>
+              <p className="new-session-subtitle">
+                What would you like to work on?
+              </p>
+            </div>
+
+            {/* Message Input Area */}
+            <div className="new-session-input-area">
+              <textarea
+                ref={textareaRef}
+                value={message}
+                onChange={(e) => setMessage(e.target.value)}
+                onKeyDown={handleKeyDown}
+                placeholder="Describe what you'd like Claude to help you with..."
+                disabled={isStarting}
+                rows={6}
+                className="new-session-textarea"
+              />
+
+              {/* File Attachments Section */}
+              <div className="new-session-attachments">
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  multiple
+                  style={{ display: "none" }}
+                  onChange={handleFileSelect}
                 />
 
-                {/* File Attachments Section */}
-                <div className="new-session-attachments">
-                  <input
-                    ref={fileInputRef}
-                    type="file"
-                    multiple
-                    style={{ display: "none" }}
-                    onChange={handleFileSelect}
-                  />
+                <button
+                  type="button"
+                  className="attach-files-button"
+                  onClick={() => fileInputRef.current?.click()}
+                  disabled={isStarting}
+                >
+                  <svg
+                    width="16"
+                    height="16"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    aria-hidden="true"
+                  >
+                    <path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48" />
+                  </svg>
+                  Attach files
+                </button>
 
+                {pendingFiles.length > 0 && (
+                  <div className="pending-files-list">
+                    {pendingFiles.map((pf) => {
+                      const progress = uploadProgress[pf.id];
+                      return (
+                        <div key={pf.id} className="pending-file-chip">
+                          {pf.previewUrl && (
+                            <img
+                              src={pf.previewUrl}
+                              alt=""
+                              className="pending-file-preview"
+                            />
+                          )}
+                          <div className="pending-file-info">
+                            <span className="pending-file-name">
+                              {pf.file.name}
+                            </span>
+                            <span className="pending-file-size">
+                              {progress
+                                ? `${Math.round((progress.uploaded / progress.total) * 100)}%`
+                                : formatSize(pf.file.size)}
+                            </span>
+                          </div>
+                          {!isStarting && (
+                            <button
+                              type="button"
+                              className="pending-file-remove"
+                              onClick={() => handleRemoveFile(pf.id)}
+                              aria-label={`Remove ${pf.file.name}`}
+                            >
+                              <svg
+                                width="14"
+                                height="14"
+                                viewBox="0 0 24 24"
+                                fill="none"
+                                stroke="currentColor"
+                                strokeWidth="2"
+                                aria-hidden="true"
+                              >
+                                <line x1="18" y1="6" x2="6" y2="18" />
+                                <line x1="6" y1="6" x2="18" y2="18" />
+                              </svg>
+                            </button>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Permission Mode Selection */}
+            <div className="new-session-mode-section">
+              <h3>Permission Mode</h3>
+              <div className="mode-options">
+                {MODE_ORDER.map((m) => (
                   <button
+                    key={m}
                     type="button"
-                    className="attach-files-button"
-                    onClick={() => fileInputRef.current?.click()}
+                    className={`mode-option ${mode === m ? "selected" : ""}`}
+                    onClick={() => handleModeSelect(m)}
                     disabled={isStarting}
                   >
+                    <span className={`mode-option-dot mode-${m}`} />
+                    <div className="mode-option-content">
+                      <span className="mode-option-label">
+                        {MODE_LABELS[m]}
+                      </span>
+                      <span className="mode-option-desc">
+                        {MODE_DESCRIPTIONS[m]}
+                      </span>
+                    </div>
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Submit Button */}
+            <div className="new-session-actions">
+              <Link
+                to={`/projects/${projectId}`}
+                className="cancel-button"
+                tabIndex={isStarting ? -1 : 0}
+              >
+                Cancel
+              </Link>
+              <button
+                type="button"
+                onClick={handleStartSession}
+                disabled={isStarting || !message.trim()}
+                className="start-session-button"
+              >
+                {isStarting ? (
+                  <>
+                    <span className="spinner" />
+                    Starting...
+                  </>
+                ) : (
+                  <>
+                    Start Session
                     <svg
                       width="16"
                       height="16"
@@ -324,131 +408,15 @@ export function NewSessionPage() {
                       strokeWidth="2"
                       aria-hidden="true"
                     >
-                      <path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48" />
+                      <line x1="5" y1="12" x2="19" y2="12" />
+                      <polyline points="12 5 19 12 12 19" />
                     </svg>
-                    Attach files
-                  </button>
-
-                  {pendingFiles.length > 0 && (
-                    <div className="pending-files-list">
-                      {pendingFiles.map((pf) => {
-                        const progress = uploadProgress[pf.id];
-                        return (
-                          <div key={pf.id} className="pending-file-chip">
-                            {pf.previewUrl && (
-                              <img
-                                src={pf.previewUrl}
-                                alt=""
-                                className="pending-file-preview"
-                              />
-                            )}
-                            <div className="pending-file-info">
-                              <span className="pending-file-name">
-                                {pf.file.name}
-                              </span>
-                              <span className="pending-file-size">
-                                {progress
-                                  ? `${Math.round((progress.uploaded / progress.total) * 100)}%`
-                                  : formatSize(pf.file.size)}
-                              </span>
-                            </div>
-                            {!isStarting && (
-                              <button
-                                type="button"
-                                className="pending-file-remove"
-                                onClick={() => handleRemoveFile(pf.id)}
-                                aria-label={`Remove ${pf.file.name}`}
-                              >
-                                <svg
-                                  width="14"
-                                  height="14"
-                                  viewBox="0 0 24 24"
-                                  fill="none"
-                                  stroke="currentColor"
-                                  strokeWidth="2"
-                                  aria-hidden="true"
-                                >
-                                  <line x1="18" y1="6" x2="6" y2="18" />
-                                  <line x1="6" y1="6" x2="18" y2="18" />
-                                </svg>
-                              </button>
-                            )}
-                          </div>
-                        );
-                      })}
-                    </div>
-                  )}
-                </div>
-              </div>
-
-              {/* Permission Mode Selection */}
-              <div className="new-session-mode-section">
-                <h3>Permission Mode</h3>
-                <div className="mode-options">
-                  {MODE_ORDER.map((m) => (
-                    <button
-                      key={m}
-                      type="button"
-                      className={`mode-option ${mode === m ? "selected" : ""}`}
-                      onClick={() => handleModeSelect(m)}
-                      disabled={isStarting}
-                    >
-                      <span className={`mode-option-dot mode-${m}`} />
-                      <div className="mode-option-content">
-                        <span className="mode-option-label">
-                          {MODE_LABELS[m]}
-                        </span>
-                        <span className="mode-option-desc">
-                          {MODE_DESCRIPTIONS[m]}
-                        </span>
-                      </div>
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              {/* Submit Button */}
-              <div className="new-session-actions">
-                <Link
-                  to={`/projects/${projectId}`}
-                  className="cancel-button"
-                  tabIndex={isStarting ? -1 : 0}
-                >
-                  Cancel
-                </Link>
-                <button
-                  type="button"
-                  onClick={handleStartSession}
-                  disabled={isStarting || !message.trim()}
-                  className="start-session-button"
-                >
-                  {isStarting ? (
-                    <>
-                      <span className="spinner" />
-                      Starting...
-                    </>
-                  ) : (
-                    <>
-                      Start Session
-                      <svg
-                        width="16"
-                        height="16"
-                        viewBox="0 0 24 24"
-                        fill="none"
-                        stroke="currentColor"
-                        strokeWidth="2"
-                        aria-hidden="true"
-                      >
-                        <line x1="5" y1="12" x2="19" y2="12" />
-                        <polyline points="12 5 19 12 12 19" />
-                      </svg>
-                    </>
-                  )}
-                </button>
-              </div>
+                  </>
+                )}
+              </button>
             </div>
-          </main>
-        </div>
+          </div>
+        </main>
       </div>
     </div>
   );
