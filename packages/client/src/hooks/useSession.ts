@@ -149,6 +149,13 @@ export function useSession(
   // Track current streaming agentId (if this is a subagent stream)
   const currentStreamingAgentIdRef = useRef<string | null>(null);
 
+  // Throttle streaming UI updates to avoid overwhelming React with re-renders
+  // Data accumulates in streamingContentRef immediately, but state updates are batched
+  const streamingThrottleRef = useRef<{
+    timer: ReturnType<typeof setTimeout> | null;
+    pendingIds: Set<string>;
+  }>({ timer: null, pendingIds: new Set() });
+
   // Add user message optimistically with a temp ID
   // Uses SDK message structure: { type, message: { role, content } }
   // Sets parentUuid for DAG-aware deduplication of identical messages
@@ -424,11 +431,14 @@ export function useSession(
     onFileChange: handleFileChange,
   });
 
-  // Cleanup throttle timer
+  // Cleanup throttle timers
   useEffect(() => {
     return () => {
       if (throttleRef.current.timer) {
         clearTimeout(throttleRef.current.timer);
+      }
+      if (streamingThrottleRef.current.timer) {
+        clearTimeout(streamingThrottleRef.current.timer);
       }
     };
   }, []);
@@ -500,6 +510,29 @@ export function useSession(
       return [...prev, streamingMessage];
     });
   }, []);
+
+  // Throttled version of updateStreamingMessage for delta events
+  // Batches rapid updates to reduce React re-renders during streaming
+  const STREAMING_THROTTLE_MS = 50; // Update UI at most every 50ms
+  const throttledUpdateStreamingMessage = useCallback(
+    (messageId: string) => {
+      const throttle = streamingThrottleRef.current;
+      throttle.pendingIds.add(messageId);
+
+      // If no timer running, start one
+      if (!throttle.timer) {
+        throttle.timer = setTimeout(() => {
+          // Flush all pending updates
+          for (const id of throttle.pendingIds) {
+            updateStreamingMessage(id);
+          }
+          throttle.pendingIds.clear();
+          throttle.timer = null;
+        }, STREAMING_THROTTLE_MS);
+      }
+    },
+    [updateStreamingMessage],
+  );
 
   // Subscribe to live updates
   const handleSSEMessage = useCallback(
@@ -606,6 +639,7 @@ export function useSession(
             }
           } else if (eventType === "content_block_delta") {
             // Content delta - append to existing block
+            // Use throttled updates to avoid overwhelming React with re-renders
             const index = event.index as number;
             const delta = event.delta as Record<string, unknown> | null;
             if (delta) {
@@ -619,7 +653,7 @@ export function useSession(
                   block.thinking =
                     (block.thinking ?? "") + (delta.thinking as string);
                 }
-                updateStreamingMessage(streamingId);
+                throttledUpdateStreamingMessage(streamingId);
               }
             }
           } else if (eventType === "content_block_stop") {
@@ -834,7 +868,12 @@ export function useSession(
         }
       }
     },
-    [applyServerModeUpdate, sessionId, updateStreamingMessage],
+    [
+      applyServerModeUpdate,
+      sessionId,
+      updateStreamingMessage,
+      throttledUpdateStreamingMessage,
+    ],
   );
 
   // Handle SSE errors by checking if process is still alive

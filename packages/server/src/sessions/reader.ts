@@ -143,10 +143,15 @@ export class SessionReader {
         })
         .filter((m): m is RawSessionMessage => m !== null);
 
-      // Filter to only user/assistant messages (not internal types like file-history-snapshot, queue-operation)
-      const conversationMessages = messages.filter(
-        (m) => m.type === "user" || m.type === "assistant",
-      );
+      // Build DAG and get active branch (filters out dead branches from rewinds, etc.)
+      const { activeBranch } = buildDag(messages);
+
+      // Filter active branch to user/assistant messages only
+      const conversationMessages = activeBranch
+        .filter(
+          (node) => node.raw.type === "user" || node.raw.type === "assistant",
+        )
+        .map((node) => node.raw);
 
       // Skip sessions with no actual conversation messages (metadata-only files).
       // Note: Newly created sessions may not have user/assistant messages yet (SDK writes async).
@@ -407,6 +412,11 @@ export class SessionReader {
             (usage.input_tokens ?? 0) +
             (usage.cache_read_input_tokens ?? 0) +
             (usage.cache_creation_input_tokens ?? 0);
+
+          // Skip messages with zero tokens (incomplete streaming messages)
+          if (inputTokens === 0) {
+            continue;
+          }
 
           const percentage = Math.round(
             (inputTokens / CONTEXT_WINDOW_SIZE) * 100,

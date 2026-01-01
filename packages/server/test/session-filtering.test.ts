@@ -8,6 +8,25 @@ import { MockClaudeSDK } from "../src/sdk/mock.js";
 import { encodeProjectId } from "../src/supervisor/types.js";
 
 /**
+ * Helper to create a message with a UUID (required for DAG processing).
+ * Messages without UUIDs are skipped by the DAG builder.
+ */
+function createMessage(
+  type: "user" | "assistant",
+  content: string,
+  parentUuid?: string | null,
+  extraFields: Record<string, unknown> = {},
+): string {
+  return JSON.stringify({
+    type,
+    uuid: randomUUID(),
+    parentUuid: parentUuid ?? null,
+    message: { content },
+    ...extraFields,
+  });
+}
+
+/**
  * Tests for session filtering behavior.
  *
  * Claude Code creates various types of .jsonl files that shouldn't be shown
@@ -44,20 +63,14 @@ describe("Session Filtering", () => {
       // Create a valid session
       await writeFile(
         join(projectDir, "valid-session.jsonl"),
-        `${JSON.stringify({
-          type: "user",
-          cwd: projectPath,
-          message: { content: "Hello" },
-        })}\n`,
+        `${createMessage("user", "Hello", null, { cwd: projectPath })}\n`,
       );
 
       // Create an agent warmup session (should be excluded)
       await writeFile(
         join(projectDir, "agent-abc123.jsonl"),
-        `${JSON.stringify({
-          type: "user",
+        `${createMessage("user", "Warmup", null, {
           cwd: projectPath,
-          message: { content: "Warmup" },
           isSidechain: true,
           agentId: "abc123",
         })}\n`,
@@ -76,30 +89,18 @@ describe("Session Filtering", () => {
       // Create valid sessions
       await writeFile(
         join(projectDir, "sess-1.jsonl"),
-        `${JSON.stringify({
-          type: "user",
-          cwd: projectPath,
-          message: { content: "Hello 1" },
-        })}\n`,
+        `${createMessage("user", "Hello 1", null, { cwd: projectPath })}\n`,
       );
       await writeFile(
         join(projectDir, "sess-2.jsonl"),
-        `${JSON.stringify({
-          type: "user",
-          cwd: projectPath,
-          message: { content: "Hello 2" },
-        })}\n`,
+        `${createMessage("user", "Hello 2", null, { cwd: projectPath })}\n`,
       );
 
       // Create multiple agent sessions (should be excluded from count)
       for (let i = 0; i < 5; i++) {
         await writeFile(
           join(projectDir, `agent-${i}.jsonl`),
-          `${JSON.stringify({
-            type: "user",
-            cwd: projectPath,
-            message: { content: "Warmup" },
-          })}\n`,
+          `${createMessage("user", "Warmup", null, { cwd: projectPath })}\n`,
         );
       }
 
@@ -122,11 +123,7 @@ describe("Session Filtering", () => {
       // Create a valid session
       await writeFile(
         join(projectDir, "valid-session.jsonl"),
-        `${JSON.stringify({
-          type: "user",
-          cwd: projectPath,
-          message: { content: "Hello" },
-        })}\n`,
+        `${createMessage("user", "Hello", null, { cwd: projectPath })}\n`,
       );
 
       // Create an empty file
@@ -151,11 +148,7 @@ describe("Session Filtering", () => {
       // Create a valid session
       await writeFile(
         join(projectDir, "valid-session.jsonl"),
-        `${JSON.stringify({
-          type: "user",
-          cwd: projectPath,
-          message: { content: "Hello" },
-        })}\n`,
+        `${createMessage("user", "Hello", null, { cwd: projectPath })}\n`,
       );
 
       // Create a file with only file-history-snapshot entries
@@ -196,21 +189,28 @@ describe("Session Filtering", () => {
 
     it("counts only user/assistant messages in messageCount", async () => {
       // Create a session with mixed message types
+      // Build a proper chain: user -> assistant
+      const userUuid = randomUUID();
+      const assistantUuid = randomUUID();
       await writeFile(
         join(projectDir, "mixed-session.jsonl"),
         `${[
-          // Internal messages (should not be counted)
+          // Internal messages (should not be counted, no uuid)
           JSON.stringify({ type: "queue-operation", operation: "dequeue" }),
           JSON.stringify({ type: "file-history-snapshot", snapshot: {} }),
           // User message (should be counted)
           JSON.stringify({
             type: "user",
+            uuid: userUuid,
+            parentUuid: null,
             cwd: projectPath,
             message: { content: "Hello" },
           }),
           // Assistant message (should be counted)
           JSON.stringify({
             type: "assistant",
+            uuid: assistantUuid,
+            parentUuid: userUuid,
             message: { content: "Hi there!" },
           }),
           // More internal messages
@@ -231,17 +231,23 @@ describe("Session Filtering", () => {
 
   describe("Title extraction", () => {
     it("extracts title from first user message", async () => {
+      const userUuid = randomUUID();
+      const assistantUuid = randomUUID();
       await writeFile(
         join(projectDir, "session.jsonl"),
         `${[
           JSON.stringify({ type: "queue-operation", operation: "dequeue" }),
           JSON.stringify({
             type: "user",
+            uuid: userUuid,
+            parentUuid: null,
             cwd: projectPath,
             message: { content: "Help me debug this issue" },
           }),
           JSON.stringify({
             type: "assistant",
+            uuid: assistantUuid,
+            parentUuid: userUuid,
             message: { content: "Sure!" },
           }),
         ].join("\n")}\n`,
@@ -261,11 +267,7 @@ describe("Session Filtering", () => {
 
       await writeFile(
         join(projectDir, "session.jsonl"),
-        `${JSON.stringify({
-          type: "user",
-          cwd: projectPath,
-          message: { content: longMessage },
-        })}\n`,
+        `${createMessage("user", longMessage, null, { cwd: projectPath })}\n`,
       );
 
       const app = createApp({ sdk: mockSdk, projectsDir: testDir });
@@ -281,11 +283,7 @@ describe("Session Filtering", () => {
       // Session with only assistant message (unusual but possible)
       await writeFile(
         join(projectDir, "session.jsonl"),
-        `${JSON.stringify({
-          type: "assistant",
-          cwd: projectPath,
-          message: { content: "Hello!" },
-        })}\n`,
+        `${createMessage("assistant", "Hello!", null, { cwd: projectPath })}\n`,
       );
 
       const app = createApp({ sdk: mockSdk, projectsDir: testDir });
@@ -303,11 +301,7 @@ describe("Session Filtering", () => {
         join(projectDir, "session.jsonl"),
         `${[
           "this is not json",
-          JSON.stringify({
-            type: "user",
-            cwd: projectPath,
-            message: { content: "Valid message" },
-          }),
+          createMessage("user", "Valid message", null, { cwd: projectPath }),
           "{ broken json",
         ].join("\n")}\n`,
       );
@@ -325,11 +319,7 @@ describe("Session Filtering", () => {
       // Edge case: session might start with assistant if resumed mid-conversation
       await writeFile(
         join(projectDir, "session.jsonl"),
-        `${JSON.stringify({
-          type: "assistant",
-          cwd: projectPath,
-          message: { content: "Continuing from where we left off..." },
-        })}\n`,
+        `${createMessage("assistant", "Continuing from where we left off...", null, { cwd: projectPath })}\n`,
       );
 
       const app = createApp({ sdk: mockSdk, projectsDir: testDir });
