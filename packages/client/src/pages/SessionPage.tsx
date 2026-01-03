@@ -4,6 +4,7 @@ import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
 import { api, uploadFile } from "../api/client";
 import { MessageInput, type UploadProgress } from "../components/MessageInput";
 import { MessageList } from "../components/MessageList";
+import { ProviderBadge } from "../components/ProviderBadge";
 import { QuestionAnswerPanel } from "../components/QuestionAnswerPanel";
 import { SessionMenu } from "../components/SessionMenu";
 import { StatusIndicator } from "../components/StatusIndicator";
@@ -539,6 +540,11 @@ function SessionPageContent({
                 {!loading && isArchived && (
                   <span className="archived-badge">Archived</span>
                 )}
+                {!loading &&
+                  session?.provider &&
+                  session.provider !== "claude" && (
+                    <ProviderBadge provider={session.provider} />
+                  )}
                 {!loading && (
                   <SessionMenu
                     sessionId={sessionId}

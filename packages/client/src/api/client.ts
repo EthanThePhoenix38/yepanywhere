@@ -3,11 +3,14 @@ import type {
   ModelOption,
   PendingInputType,
   ProcessStateType,
+  ProviderInfo,
+  ProviderName,
   ThinkingOption,
   UploadedFile,
 } from "@claude-anywhere/shared";
 import type {
   AgentSession,
+  InputRequest,
   Message,
   PermissionMode,
   Project,
@@ -45,6 +48,7 @@ export interface SessionOptions {
   mode?: PermissionMode;
   model?: ModelOption;
   thinking?: ThinkingOption;
+  provider?: ProviderName;
 }
 
 export type { UploadedFile } from "@claude-anywhere/shared";
@@ -99,6 +103,9 @@ export {
 } from "./upload";
 
 export const api = {
+  // Provider API
+  getProviders: () => fetchJSON<{ providers: ProviderInfo[] }>("/providers"),
+
   getProjects: () => fetchJSON<{ projects: Project[] }>("/projects"),
 
   /**
@@ -127,6 +134,7 @@ export const api = {
       session: Session;
       messages: Message[];
       status: SessionStatus;
+      pendingInputRequest?: InputRequest | null;
     }>(`/projects/${projectId}/sessions/${sessionId}${params}`);
   },
 
@@ -166,6 +174,7 @@ export const api = {
         mode: options?.mode,
         model: options?.model,
         thinking: options?.thinking,
+        provider: options?.provider,
         attachments,
       }),
     }),
@@ -186,6 +195,7 @@ export const api = {
         mode: options?.mode,
         model: options?.model,
         thinking: options?.thinking,
+        provider: options?.provider,
       }),
     }),
 
@@ -207,6 +217,7 @@ export const api = {
         mode: options?.mode,
         model: options?.model,
         thinking: options?.thinking,
+        provider: options?.provider,
         attachments,
       }),
     }),

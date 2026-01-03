@@ -5,6 +5,7 @@ import type { ProcessStateType } from "../hooks/useFileActivity";
 import { useProcesses } from "../hooks/useProcesses";
 import { type SessionSummary, getSessionDisplayTitle } from "../types";
 import { ActivityIndicator } from "./ActivityIndicator";
+import { ProviderBadge } from "./ProviderBadge";
 import { SessionMenu } from "./SessionMenu";
 import {
   SidebarIcons,
@@ -653,6 +654,9 @@ function SidebarSessionItem({
             )}
             <span className="sidebar-session-title-text">{displayTitle}</span>
             {hasDraft && <span className="sidebar-draft">(draft)</span>}
+            {session.provider && session.provider !== "claude" && (
+              <ProviderBadge provider={session.provider} compact />
+            )}
           </span>
           {getActivityIndicator()}
         </Link>

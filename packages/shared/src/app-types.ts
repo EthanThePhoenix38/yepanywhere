@@ -16,7 +16,7 @@ import type {
   UserEntry,
 } from "./claude-sdk-schema/types.js";
 import type { UrlProjectId } from "./projectId.js";
-import type { PermissionMode } from "./types.js";
+import type { PermissionMode, ProviderName } from "./types.js";
 
 // =============================================================================
 // App Message Extensions
@@ -194,6 +194,8 @@ export interface AppSessionSummary {
   updatedAt: string;
   messageCount: number;
   status: AppSessionStatus;
+  // Provider field - which AI provider is running this session
+  provider?: ProviderName;
   // Notification fields
   pendingInputType?: PendingInputType;
   processState?: ProcessStateType;

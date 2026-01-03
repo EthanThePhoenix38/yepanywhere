@@ -1,5 +1,6 @@
 import {
   type ModelOption,
+  type ProviderName,
   type ThinkingOption,
   type UploadedFile,
   isUrlProjectId,
@@ -57,12 +58,14 @@ interface StartSessionBody {
   mode?: PermissionMode;
   model?: ModelOption;
   thinking?: ThinkingOption;
+  provider?: ProviderName;
 }
 
 interface CreateSessionBody {
   mode?: PermissionMode;
   model?: ModelOption;
   thinking?: ThinkingOption;
+  provider?: ProviderName;
 }
 
 interface InputResponseBody {
@@ -215,6 +218,11 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
         ? { state: "external" as const }
         : (session?.status ?? { state: "idle" as const });
 
+    // Get pending input request from active process (for tool approval prompts)
+    // This ensures clients get pending requests immediately without waiting for SSE
+    const pendingInputRequest =
+      process?.state.type === "waiting-input" ? process.state.request : null;
+
     if (!session) {
       // Session file doesn't exist yet - only valid if we own the process
       if (process) {
@@ -248,6 +256,7 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
           },
           messages: processMessages,
           status,
+          pendingInputRequest,
         });
       }
       return c.json({ error: "Session not found" }, 404);
@@ -275,6 +284,7 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
       },
       messages: session.messages,
       status,
+      pendingInputRequest,
     });
   });
 
@@ -693,6 +703,34 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
     }
 
     return c.json({ lastSeen: deps.notificationService.getAllLastSeen() });
+  });
+
+  // GET /api/debug/metadata - Debug endpoint to inspect metadata service state
+  routes.get("/debug/metadata", (c) => {
+    if (!deps.sessionMetadataService) {
+      return c.json(
+        { error: "Session metadata service not available", available: false },
+        503,
+      );
+    }
+
+    const allMetadata = deps.sessionMetadataService.getAllMetadata();
+    const sessionCount = Object.keys(allMetadata).length;
+    const starredCount = Object.values(allMetadata).filter(
+      (m) => m.isStarred,
+    ).length;
+    const archivedCount = Object.values(allMetadata).filter(
+      (m) => m.isArchived,
+    ).length;
+    const filePath = deps.sessionMetadataService.getFilePath();
+
+    return c.json({
+      available: true,
+      filePath,
+      sessionCount,
+      starredCount,
+      archivedCount,
+    });
   });
 
   // PUT /api/sessions/:sessionId/metadata - Update session metadata (title, archived, starred)

@@ -1,4 +1,26 @@
 /**
+ * Provider name - which AI agent provider to use.
+ * - "claude": Claude via Anthropic SDK
+ * - "codex": OpenAI Codex via CLI
+ * - "gemini": Google Gemini via CLI
+ * - "local": Local model via Ollama
+ */
+export type ProviderName = "claude" | "codex" | "gemini" | "local";
+
+/**
+ * Provider info for UI display.
+ */
+export interface ProviderInfo {
+  name: ProviderName;
+  displayName: string;
+  installed: boolean;
+  authenticated: boolean;
+  enabled: boolean;
+  expiresAt?: string;
+  user?: { email?: string; name?: string };
+}
+
+/**
  * Permission mode for tool approvals.
  * - "default": Auto-approve read-only tools (Read, Glob, Grep, etc.), ask for mutating tools
  * - "acceptEdits": Auto-approve file editing tools (Edit, Write, NotebookEdit), ask for others

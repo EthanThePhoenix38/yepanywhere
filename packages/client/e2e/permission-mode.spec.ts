@@ -37,22 +37,30 @@ test.describe("Permission Mode", () => {
 
     // Open dropdown and select Edit automatically
     await modeButton.click();
-    await page.locator(".mode-selector-option", { hasText: "Edit automatically" }).click();
+    await page
+      .locator(".mode-selector-option", { hasText: "Edit automatically" })
+      .click();
     await expect(modeButton).toContainText("Edit automatically");
 
     // Open dropdown and select Plan mode
     await modeButton.click();
-    await page.locator(".mode-selector-option", { hasText: "Plan mode" }).click();
+    await page
+      .locator(".mode-selector-option", { hasText: "Plan mode" })
+      .click();
     await expect(modeButton).toContainText("Plan mode");
 
     // Open dropdown and select Bypass permissions
     await modeButton.click();
-    await page.locator(".mode-selector-option", { hasText: "Bypass permissions" }).click();
+    await page
+      .locator(".mode-selector-option", { hasText: "Bypass permissions" })
+      .click();
     await expect(modeButton).toContainText("Bypass permissions");
 
     // Open dropdown and select Ask before edits
     await modeButton.click();
-    await page.locator(".mode-selector-option", { hasText: "Ask before edits" }).click();
+    await page
+      .locator(".mode-selector-option", { hasText: "Ask before edits" })
+      .click();
     await expect(modeButton).toContainText("Ask before edits");
   });
 
@@ -74,17 +82,23 @@ test.describe("Permission Mode", () => {
 
     // Select acceptEdits
     await modeButton.click();
-    await page.locator(".mode-selector-option", { hasText: "Edit automatically" }).click();
+    await page
+      .locator(".mode-selector-option", { hasText: "Edit automatically" })
+      .click();
     await expect(modeDot).toHaveClass(/mode-acceptEdits/);
 
     // Select plan
     await modeButton.click();
-    await page.locator(".mode-selector-option", { hasText: "Plan mode" }).click();
+    await page
+      .locator(".mode-selector-option", { hasText: "Plan mode" })
+      .click();
     await expect(modeDot).toHaveClass(/mode-plan/);
 
     // Select bypassPermissions
     await modeButton.click();
-    await page.locator(".mode-selector-option", { hasText: "Bypass permissions" }).click();
+    await page
+      .locator(".mode-selector-option", { hasText: "Bypass permissions" })
+      .click();
     await expect(modeDot).toHaveClass(/mode-bypassPermissions/);
   });
 
@@ -108,7 +122,9 @@ test.describe("Permission Mode", () => {
 
     // Open dropdown and select "Edit automatically"
     await modeButton.click();
-    await page.locator(".mode-selector-option", { hasText: "Edit automatically" }).click();
+    await page
+      .locator(".mode-selector-option", { hasText: "Edit automatically" })
+      .click();
     await expect(modeButton).toContainText("Edit automatically");
 
     // Send a follow-up message to persist the mode change to the server
@@ -149,13 +165,19 @@ test.describe("Permission Mode", () => {
 
     // Rapidly select different modes
     await modeButton.click();
-    await page.locator(".mode-selector-option", { hasText: "Edit automatically" }).click();
+    await page
+      .locator(".mode-selector-option", { hasText: "Edit automatically" })
+      .click();
 
     await modeButton.click();
-    await page.locator(".mode-selector-option", { hasText: "Plan mode" }).click();
+    await page
+      .locator(".mode-selector-option", { hasText: "Plan mode" })
+      .click();
 
     await modeButton.click();
-    await page.locator(".mode-selector-option", { hasText: "Ask before edits" }).click();
+    await page
+      .locator(".mode-selector-option", { hasText: "Ask before edits" })
+      .click();
 
     // Wait a bit for any async operations to settle
     await page.waitForTimeout(200);
@@ -184,7 +206,9 @@ test.describe("Permission Mode", () => {
 
     // Change mode to "Bypass permissions" via dropdown
     await modeButton.click();
-    await page.locator(".mode-selector-option", { hasText: "Bypass permissions" }).click();
+    await page
+      .locator(".mode-selector-option", { hasText: "Bypass permissions" })
+      .click();
     await expect(modeButton).toContainText("Bypass permissions");
 
     // Send another message to establish the mode on server

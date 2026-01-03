@@ -265,6 +265,11 @@ export function useSession(
             data.status.modeVersion,
           );
         }
+        // Set pending input request from API response immediately
+        // This fixes race condition where SSE connection is delayed but tool approval is pending
+        if (data.pendingInputRequest) {
+          setPendingInputRequest(data.pendingInputRequest);
+        }
       })
       .catch(setError)
       .finally(() => setLoading(false));

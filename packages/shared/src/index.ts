@@ -7,6 +7,8 @@ export {
 } from "./ideMetadata.js";
 
 export type {
+  ProviderName,
+  ProviderInfo,
   PermissionMode,
   SessionStatus,
   ModelOption,
@@ -131,3 +133,45 @@ export {
   TaskOutputResultSchema,
   KillShellResultSchema,
 } from "./claude-sdk-schema/tool/ToolResultSchemas.js";
+
+// Codex SDK schema types
+export type {
+  CodexTextContent,
+  CodexToolUseContent,
+  CodexToolResultContent,
+  CodexReasoningContent,
+  CodexContentBlock,
+  CodexMessageContent,
+  CodexSessionMeta,
+  CodexUserMessage,
+  CodexAgentMessage,
+  CodexAgentReasoning,
+  CodexTokenCount,
+  CodexResponseItem,
+  CodexTurnContext,
+  CodexError,
+  CodexResult,
+  CodexEventMsg,
+  CodexEvent,
+} from "./codex-schema/types.js";
+export { parseCodexEvent } from "./codex-schema/events.js";
+
+// Gemini SDK schema types
+export type {
+  GeminiTextPart,
+  GeminiFunctionCallPart,
+  GeminiFunctionResponsePart,
+  GeminiInlineDataPart,
+  GeminiPart,
+  GeminiContent,
+  GeminiThought,
+  GeminiTokens,
+  GeminiUserEvent,
+  GeminiResponseEvent,
+  GeminiInfoEvent,
+  GeminiErrorEvent,
+  GeminiDoneEvent,
+  GeminiToolEvent,
+  GeminiEvent,
+} from "./gemini-schema/types.js";
+export { parseGeminiEvent } from "./gemini-schema/events.js";

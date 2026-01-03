@@ -3629,6 +3629,126 @@ a.sidebar-nav-item {
   color: var(--error-color);
 }
 
+/* Provider Selection Section */
+.new-session-provider-section {
+  margin-bottom: 1.5rem;
+}
+
+.new-session-provider-section h3 {
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin: 0 0 var(--space-3);
+}
+
+.provider-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.provider-option {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  background: var(--bg-code);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s;
+  text-align: left;
+}
+
+.provider-option:hover:not(:disabled) {
+  background: var(--bg-hover);
+  border-color: var(--text-dimmed);
+}
+
+.provider-option.selected {
+  border-color: var(--app-claude-orange);
+  background: rgba(217, 119, 87, 0.08);
+}
+
+.provider-option.disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.provider-option:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.provider-option-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.provider-option-dot.provider-claude {
+  background: var(--app-claude-orange);
+}
+
+.provider-option-dot.provider-codex {
+  background: #10a37f; /* OpenAI green */
+}
+
+.provider-option-dot.provider-gemini {
+  background: #4285f4; /* Google blue */
+}
+
+.provider-option-dot.provider-local {
+  background: #8b5cf6; /* Purple for local */
+}
+
+.provider-option-content {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.provider-option-label {
+  font-size: var(--font-size-sm);
+  font-weight: 500;
+  color: var(--text-primary);
+}
+
+.provider-option-status {
+  font-size: var(--font-size-xs);
+  color: var(--text-muted);
+}
+
+/* Provider Badge Component */
+.provider-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  font-size: var(--font-size-xs);
+  font-weight: 500;
+  border: 1px solid;
+  border-radius: var(--radius-sm);
+  background: transparent;
+}
+
+.provider-badge-dot-inline {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+}
+
+.provider-badge-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
 /* Permission Mode Section */
 .new-session-mode-section {
   margin-bottom: 2rem;

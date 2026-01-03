@@ -54,6 +54,7 @@ export class SessionMetadataService {
    * Creates the data directory and file if they don't exist.
    */
   async initialize(): Promise<void> {
+    console.log(`[SessionMetadataService] Initializing from: ${this.filePath}`);
     try {
       // Ensure data directory exists
       await fs.mkdir(this.dataDir, { recursive: true });
@@ -61,6 +62,9 @@ export class SessionMetadataService {
       // Try to load existing state
       const content = await fs.readFile(this.filePath, "utf-8");
       const parsed = JSON.parse(content) as SessionMetadataState;
+      console.log(
+        `[SessionMetadataService] Loaded ${Object.keys(parsed.sessions).length} sessions from disk`,
+      );
 
       // Validate and migrate if needed
       if (parsed.version === CURRENT_VERSION) {

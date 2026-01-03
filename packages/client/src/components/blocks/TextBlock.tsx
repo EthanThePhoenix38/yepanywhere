@@ -77,10 +77,7 @@ export const TextBlock = memo(function TextBlock({
         return children.map((child, index) => {
           if (typeof child === "string") {
             return (
-              <TextWithFilePaths
-                key={`text-${index}`}
-                projectId={projectId}
-              >
+              <TextWithFilePaths key={`text-${index}`} projectId={projectId}>
                 {child}
               </TextWithFilePaths>
             );

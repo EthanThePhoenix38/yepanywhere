@@ -19,6 +19,7 @@ import { health } from "./routes/health.js";
 import { createInboxRoutes } from "./routes/inbox.js";
 import { createProcessesRoutes } from "./routes/processes.js";
 import { createProjectsRoutes } from "./routes/projects.js";
+import { createProvidersRoutes } from "./routes/providers.js";
 import { createSessionsRoutes } from "./routes/sessions.js";
 import { createStreamRoutes } from "./routes/stream.js";
 import { type UploadDeps, createUploadRoutes } from "./routes/upload.js";
@@ -197,6 +198,9 @@ export function createApp(
 
   // Files routes (file browser)
   app.route("/api/projects", createFilesRoutes({ scanner }));
+
+  // Provider routes (multi-provider detection)
+  app.route("/api/providers", createProvidersRoutes());
 
   // Upload routes (WebSocket file uploads)
   if (options.upgradeWebSocket) {

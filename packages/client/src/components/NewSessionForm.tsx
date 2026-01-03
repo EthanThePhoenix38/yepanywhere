@@ -1,3 +1,4 @@
+import type { ProviderName } from "@claude-anywhere/shared";
 import {
   type ChangeEvent,
   type ClipboardEvent,
@@ -12,6 +13,11 @@ import { type UploadedFile, api, uploadFile } from "../api/client";
 import { ENTER_SENDS_MESSAGE } from "../constants";
 import { useDraftPersistence } from "../hooks/useDraftPersistence";
 import { getModelSetting, getThinkingSetting } from "../hooks/useModelSettings";
+import {
+  getAvailableProviders,
+  getDefaultProvider,
+  useProviders,
+} from "../hooks/useProviders";
 import type { PermissionMode } from "../types";
 import { VoiceInputButton, type VoiceInputButtonRef } from "./VoiceInputButton";
 
@@ -77,6 +83,9 @@ export function NewSessionForm({
     `draft-new-session-${projectId}`,
   );
   const [mode, setMode] = useState<PermissionMode>("default");
+  const [selectedProvider, setSelectedProvider] = useState<ProviderName | null>(
+    null,
+  );
   const [pendingFiles, setPendingFiles] = useState<PendingFile[]>([]);
   const [isStarting, setIsStarting] = useState(false);
   const [uploadProgress, setUploadProgress] = useState<
@@ -86,6 +95,20 @@ export function NewSessionForm({
   const fileInputRef = useRef<HTMLInputElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const voiceButtonRef = useRef<VoiceInputButtonRef>(null);
+
+  // Fetch available providers
+  const { providers, loading: providersLoading } = useProviders();
+  const availableProviders = getAvailableProviders(providers);
+
+  // Set default provider when providers load
+  useEffect(() => {
+    if (!selectedProvider && providers.length > 0) {
+      const defaultProvider = getDefaultProvider(providers);
+      if (defaultProvider) {
+        setSelectedProvider(defaultProvider.name);
+      }
+    }
+  }, [providers, selectedProvider]);
 
   // Combined display text: committed text + interim transcript
   const displayText = interimTranscript
@@ -156,7 +179,12 @@ export function NewSessionForm({
       // Get model settings from localStorage
       const model = getModelSetting();
       const thinking = getThinkingSetting();
-      const sessionOptions = { mode, model, thinking };
+      const sessionOptions = {
+        mode,
+        model,
+        thinking,
+        provider: selectedProvider ?? undefined,
+      };
 
       if (pendingFiles.length > 0) {
         // Two-phase flow: create session first, then upload to real session folder
@@ -432,6 +460,45 @@ export function NewSessionForm({
       </div>
 
       <div className="new-session-input-area">{inputArea}</div>
+
+      {/* Provider Selection */}
+      {!providersLoading && availableProviders.length > 1 && (
+        <div className="new-session-provider-section">
+          <h3>AI Provider</h3>
+          <div className="provider-options">
+            {providers.map((p) => {
+              const isAvailable = p.installed && (p.authenticated || p.enabled);
+              const isSelected = selectedProvider === p.name;
+              return (
+                <button
+                  key={p.name}
+                  type="button"
+                  className={`provider-option ${isSelected ? "selected" : ""} ${!isAvailable ? "disabled" : ""}`}
+                  onClick={() => isAvailable && setSelectedProvider(p.name)}
+                  disabled={isStarting || !isAvailable}
+                  title={
+                    !isAvailable
+                      ? `${p.displayName} is not available (${!p.installed ? "not installed" : "not authenticated"})`
+                      : p.displayName
+                  }
+                >
+                  <span className={`provider-option-dot provider-${p.name}`} />
+                  <div className="provider-option-content">
+                    <span className="provider-option-label">
+                      {p.displayName}
+                    </span>
+                    {!isAvailable && (
+                      <span className="provider-option-status">
+                        {!p.installed ? "Not installed" : "Not authenticated"}
+                      </span>
+                    )}
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       {/* Permission Mode Selection */}
       <div className="new-session-mode-section">
