@@ -417,6 +417,12 @@ h2 {
   border-color: var(--text-muted);
 }
 
+.add-project-hint {
+  margin: 0.5rem 0 0 0;
+  font-size: 0.8rem;
+  color: var(--text-muted);
+}
+
 .add-project-form {
   display: flex;
   flex-direction: column;
@@ -3766,7 +3772,7 @@ a.sidebar-nav-item {
 
   .sidebar-desktop {
     flex-shrink: 0;
-    width: 280px;
+    width: var(--sidebar-width, 280px);
     height: 100dvh;
     background: var(--bg-surface);
     border-right: 1px solid var(--border-color);
@@ -3774,10 +3780,20 @@ a.sidebar-nav-item {
     flex-direction: column;
     transition: width 0.2s ease;
     overflow: hidden;
+    position: relative;
   }
 
   .sidebar-desktop.sidebar-collapsed {
     width: 56px;
+  }
+
+  .sidebar-desktop.resizing {
+    transition: none;
+  }
+
+  /* Disable text selection during resize */
+  .session-page.resizing {
+    user-select: none;
   }
 
   .main-content-wrapper {
@@ -3803,7 +3819,7 @@ a.sidebar-nav-item {
   }
 
   /* Constrain content inside the full-width sections */
-  .main-content-constrained .session-header-inner,
+  /* Note: session-header-inner is NOT constrained so the toggle button aligns with sidebar edge */
   .main-content-constrained .session-messages .message-list,
   .main-content-constrained .session-input-inner,
   .main-content-constrained .sessions-page-content {
@@ -3873,6 +3889,29 @@ a.sidebar-nav-item {
 
   .sidebar-collapsed .sidebar-nav-divider {
     display: none;
+  }
+
+  /* Sidebar resize handle */
+  .sidebar-resize-handle {
+    position: absolute;
+    right: -3px;
+    top: 0;
+    bottom: 0;
+    width: 6px;
+    cursor: col-resize;
+    background: transparent;
+    z-index: 10;
+    transition: background 0.15s ease;
+  }
+
+  .sidebar-resize-handle:hover,
+  .sidebar-resize-handle.active {
+    background: var(--app-claude-orange);
+    opacity: 0.6;
+  }
+
+  .sidebar-resize-handle.active {
+    opacity: 0.8;
   }
 }
 

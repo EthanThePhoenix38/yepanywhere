@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { useInbox } from "../hooks/useInbox";
 import { useProcesses } from "../hooks/useProcesses";
@@ -20,6 +20,14 @@ interface NavigationSidebarProps {
   isCollapsed?: boolean;
   /** Desktop mode: callback to toggle expanded/collapsed state */
   onToggleExpanded?: () => void;
+  /** Desktop mode: current sidebar width in pixels */
+  sidebarWidth?: number;
+  /** Desktop mode: called when resize starts */
+  onResizeStart?: () => void;
+  /** Desktop mode: called during resize with new width */
+  onResize?: (width: number) => void;
+  /** Desktop mode: called when resize ends */
+  onResizeEnd?: () => void;
 }
 
 /**
@@ -32,10 +40,17 @@ export function NavigationSidebar({
   isDesktop = false,
   isCollapsed = false,
   onToggleExpanded,
+  sidebarWidth,
+  onResizeStart,
+  onResize,
+  onResizeEnd,
 }: NavigationSidebarProps) {
   const sidebarRef = useRef<HTMLElement>(null);
   const touchStartX = useRef<number | null>(null);
   const [swipeOffset, setSwipeOffset] = useState(0);
+  const [isResizing, setIsResizing] = useState(false);
+  const resizeStartX = useRef<number | null>(null);
+  const resizeStartWidth = useRef<number | null>(null);
   const { activeCount } = useProcesses();
   const { totalNeedsAttention, totalActive } = useInbox();
   const inboxCount = totalNeedsAttention + totalActive;
@@ -63,6 +78,43 @@ export function NavigationSidebar({
     touchStartX.current = null;
     setSwipeOffset(0);
   };
+
+  // Desktop sidebar resize handlers
+  const handleResizeMouseDown = (e: React.MouseEvent) => {
+    if (!isDesktop || isCollapsed || !sidebarWidth) return;
+    e.preventDefault();
+    resizeStartX.current = e.clientX;
+    resizeStartWidth.current = sidebarWidth;
+    setIsResizing(true);
+    onResizeStart?.();
+  };
+
+  useEffect(() => {
+    if (!isResizing) return;
+
+    const handleMouseMove = (e: MouseEvent) => {
+      if (resizeStartX.current === null || resizeStartWidth.current === null)
+        return;
+      const diff = e.clientX - resizeStartX.current;
+      const newWidth = resizeStartWidth.current + diff;
+      onResize?.(newWidth);
+    };
+
+    const handleMouseUp = () => {
+      resizeStartX.current = null;
+      resizeStartWidth.current = null;
+      setIsResizing(false);
+      onResizeEnd?.();
+    };
+
+    document.addEventListener("mousemove", handleMouseMove);
+    document.addEventListener("mouseup", handleMouseUp);
+
+    return () => {
+      document.removeEventListener("mousemove", handleMouseMove);
+      document.removeEventListener("mouseup", handleMouseUp);
+    };
+  }, [isResizing, onResize, onResizeEnd]);
 
   if (!isDesktop && !isOpen) return null;
 
@@ -210,6 +262,18 @@ export function NavigationSidebar({
             <p className="sidebar-empty">Select a project to view sessions</p>
           )}
         </div>
+
+        {/* Resize handle - desktop only, when expanded */}
+        {isDesktop && !isCollapsed && (
+          <div
+            className={`sidebar-resize-handle ${isResizing ? "active" : ""}`}
+            onMouseDown={handleResizeMouseDown}
+            role="separator"
+            aria-orientation="vertical"
+            aria-label="Resize sidebar"
+            tabIndex={0}
+          />
+        )}
       </aside>
     </>
   );

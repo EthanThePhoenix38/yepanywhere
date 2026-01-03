@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import type { UrlProjectId } from "@claude-anywhere/shared";
 import { getLogger } from "../logging/logger.js";
+import type { AgentProvider } from "../sdk/providers/types.js";
 import type {
   ClaudeSDK,
   PermissionMode,
@@ -56,6 +57,8 @@ export interface QueueFullResponse {
 }
 
 export interface SupervisorOptions {
+  /** Agent provider interface (preferred for new code) */
+  provider?: AgentProvider;
   /** Legacy SDK interface for mock SDK */
   sdk?: ClaudeSDK;
   /** Real SDK interface with full features */
@@ -78,6 +81,7 @@ export class Supervisor {
   private sessionToProcess: Map<string, string> = new Map(); // sessionId -> processId
   private everOwnedSessions: Set<string> = new Set(); // Sessions we've ever owned (for orphan detection)
   private terminatedProcesses: ProcessInfo[] = []; // Recently terminated processes
+  private provider: AgentProvider | null;
   private sdk: ClaudeSDK | null;
   private realSdk: RealClaudeSDKInterface | null;
   private idleTimeoutMs?: number;
@@ -88,6 +92,7 @@ export class Supervisor {
   private workerQueue: WorkerQueue;
 
   constructor(options: SupervisorOptions) {
+    this.provider = options.provider ?? null;
     this.sdk = options.sdk ?? null;
     this.realSdk = options.realSdk ?? null;
     this.idleTimeoutMs = options.idleTimeoutMs;
@@ -101,8 +106,8 @@ export class Supervisor {
       maxQueueSize: options.maxQueueSize,
     });
 
-    if (!this.sdk && !this.realSdk) {
-      throw new Error("Either sdk or realSdk must be provided");
+    if (!this.provider && !this.sdk && !this.realSdk) {
+      throw new Error("Either provider, sdk, or realSdk must be provided");
     }
   }
 
@@ -139,6 +144,18 @@ export class Supervisor {
           position: result.position,
         };
       }
+    }
+
+    // Use provider if available (preferred)
+    if (this.provider) {
+      return this.startProviderSession(
+        projectPath,
+        projectId,
+        message,
+        undefined,
+        permissionMode,
+        modelSettings,
+      );
     }
 
     // Use real SDK if available
@@ -202,6 +219,16 @@ export class Supervisor {
       }
     }
 
+    // Use provider if available (preferred)
+    if (this.provider) {
+      return this.createProviderSession(
+        projectPath,
+        projectId,
+        permissionMode,
+        modelSettings,
+      );
+    }
+
     // Use real SDK if available
     if (this.realSdk) {
       return this.createRealSession(
@@ -214,7 +241,7 @@ export class Supervisor {
 
     // Fall back to legacy mock SDK - not supported for create-only
     throw new Error(
-      "createSession requires real SDK - legacy mock SDK not supported",
+      "createSession requires provider or real SDK - legacy mock SDK not supported",
     );
   }
 
@@ -356,6 +383,133 @@ export class Supervisor {
   }
 
   /**
+   * Create a session using the provider interface without an initial message.
+   * The session is created and waits for a message to be queued.
+   */
+  private async createProviderSession(
+    projectPath: string,
+    projectId: UrlProjectId,
+    permissionMode?: PermissionMode,
+    modelSettings?: ModelSettings,
+  ): Promise<Process> {
+    if (!this.provider) {
+      throw new Error("provider is not available");
+    }
+
+    const processHolder: { process: Process | null } = { process: null };
+    const effectiveMode = permissionMode ?? this.defaultPermissionMode;
+
+    // Start session WITHOUT an initial message - agent will wait
+    const result = await this.provider.startSession({
+      cwd: projectPath,
+      // No initialMessage - queue will block until one is pushed
+      permissionMode: effectiveMode,
+      model: modelSettings?.model,
+      maxThinkingTokens: modelSettings?.maxThinkingTokens,
+      onToolApproval: async (toolName, input, opts) => {
+        if (!processHolder.process) {
+          return { behavior: "deny", message: "Process not ready" };
+        }
+        return processHolder.process.handleToolApproval(toolName, input, opts);
+      },
+    });
+
+    const { iterator, queue, abort } = result;
+
+    const tempSessionId = randomUUID();
+    const options: ProcessConstructorOptions = {
+      projectPath,
+      projectId,
+      sessionId: tempSessionId,
+      idleTimeoutMs: this.idleTimeoutMs,
+      queue,
+      abortFn: abort,
+      permissionMode: effectiveMode,
+    };
+
+    const process = new Process(iterator, options);
+    processHolder.process = process;
+
+    // Wait for the real session ID from the provider
+    await process.waitForSessionId();
+
+    // Register as a new session
+    this.registerProcess(process, true);
+
+    return process;
+  }
+
+  /**
+   * Start a session using the provider interface with full features.
+   */
+  private async startProviderSession(
+    projectPath: string,
+    projectId: UrlProjectId,
+    message: UserMessage,
+    resumeSessionId?: string,
+    permissionMode?: PermissionMode,
+    modelSettings?: ModelSettings,
+  ): Promise<Process> {
+    if (!this.provider) {
+      throw new Error("provider is not available");
+    }
+
+    const tempSessionId = resumeSessionId ?? randomUUID();
+
+    // We need to reference process in the callback before it's assigned
+    const processHolder: { process: Process | null } = { process: null };
+
+    // Use provided mode or fall back to default
+    const effectiveMode = permissionMode ?? this.defaultPermissionMode;
+
+    // Generate UUID for the initial message so SDK and SSE use the same ID.
+    const messageUuid = randomUUID();
+    const messageWithUuid: UserMessage = { ...message, uuid: messageUuid };
+
+    const result = await this.provider.startSession({
+      cwd: projectPath,
+      initialMessage: messageWithUuid,
+      resumeSessionId,
+      permissionMode: effectiveMode,
+      model: modelSettings?.model,
+      maxThinkingTokens: modelSettings?.maxThinkingTokens,
+      onToolApproval: async (toolName, input, opts) => {
+        if (!processHolder.process) {
+          return { behavior: "deny", message: "Process not ready" };
+        }
+        return processHolder.process.handleToolApproval(toolName, input, opts);
+      },
+    });
+
+    const { iterator, queue, abort } = result;
+
+    const options: ProcessConstructorOptions = {
+      projectPath,
+      projectId,
+      sessionId: tempSessionId,
+      idleTimeoutMs: this.idleTimeoutMs,
+      queue,
+      abortFn: abort,
+      permissionMode: effectiveMode,
+    };
+
+    const process = new Process(iterator, options);
+    processHolder.process = process;
+
+    // Add the initial user message to history with the same UUID we passed to provider.
+    process.addInitialUserMessage(message.text, messageUuid);
+
+    // Wait for the real session ID from the provider before registering
+    if (!resumeSessionId) {
+      await process.waitForSessionId();
+    }
+
+    this.registerProcess(process, !resumeSessionId);
+
+    return process;
+  }
+
+  /**
    * Start a session using the legacy mock SDK.
    */
   private startLegacySession(
@@ -468,6 +622,18 @@ export class Supervisor {
           position: result.position,
         };
       }
+    }
+
+    // Use provider if available (preferred)
+    if (this.provider) {
+      return this.startProviderSession(
+        projectPath,
+        projectId,
+        message,
+        sessionId,
+        permissionMode,
+        modelSettings,
+      );
     }
 
     // Use real SDK if available
@@ -914,6 +1080,17 @@ export class Supervisor {
     resumeSessionId?: string,
     permissionMode?: PermissionMode,
   ): Promise<Process> {
+    // Use provider if available (preferred)
+    if (this.provider) {
+      return this.startProviderSession(
+        projectPath,
+        projectId,
+        message,
+        resumeSessionId,
+        permissionMode,
+      );
+    }
+
     // Use real SDK if available
     if (this.realSdk) {
       return this.startRealSession(

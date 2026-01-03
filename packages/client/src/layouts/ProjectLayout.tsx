@@ -4,9 +4,10 @@ import { Sidebar } from "../components/Sidebar";
 import { useDrafts } from "../hooks/useDrafts";
 import type { ProcessStateType } from "../hooks/useFileActivity";
 import { useInbox } from "../hooks/useInbox";
-import { useMediaQuery } from "../hooks/useMediaQuery";
 import { useSessions } from "../hooks/useSessions";
 import { useSidebarPreference } from "../hooks/useSidebarPreference";
+import { useSidebarWidth } from "../hooks/useSidebarWidth";
+import { useViewportWidth } from "../hooks/useViewportWidth";
 import type { Project, SessionSummary } from "../types";
 
 export interface ProjectLayoutContext {
@@ -38,8 +39,21 @@ export function ProjectLayout() {
 
   // Shared state and data
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const isWideScreen = useMediaQuery("(min-width: 1100px)");
   const { isExpanded, toggleExpanded } = useSidebarPreference();
+  const {
+    width: sidebarWidth,
+    setWidth: setSidebarWidth,
+    isResizing,
+    setIsResizing,
+    canShowDesktop,
+    canShowExpanded,
+  } = useSidebarWidth();
+  const viewportWidth = useViewportWidth();
+
+  // Desktop mode as long as collapsed sidebar fits
+  const isWideScreen = canShowDesktop(viewportWidth);
+  // Auto-collapse if viewport too narrow for expanded sidebar, or if user prefers collapsed
+  const effectivelyCollapsed = !isExpanded || !canShowExpanded(viewportWidth);
   const {
     project,
     sessions,
@@ -72,17 +86,26 @@ export function ProjectLayout() {
     error,
     openSidebar: () => setSidebarOpen(true),
     isWideScreen,
-    isSidebarCollapsed: !isExpanded,
+    isSidebarCollapsed: effectivelyCollapsed,
     toggleSidebar: toggleExpanded,
     addOptimisticSession,
   };
 
+  // CSS variable for sidebar width
+  const containerStyle = isWideScreen
+    ? ({ "--sidebar-width": `${sidebarWidth}px` } as React.CSSProperties)
+    : undefined;
+
   return (
-    <div className={`session-page ${isWideScreen ? "desktop-layout" : ""}`}>
+    <div
+      className={`session-page ${isWideScreen ? "desktop-layout" : ""} ${isResizing ? "resizing" : ""}`}
+      style={containerStyle}
+    >
       {/* Desktop sidebar - always visible on wide screens */}
       {isWideScreen && (
         <aside
-          className={`sidebar-desktop ${!isExpanded ? "sidebar-collapsed" : ""}`}
+          className={`sidebar-desktop ${effectivelyCollapsed ? "sidebar-collapsed" : ""} ${isResizing ? "resizing" : ""}`}
+          style={{ width: effectivelyCollapsed ? undefined : sidebarWidth }}
         >
           <Sidebar
             isOpen={true}
@@ -93,10 +116,14 @@ export function ProjectLayout() {
             processStates={processStates}
             onNavigate={() => {}}
             isDesktop={true}
-            isCollapsed={!isExpanded}
+            isCollapsed={effectivelyCollapsed}
             onToggleExpanded={toggleExpanded}
             sessionDrafts={sessionDrafts}
             inboxCount={inboxCount}
+            sidebarWidth={sidebarWidth}
+            onResizeStart={() => setIsResizing(true)}
+            onResize={setSidebarWidth}
+            onResizeEnd={() => setIsResizing(false)}
           />
         </aside>
       )}

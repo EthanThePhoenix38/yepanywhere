@@ -1,8 +1,9 @@
 import { useState } from "react";
 import { Outlet, useOutletContext } from "react-router-dom";
 import { NavigationSidebar } from "../components/NavigationSidebar";
-import { useMediaQuery } from "../hooks/useMediaQuery";
 import { useSidebarPreference } from "../hooks/useSidebarPreference";
+import { useSidebarWidth } from "../hooks/useSidebarWidth";
+import { useViewportWidth } from "../hooks/useViewportWidth";
 
 export interface NavigationLayoutContext {
   /** Open the mobile sidebar */
@@ -21,29 +22,55 @@ export interface NavigationLayoutContext {
  */
 export function NavigationLayout() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const isWideScreen = useMediaQuery("(min-width: 1100px)");
   const { isExpanded, toggleExpanded } = useSidebarPreference();
+  const {
+    width: sidebarWidth,
+    setWidth: setSidebarWidth,
+    isResizing,
+    setIsResizing,
+    canShowDesktop,
+    canShowExpanded,
+  } = useSidebarWidth();
+  const viewportWidth = useViewportWidth();
+
+  // Desktop mode as long as collapsed sidebar fits
+  const isWideScreen = canShowDesktop(viewportWidth);
+  // Auto-collapse if viewport too narrow for expanded sidebar, or if user prefers collapsed
+  const effectivelyCollapsed = !isExpanded || !canShowExpanded(viewportWidth);
 
   const context: NavigationLayoutContext = {
     openSidebar: () => setSidebarOpen(true),
     isWideScreen,
-    isSidebarCollapsed: !isExpanded,
+    isSidebarCollapsed: effectivelyCollapsed,
     toggleSidebar: toggleExpanded,
   };
 
+  // CSS variable for sidebar width
+  const containerStyle = isWideScreen
+    ? ({ "--sidebar-width": `${sidebarWidth}px` } as React.CSSProperties)
+    : undefined;
+
   return (
-    <div className={`session-page ${isWideScreen ? "desktop-layout" : ""}`}>
+    <div
+      className={`session-page ${isWideScreen ? "desktop-layout" : ""} ${isResizing ? "resizing" : ""}`}
+      style={containerStyle}
+    >
       {/* Desktop sidebar - always visible on wide screens */}
       {isWideScreen && (
         <aside
-          className={`sidebar-desktop ${!isExpanded ? "sidebar-collapsed" : ""}`}
+          className={`sidebar-desktop ${effectivelyCollapsed ? "sidebar-collapsed" : ""} ${isResizing ? "resizing" : ""}`}
+          style={{ width: effectivelyCollapsed ? undefined : sidebarWidth }}
         >
           <NavigationSidebar
             isOpen={true}
             onClose={() => {}}
             isDesktop={true}
-            isCollapsed={!isExpanded}
+            isCollapsed={effectivelyCollapsed}
             onToggleExpanded={toggleExpanded}
+            sidebarWidth={sidebarWidth}
+            onResizeStart={() => setIsResizing(true)}
+            onResize={setSidebarWidth}
+            onResizeEnd={() => setIsResizing(false)}
           />
         </aside>
       )}

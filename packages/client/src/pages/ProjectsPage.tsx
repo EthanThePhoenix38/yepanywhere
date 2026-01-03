@@ -14,7 +14,8 @@ export function ProjectsPage() {
   const [adding, setAdding] = useState(false);
   const navigate = useNavigate();
 
-  const { openSidebar, isWideScreen } = useNavigationLayout();
+  const { openSidebar, isWideScreen, toggleSidebar, isSidebarCollapsed } =
+    useNavigationLayout();
 
   const handleAddProject = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -51,19 +52,31 @@ export function ProjectsPage() {
             : "main-content-mobile-inner"
         }
       >
-        <PageHeader title="Projects" onOpenSidebar={openSidebar} />
+        <PageHeader
+          title="Projects"
+          onOpenSidebar={openSidebar}
+          onToggleSidebar={toggleSidebar}
+          isWideScreen={isWideScreen}
+          isSidebarCollapsed={isSidebarCollapsed}
+        />
 
         <main className="sessions-page-content">
           {/* Add Project Button/Form */}
           <div className="add-project-section">
             {!showAddForm ? (
-              <button
-                type="button"
-                className="add-project-button"
-                onClick={() => setShowAddForm(true)}
-              >
-                + Add Project
-              </button>
+              <>
+                <button
+                  type="button"
+                  className="add-project-button"
+                  onClick={() => setShowAddForm(true)}
+                >
+                  + Add Project
+                </button>
+                <p className="add-project-hint">
+                  or just launch Claude in a folder and it will automatically
+                  appear here
+                </p>
+              </>
             ) : (
               <form onSubmit={handleAddProject} className="add-project-form">
                 <input

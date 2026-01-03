@@ -56,6 +56,14 @@ interface SidebarProps {
   sessionDrafts?: Set<string>;
   /** Inbox badge count (passed from parent to survive mount/unmount) */
   inboxCount?: number;
+  /** Desktop mode: current sidebar width in pixels */
+  sidebarWidth?: number;
+  /** Desktop mode: called when resize starts */
+  onResizeStart?: () => void;
+  /** Desktop mode: called during resize with new width */
+  onResize?: (width: number) => void;
+  /** Desktop mode: called when resize ends */
+  onResizeEnd?: () => void;
 }
 
 export function Sidebar({
@@ -71,12 +79,19 @@ export function Sidebar({
   onToggleExpanded,
   sessionDrafts,
   inboxCount = 0,
+  sidebarWidth,
+  onResizeStart,
+  onResize,
+  onResizeEnd,
 }: SidebarProps) {
   const sidebarRef = useRef<HTMLElement>(null);
   const touchStartX = useRef<number | null>(null);
   const touchStartY = useRef<number | null>(null);
   const swipeEngaged = useRef<boolean>(false);
   const [swipeOffset, setSwipeOffset] = useState(0);
+  const [isResizing, setIsResizing] = useState(false);
+  const resizeStartX = useRef<number | null>(null);
+  const resizeStartWidth = useRef<number | null>(null);
   const [recentSessionsLimit, setRecentSessionsLimit] = useState(
     RECENT_SESSIONS_INITIAL,
   );
@@ -133,6 +148,43 @@ export function Sidebar({
     swipeEngaged.current = false;
     setSwipeOffset(0);
   };
+
+  // Desktop sidebar resize handlers
+  const handleResizeMouseDown = (e: React.MouseEvent) => {
+    if (!isDesktop || isCollapsed || !sidebarWidth) return;
+    e.preventDefault();
+    resizeStartX.current = e.clientX;
+    resizeStartWidth.current = sidebarWidth;
+    setIsResizing(true);
+    onResizeStart?.();
+  };
+
+  useEffect(() => {
+    if (!isResizing) return;
+
+    const handleMouseMove = (e: MouseEvent) => {
+      if (resizeStartX.current === null || resizeStartWidth.current === null)
+        return;
+      const diff = e.clientX - resizeStartX.current;
+      const newWidth = resizeStartWidth.current + diff;
+      onResize?.(newWidth);
+    };
+
+    const handleMouseUp = () => {
+      resizeStartX.current = null;
+      resizeStartWidth.current = null;
+      setIsResizing(false);
+      onResizeEnd?.();
+    };
+
+    document.addEventListener("mousemove", handleMouseMove);
+    document.addEventListener("mouseup", handleMouseUp);
+
+    return () => {
+      document.removeEventListener("mousemove", handleMouseMove);
+      document.removeEventListener("mouseup", handleMouseUp);
+    };
+  }, [isResizing, onResize, onResizeEnd]);
 
   // Starred sessions (sorted with stable sort, limit 10)
   const starredSessions = useMemo(() => {
@@ -397,6 +449,18 @@ export function Sidebar({
               <p className="sidebar-empty">No sessions yet</p>
             )}
         </div>
+
+        {/* Resize handle - desktop only, when expanded */}
+        {isDesktop && !isCollapsed && (
+          <div
+            className={`sidebar-resize-handle ${isResizing ? "active" : ""}`}
+            onMouseDown={handleResizeMouseDown}
+            role="separator"
+            aria-orientation="vertical"
+            aria-label="Resize sidebar"
+            tabIndex={0}
+          />
+        )}
       </aside>
     </>
   );

@@ -74,12 +74,11 @@ export const TextBlock = memo(function TextBlock({
 
       // Process array of children
       if (Array.isArray(children)) {
-        return children.map((child) => {
+        return children.map((child, index) => {
           if (typeof child === "string") {
-            // Use the content itself as a stable key (text content is unique enough)
             return (
               <TextWithFilePaths
-                key={`text-${child.slice(0, 50)}`}
+                key={`text-${index}`}
                 projectId={projectId}
               >
                 {child}
