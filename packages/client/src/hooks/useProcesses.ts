@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { fetchJSON } from "../api/client";
-import type { ProcessStateType, UrlProjectId } from "../types";
+import type { ProcessStateType, ProviderName, UrlProjectId } from "../types";
 
 /**
  * Process info returned from the API.
@@ -20,6 +20,8 @@ export interface ProcessInfo {
   terminatedAt?: string;
   terminationReason?: string;
   permissionMode?: string;
+  /** Provider running this process (claude, codex, gemini, etc.) */
+  provider?: ProviderName;
 }
 
 interface ProcessesResponse {

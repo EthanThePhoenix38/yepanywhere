@@ -65,6 +65,40 @@ function getStateBadgeClass(state: string): string {
   }
 }
 
+/**
+ * Get display name for provider.
+ */
+function getProviderLabel(provider: string | undefined): string {
+  switch (provider) {
+    case "claude":
+      return "Claude";
+    case "codex":
+      return "Codex";
+    case "gemini":
+      return "Gemini";
+    case "local":
+      return "Local";
+    default:
+      return provider ?? "Claude";
+  }
+}
+
+/**
+ * Get CSS class for provider badge.
+ */
+function getProviderBadgeClass(provider: string | undefined): string {
+  switch (provider) {
+    case "codex":
+      return "agent-provider-codex";
+    case "gemini":
+      return "agent-provider-gemini";
+    case "local":
+      return "agent-provider-local";
+    default:
+      return "agent-provider-claude";
+  }
+}
+
 interface ProcessCardProps {
   process: ProcessInfo;
   isTerminated?: boolean;
@@ -87,6 +121,11 @@ function ProcessCard({ process, isTerminated = false }: ProcessCardProps) {
         <div className="agent-card-title">
           <span className="agent-card-session-title">
             {process.sessionTitle || "Untitled Session"}
+          </span>
+          <span
+            className={`agent-provider-badge ${getProviderBadgeClass(process.provider)}`}
+          >
+            {getProviderLabel(process.provider)}
           </span>
           <span
             className={`agent-state-badge ${getStateBadgeClass(process.state)}`}

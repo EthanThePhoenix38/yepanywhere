@@ -9,6 +9,10 @@ import type { SessionMetadataService } from "./metadata/index.js";
 import { createAuthMiddleware } from "./middleware/auth.js";
 import { corsMiddleware, requireCustomHeader } from "./middleware/security.js";
 import type { NotificationService } from "./notifications/index.js";
+import {
+  CodexSessionScanner,
+  CODEX_SESSIONS_DIR,
+} from "./projects/codex-scanner.js";
 import { ProjectScanner } from "./projects/scanner.js";
 import { PushNotifier, type PushService } from "./push/index.js";
 import { createPushRoutes } from "./push/routes.js";
@@ -106,6 +110,7 @@ export function createApp(
 
   // Create dependencies
   const scanner = new ProjectScanner({ projectsDir: options.projectsDir });
+  const codexScanner = new CodexSessionScanner();
   const supervisor = new Supervisor({
     sdk: options.sdk,
     realSdk: options.realSdk,
@@ -175,6 +180,8 @@ export function createApp(
       notificationService: options.notificationService,
       sessionMetadataService: options.sessionMetadataService,
       sessionIndexService: options.sessionIndexService,
+      codexScanner,
+      codexSessionsDir: CODEX_SESSIONS_DIR,
     }),
   );
   app.route(
@@ -187,6 +194,8 @@ export function createApp(
       notificationService: options.notificationService,
       sessionMetadataService: options.sessionMetadataService,
       eventBus: options.eventBus,
+      codexScanner,
+      codexSessionsDir: CODEX_SESSIONS_DIR,
     }),
   );
   app.route(

@@ -3,7 +3,9 @@ import { Hono } from "hono";
 import type { SessionIndexService } from "../indexes/index.js";
 import type { SessionMetadataService } from "../metadata/index.js";
 import type { NotificationService } from "../notifications/index.js";
+import type { CodexSessionScanner } from "../projects/codex-scanner.js";
 import type { ProjectScanner } from "../projects/scanner.js";
+import { CodexSessionReader } from "../sessions/codex-reader.js";
 import type { ISessionReader } from "../sessions/types.js";
 import type { ExternalSessionTracker } from "../supervisor/ExternalSessionTracker.js";
 import type { Supervisor } from "../supervisor/Supervisor.js";
@@ -22,6 +24,10 @@ export interface ProjectsDeps {
   notificationService?: NotificationService;
   sessionMetadataService?: SessionMetadataService;
   sessionIndexService?: SessionIndexService;
+  /** Codex scanner for checking if a project has Codex sessions */
+  codexScanner?: CodexSessionScanner;
+  /** Codex sessions directory (defaults to ~/.codex/sessions) */
+  codexSessionsDir?: string;
 }
 
 interface ProjectActivityCounts {
@@ -257,6 +263,23 @@ export function createProjectsRoutes(deps: ProjectsDeps): Hono {
       sessions = await reader.listSessions(project.id);
     }
 
+    // For Claude projects, also check for Codex sessions for the same path
+    // This handles the case where a project has sessions from multiple providers
+    if (project.provider === "claude" && deps.codexScanner) {
+      const codexSessions =
+        await deps.codexScanner.getSessionsForProject(project.path);
+      if (codexSessions.length > 0 && deps.codexSessionsDir) {
+        const codexReader = new CodexSessionReader({
+          sessionsDir: deps.codexSessionsDir,
+          projectPath: project.path,
+        });
+        const codexSessionSummaries =
+          await codexReader.listSessions(project.id);
+        // Merge Codex sessions with Claude sessions
+        sessions = [...sessions, ...codexSessionSummaries];
+      }
+    }
+
     // Add missing owned sessions (new sessions that don't have user/assistant messages yet)
     sessions = addMissingOwnedSessions(sessions, projectId);
 
@@ -331,6 +354,21 @@ export function createProjectsRoutes(deps: ProjectsDeps): Hono {
       );
     } else {
       sessions = await reader.listSessions(project.id);
+    }
+
+    // For Claude projects, also check for Codex sessions for the same path
+    if (project.provider === "claude" && deps.codexScanner) {
+      const codexSessions =
+        await deps.codexScanner.getSessionsForProject(project.path);
+      if (codexSessions.length > 0 && deps.codexSessionsDir) {
+        const codexReader = new CodexSessionReader({
+          sessionsDir: deps.codexSessionsDir,
+          projectPath: project.path,
+        });
+        const codexSessionSummaries =
+          await codexReader.listSessions(project.id);
+        sessions = [...sessions, ...codexSessionSummaries];
+      }
     }
 
     // Add missing owned sessions (new sessions that don't have user/assistant messages yet)

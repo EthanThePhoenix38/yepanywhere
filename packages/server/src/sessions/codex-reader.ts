@@ -154,6 +154,7 @@ export class CodexSessionReader implements ISessionReader {
         messageCount,
         status: { state: "idle" },
         contextUsage,
+        provider: "codex",
       };
     } catch {
       return null;

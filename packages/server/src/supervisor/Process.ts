@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import path from "node:path";
-import type { UrlProjectId } from "@claude-anywhere/shared";
+import type { ProviderName, UrlProjectId } from "@claude-anywhere/shared";
 import { getLogger } from "../logging/logger.js";
 import type { MessageQueue } from "../sdk/messageQueue.js";
 import type {
@@ -43,6 +43,7 @@ export class Process {
   readonly projectPath: string;
   readonly projectId: UrlProjectId;
   readonly startedAt: Date;
+  readonly provider?: ProviderName;
 
   private legacyQueue: UserMessage[] = [];
   private messageQueue: MessageQueue | null;
@@ -93,6 +94,7 @@ export class Process {
     this.messageQueue = options.queue ?? null;
     this.abortFn = options.abortFn ?? null;
     this._permissionMode = options.permissionMode ?? "default";
+    this.provider = options.provider;
 
     // Start processing messages from the SDK
     this.processMessages();
@@ -333,6 +335,7 @@ export class Process {
       state: stateType,
       startedAt: this.startedAt.toISOString(),
       queueDepth: this.queueDepth,
+      provider: this.provider,
     };
 
     // Add idleSince if idle

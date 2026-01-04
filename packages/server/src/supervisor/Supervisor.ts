@@ -303,6 +303,7 @@ export class Supervisor {
       queue,
       abortFn: abort,
       permissionMode: effectiveMode,
+      provider: "claude", // Real SDK is always Claude
     };
 
     const process = new Process(iterator, options);
@@ -375,6 +376,7 @@ export class Supervisor {
       queue,
       abortFn: abort,
       permissionMode: effectiveMode,
+      provider: "claude", // Real SDK is always Claude
     };
 
     const process = new Process(iterator, options);
@@ -442,6 +444,7 @@ export class Supervisor {
       queue,
       abortFn: abort,
       permissionMode: effectiveMode,
+      provider: activeProvider.name,
     };
 
     const process = new Process(iterator, options);
@@ -510,6 +513,7 @@ export class Supervisor {
       queue,
       abortFn: abort,
       permissionMode: effectiveMode,
+      provider: activeProvider.name,
     };
 
     const process = new Process(iterator, options);
@@ -558,6 +562,7 @@ export class Supervisor {
       sessionId,
       idleTimeoutMs: this.idleTimeoutMs,
       permissionMode: effectiveMode,
+      provider: "claude", // Legacy mock SDK simulates Claude
     };
 
     const process = new Process(iterator, options);
@@ -643,8 +648,13 @@ export class Supervisor {
       }
     }
 
+    // Resolve provider: use specified provider name, or fall back to default provider
+    const provider = modelSettings?.providerName
+      ? getProvider(modelSettings.providerName)
+      : this.provider;
+
     // Use provider if available (preferred)
-    if (this.provider) {
+    if (provider) {
       return this.startProviderSession(
         projectPath,
         projectId,
@@ -652,6 +662,7 @@ export class Supervisor {
         sessionId,
         permissionMode,
         modelSettings,
+        provider,
       );
     }
 

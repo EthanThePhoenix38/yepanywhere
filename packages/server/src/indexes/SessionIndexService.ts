@@ -29,6 +29,8 @@ export interface CachedSessionSummary {
   fileMtime: number;
   /** True if session has no user/assistant messages (metadata-only file) */
   isEmpty?: boolean;
+  /** AI provider (defaults to "claude" for backwards compatibility) */
+  provider?: "claude" | "codex" | "gemini";
 }
 
 export interface SessionIndexState {
@@ -258,6 +260,7 @@ export class SessionIndexService implements ISessionIndexService {
               messageCount: cached.messageCount,
               status: { state: "idle" },
               contextUsage: cached.contextUsage,
+              provider: cached.provider ?? "claude",
             });
           } else {
             // Cache miss - parse the file
@@ -281,6 +284,7 @@ export class SessionIndexService implements ISessionIndexService {
                 contextUsage: summary.contextUsage,
                 indexedBytes: size,
                 fileMtime: mtime,
+                provider: summary.provider,
               };
               indexChanged = true;
             } else {
@@ -399,6 +403,7 @@ export class SessionIndexService implements ISessionIndexService {
           contextUsage: summary.contextUsage,
           indexedBytes: size,
           fileMtime: mtime,
+          provider: summary.provider,
         };
         await this.saveIndex(sessionDir);
         return summary.title;

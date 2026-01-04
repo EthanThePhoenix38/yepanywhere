@@ -94,6 +94,9 @@ export function useSSE(url: string | null, options: UseSSEOptions) {
       }
       eventSourceRef.current?.close();
       eventSourceRef.current = null;
+      // Reset mountedUrlRef so the next mount can connect
+      // This is needed for StrictMode where cleanup runs between mounts
+      mountedUrlRef.current = null;
     };
   }, [connect]);
 

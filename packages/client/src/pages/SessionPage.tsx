@@ -175,7 +175,12 @@ function SessionPageContent({
           projectId,
           sessionId,
           text,
-          { mode: permissionMode, model, thinking },
+          {
+            mode: permissionMode,
+            model,
+            thinking,
+            provider: session?.provider,
+          },
           currentAttachments.length > 0 ? currentAttachments : undefined,
         );
         // Update status to trigger SSE connection

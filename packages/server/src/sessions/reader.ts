@@ -188,6 +188,7 @@ export class ClaudeSessionReader implements ISessionReader {
         messageCount: conversationMessages.length,
         status: { state: "idle" }, // Will be updated by Supervisor
         contextUsage,
+        provider: "claude",
       };
     } catch {
       return null;

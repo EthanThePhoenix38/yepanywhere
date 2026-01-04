@@ -699,6 +699,7 @@ h2 {
 
 /* Project breadcrumb in session header */
 .project-breadcrumb {
+  display: none; /* Hidden on mobile by default */
   font-size: var(--font-size-sm);
   color: var(--text-muted);
   text-decoration: none;
@@ -710,6 +711,13 @@ h2 {
 
 .project-breadcrumb:hover {
   color: var(--text-primary);
+}
+
+/* Show breadcrumb only on wider screens */
+@media (min-width: 480px) {
+  .project-breadcrumb {
+    display: block;
+  }
 }
 
 /* ==========================================================================
@@ -4253,6 +4261,37 @@ button.agent-card {
 .agent-state-terminated {
   background: var(--bg-hover);
   color: var(--text-muted);
+}
+
+/* Provider badges */
+.agent-provider-badge {
+  font-size: var(--font-size-xs);
+  padding: 0.125rem 0.5rem;
+  border-radius: var(--radius-sm);
+  font-weight: 600;
+  white-space: nowrap;
+  text-transform: uppercase;
+  letter-spacing: 0.025em;
+}
+
+.agent-provider-claude {
+  background: linear-gradient(135deg, #d97706 0%, #f59e0b 100%);
+  color: white;
+}
+
+.agent-provider-codex {
+  background: linear-gradient(135deg, #059669 0%, #10b981 100%);
+  color: white;
+}
+
+.agent-provider-gemini {
+  background: linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%);
+  color: white;
+}
+
+.agent-provider-local {
+  background: linear-gradient(135deg, #6b7280 0%, #9ca3af 100%);
+  color: white;
 }
 
 .agent-card-meta {

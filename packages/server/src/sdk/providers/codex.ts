@@ -210,24 +210,30 @@ export class CodexProvider implements AgentProvider {
     // Start or resume thread
     let thread: Thread;
     if (options.resumeSessionId) {
-      log.debug({ resumeSessionId: options.resumeSessionId }, "Resuming thread");
+      log.debug(
+        { resumeSessionId: options.resumeSessionId },
+        "Resuming thread",
+      );
       thread = codex.resumeThread(options.resumeSessionId, threadOptions);
     } else {
       log.debug({ threadOptions }, "Starting new thread");
       thread = codex.startThread(threadOptions);
     }
 
-    // Generate a temporary session ID until we get the real one
-    let sessionId = `codex-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
-    log.debug({ sessionId }, "Generated temporary session ID");
+    // Session ID - will be set from thread.started event
+    // For resume, we already have the real ID
+    let sessionId = options.resumeSessionId ?? "";
+    let initEmitted = !!options.resumeSessionId;
 
-    // Emit init message
-    yield {
-      type: "system",
-      subtype: "init",
-      session_id: sessionId,
-      cwd: options.cwd,
-    } as SDKMessage;
+    // If resuming, emit init immediately with known ID
+    if (options.resumeSessionId) {
+      yield {
+        type: "system",
+        subtype: "init",
+        session_id: sessionId,
+        cwd: options.cwd,
+      } as SDKMessage;
+    }
 
     // Process messages from the queue
     log.debug("Starting message queue processing");
@@ -246,12 +252,16 @@ export class CodexProvider implements AgentProvider {
         log.debug("No text extracted from message, skipping");
         continue;
       }
-      log.debug({ userPromptLength: userPrompt.length }, "Extracted user prompt");
+      log.debug(
+        { userPromptLength: userPrompt.length },
+        "Extracted user prompt",
+      );
 
-      // Emit user message
+      // Emit user message (use temp ID if we don't have real one yet)
+      const userMsgSessionId = sessionId || `pending-${Date.now()}`;
       yield {
         type: "user",
-        session_id: sessionId,
+        session_id: userMsgSessionId,
         message: {
           role: "user",
           content: userPrompt,
@@ -270,26 +280,54 @@ export class CodexProvider implements AgentProvider {
         let eventCount = 0;
         for await (const event of events) {
           eventCount++;
-          log.debug({ eventType: event.type, eventCount }, "Received SDK event");
+          log.debug(
+            { eventType: event.type, eventCount },
+            "Received SDK event",
+          );
           if (signal.aborted) {
             log.debug("Signal aborted during event processing");
             break;
           }
 
-          // Update session ID from thread.started
+          // Update session ID from thread.started and emit init if needed
           if (event.type === "thread.started") {
             sessionId = event.thread_id;
-            log.debug({ newSessionId: sessionId }, "Updated session ID from thread.started");
+            log.debug(
+              { newSessionId: sessionId },
+              "Updated session ID from thread.started",
+            );
+
+            // Emit init message now that we have the real session ID
+            // This is critical - we delay init until we have the real ID so that
+            // waitForSessionId() returns the correct ID to the client
+            if (!initEmitted) {
+              initEmitted = true;
+              log.debug({ sessionId }, "Emitting init with real session ID");
+              yield {
+                type: "system",
+                subtype: "init",
+                session_id: sessionId,
+                cwd: options.cwd,
+              } as SDKMessage;
+            }
           }
 
-          // Convert event to SDKMessage(s)
-          const messages = this.convertEventToSDKMessages(event, sessionId);
-          log.debug({ eventType: event.type, messageCount: messages.length }, "Converted event to SDKMessages");
-          for (const msg of messages) {
-            yield msg;
+          // Convert event to SDKMessage(s) - skip thread.started as we handle it above
+          if (event.type !== "thread.started") {
+            const messages = this.convertEventToSDKMessages(event, sessionId);
+            log.debug(
+              { eventType: event.type, messageCount: messages.length },
+              "Converted event to SDKMessages",
+            );
+            for (const msg of messages) {
+              yield msg;
+            }
           }
         }
-        log.debug({ totalEvents: eventCount }, "Finished processing events for turn");
+        log.debug(
+          { totalEvents: eventCount },
+          "Finished processing events for turn",
+        );
 
         // Emit result after each turn to signal the Process that we're idle
         // This matches what the Claude SDK does after each turn

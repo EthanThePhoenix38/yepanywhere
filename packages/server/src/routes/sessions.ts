@@ -9,8 +9,10 @@ import {
 import { Hono } from "hono";
 import type { SessionMetadataService } from "../metadata/index.js";
 import type { NotificationService } from "../notifications/index.js";
+import type { CodexSessionScanner } from "../projects/codex-scanner.js";
 import type { ProjectScanner } from "../projects/scanner.js";
 import type { PermissionMode, SDKMessage, UserMessage } from "../sdk/types.js";
+import { CodexSessionReader } from "../sessions/codex-reader.js";
 import type { ISessionReader } from "../sessions/types.js";
 import type { ExternalSessionTracker } from "../supervisor/ExternalSessionTracker.js";
 import type { Process } from "../supervisor/Process.js";
@@ -48,6 +50,8 @@ export interface SessionsDeps {
   notificationService?: NotificationService;
   sessionMetadataService?: SessionMetadataService;
   eventBus?: EventBus;
+  codexScanner?: CodexSessionScanner;
+  codexSessionsDir?: string;
 }
 
 interface StartSessionBody {
@@ -194,7 +198,7 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
 
     // Always try to read from disk first (even for owned sessions)
     const reader = deps.readerFactory(project);
-    const session = await reader.getSession(
+    let session = await reader.getSession(
       sessionId,
       project.id,
       afterMessageId,
@@ -206,6 +210,31 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
         includeOrphans: wasEverOwned && !process,
       },
     );
+
+    // For Claude projects, also check for Codex sessions if primary reader didn't find it
+    // This handles mixed projects that have sessions from multiple providers
+    if (
+      !session &&
+      project.provider === "claude" &&
+      deps.codexScanner &&
+      deps.codexSessionsDir
+    ) {
+      const codexSessions = await deps.codexScanner.getSessionsForProject(
+        project.path,
+      );
+      if (codexSessions.length > 0) {
+        const codexReader = new CodexSessionReader({
+          sessionsDir: deps.codexSessionsDir,
+          projectPath: project.path,
+        });
+        session = await codexReader.getSession(
+          sessionId,
+          project.id,
+          afterMessageId,
+          { includeOrphans: wasEverOwned && !process },
+        );
+      }
+    }
 
     // Determine the session status
     const status = process
@@ -477,7 +506,7 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
       project.path,
       userMessage,
       body.mode,
-      { model, maxThinkingTokens },
+      { model, maxThinkingTokens, providerName: body.provider },
     );
 
     // Check if queue is full

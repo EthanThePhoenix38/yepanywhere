@@ -38,8 +38,8 @@ export function SessionsPage() {
     addOptimisticSession,
   } = useProjectLayout();
 
-  // Filter state: "all" shows non-archived, "unread" shows only unread, "starred" shows only starred, "archived" shows only archived
-  type FilterMode = "all" | "unread" | "starred" | "archived";
+  // Filter state: "all" shows non-archived, "unread" shows only unread, "starred" shows only starred, "archived" shows only archived, "codex" shows only Codex sessions
+  type FilterMode = "all" | "unread" | "starred" | "archived" | "codex";
   const [searchQuery, setSearchQuery] = useState("");
   const [filterMode, setFilterMode] = useState<FilterMode>("all");
 
@@ -63,6 +63,10 @@ export function SessionsPage() {
         case "archived":
           // Show only archived sessions
           if (!session.isArchived) return false;
+          break;
+        case "codex":
+          // Show only Codex sessions (non-archived)
+          if (session.provider !== "codex" || session.isArchived) return false;
           break;
       }
 
@@ -91,6 +95,11 @@ export function SessionsPage() {
   );
   const archivedCount = useMemo(
     () => sessions.filter((s) => s.isArchived).length,
+    [sessions],
+  );
+  const codexCount = useMemo(
+    () =>
+      sessions.filter((s) => s.provider === "codex" && !s.isArchived).length,
     [sessions],
   );
 
@@ -168,6 +177,13 @@ export function SessionsPage() {
                 onClick={() => setFilterMode("archived")}
               >
                 Archived{archivedCount > 0 && ` (${archivedCount})`}
+              </button>
+              <button
+                type="button"
+                className={`filter-chip ${filterMode === "codex" ? "active" : ""}`}
+                onClick={() => setFilterMode("codex")}
+              >
+                Codex{codexCount > 0 && ` (${codexCount})`}
               </button>
             </div>
           </div>

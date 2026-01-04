@@ -8,6 +8,7 @@ import type {
 // Re-export shared types
 export type {
   PermissionMode,
+  ProviderName,
   UrlProjectId,
   // SDK schema types (for strict typing when needed)
   AssistantEntry,
