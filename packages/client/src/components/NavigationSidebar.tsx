@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { useInbox } from "../hooks/useInbox";
-import { useProcesses } from "../hooks/useProcesses";
 import { useRecentProjects } from "../hooks/useRecentProjects";
 import {
   SidebarIcons,
@@ -52,7 +51,6 @@ export function NavigationSidebar({
   const [isResizing, setIsResizing] = useState(false);
   const resizeStartX = useRef<number | null>(null);
   const resizeStartWidth = useRef<number | null>(null);
-  const { activeCount } = useProcesses();
   const { totalNeedsAttention, totalActive } = useInbox();
   const inboxCount = totalNeedsAttention + totalActive;
   const { recentProjects } = useRecentProjects();
@@ -225,7 +223,6 @@ export function NavigationSidebar({
               to="/agents"
               icon={SidebarIcons.agents}
               label="Agents"
-              badge={activeCount}
               onClick={onClose}
             />
             <SidebarNavItem

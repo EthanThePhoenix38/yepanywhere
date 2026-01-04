@@ -1,8 +1,27 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
-  <!-- Superman-style diamond shield - red/orange -->
-  <path d="M256 20 L480 180 L256 492 L32 180 Z" fill="#D62828" stroke="#370617" stroke-width="12"/>
-  <!-- Inner border - gold -->
-  <path d="M256 50 L450 190 L256 460 L62 190 Z" fill="none" stroke="#FCBF49" stroke-width="8"/>
-  <!-- Stylized A - gold/yellow -->
-  <path d="M256 100 L160 380 L200 380 L220 320 L292 320 L312 380 L352 380 L256 100 Z M236 280 L256 200 L276 280 Z" fill="#FCBF49" stroke="#370617" stroke-width="4"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120">
+  <defs>
+    <linearGradient id="iconGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#22c55e" />
+      <stop offset="100%" stop-color="#16a34a" />
+    </linearGradient>
+  </defs>
+  <!-- Rounded square background -->
+  <rect x="0" y="0" width="120" height="120" rx="26" fill="url(#iconGrad)" />
+  <!-- Y-checkmark: checkmark part -->
+  <path
+    d="M 28 35 L 50 62 L 92 20"
+    fill="none"
+    stroke="#ffffff"
+    stroke-width="10"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+  />
+  <!-- Y-checkmark: tail part -->
+  <path
+    d="M 50 62 L 50 95"
+    fill="none"
+    stroke="#ffffff"
+    stroke-width="10"
+    stroke-linecap="round"
+  />
 </svg>
