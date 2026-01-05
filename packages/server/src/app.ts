@@ -81,9 +81,17 @@ export interface AppOptions {
   authEnabled?: boolean;
 }
 
-export function createApp(
-  options: AppOptions,
-): Hono<{ Bindings: HttpBindings }> {
+export interface AppResult {
+  app: Hono<{ Bindings: HttpBindings }>;
+  /** Supervisor instance for debug API access */
+  supervisor: Supervisor;
+  /** Project scanner for debug API access */
+  scanner: ProjectScanner;
+  /** Session reader factory for debug API access */
+  readerFactory: (project: Project) => ISessionReader;
+}
+
+export function createApp(options: AppOptions): AppResult {
   const app = new Hono<{ Bindings: HttpBindings }>();
 
   // Security middleware: CORS + custom header requirement
@@ -292,7 +300,7 @@ export function createApp(
     });
   }
 
-  return app;
+  return { app, supervisor, scanner, readerFactory };
 }
 
 // Default app for backwards compatibility (health check only)

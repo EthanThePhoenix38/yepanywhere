@@ -386,7 +386,7 @@ export class Supervisor {
     // This ensures SSE replay includes the user message so the client can replace
     // its temp message. The SDK also writes to JSONL with this UUID, so both SSE
     // and JSONL will have matching IDs (no duplicates).
-    process.addInitialUserMessage(message.text, messageUuid);
+    process.addInitialUserMessage(message.text, messageUuid, message.tempId);
 
     // Wait for the real session ID from the SDK before registering
     // This ensures the client gets the correct ID to use for persistence
@@ -520,7 +520,7 @@ export class Supervisor {
     processHolder.process = process;
 
     // Add the initial user message to history with the same UUID we passed to provider.
-    process.addInitialUserMessage(message.text, messageUuid);
+    process.addInitialUserMessage(message.text, messageUuid, message.tempId);
 
     // Wait for the real session ID from the provider before registering
     if (!resumeSessionId) {

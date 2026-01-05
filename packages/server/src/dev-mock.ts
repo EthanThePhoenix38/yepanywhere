@@ -205,7 +205,7 @@ if (config.serveFrontend) {
 
 // Create the main app first (without WebSocket support or frontend proxy)
 // We'll add those after setting up WebSocket support to ensure correct route order
-const app = createApp({
+const { app } = createApp({
   sdk: mockSdk,
   idleTimeoutMs: 60000, // 1 minute for testing
   eventBus,

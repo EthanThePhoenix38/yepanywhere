@@ -76,6 +76,8 @@ interface StartSessionBody {
   model?: ModelOption;
   thinking?: ThinkingOption;
   provider?: ProviderName;
+  /** Client-generated temp ID for optimistic UI tracking */
+  tempId?: string;
 }
 
 interface CreateSessionBody {
@@ -474,6 +476,7 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
       documents: body.documents,
       attachments: body.attachments,
       mode: body.mode,
+      tempId: body.tempId,
     };
 
     // Convert thinking option to token budget
@@ -611,6 +614,7 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
       documents: body.documents,
       attachments: body.attachments,
       mode: body.mode,
+      tempId: body.tempId,
     };
 
     // Convert thinking option to token budget
@@ -677,6 +681,7 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
       documents: body.documents,
       attachments: body.attachments,
       mode: body.mode,
+      tempId: body.tempId,
     };
 
     // Check if process is terminated

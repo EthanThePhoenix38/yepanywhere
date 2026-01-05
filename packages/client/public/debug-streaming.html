@@ -324,8 +324,7 @@ That's all folks!</textarea>
     <div class="panel">
       <h2>Streaming Output</h2>
       <div class="output-container">
-        <div id="streaming-output"></div>
-        <span id="streaming-pending" class="streaming-pending"></span>
+        <div id="streaming-output"><span id="streaming-pending" class="streaming-pending"></span></div>
       </div>
       <div class="status-bar">
         <div class="status-item">
@@ -670,15 +669,16 @@ Thanks for reading! Now go build something amazing.`
       blockElement.dataset.blockIndex = String(blockIndex);
       blockElement.innerHTML = html;
 
-      // Insert in correct order
+      // Insert in correct order (before pending span which should stay at end)
       if (blockIndex > maxBlockIndex) {
-        container.appendChild(blockElement);
+        container.insertBefore(blockElement, pendingEl);
         maxBlockIndex = blockIndex;
         log(`  -> Appended block ${blockIndex} to end`, 'augment');
       } else {
         let inserted = false;
         for (let i = 0; i < container.children.length; i++) {
           const child = container.children[i];
+          if (child === pendingEl) continue; // Skip pending span
           const childIndex = parseInt(child.dataset.blockIndex ?? '-1', 10);
           if (childIndex > blockIndex) {
             container.insertBefore(blockElement, child);
@@ -688,7 +688,7 @@ Thanks for reading! Now go build something amazing.`
           }
         }
         if (!inserted) {
-          container.appendChild(blockElement);
+          container.insertBefore(blockElement, pendingEl);
           log(`  -> Appended block ${blockIndex} (fallback)`, 'augment');
         }
       }
@@ -709,7 +709,12 @@ Thanks for reading! Now go build something amazing.`
     // Reset state
     function reset() {
       log('RESET: Clearing all state', 'event');
-      container.innerHTML = '';
+      // Remove all block elements but keep pending span
+      Array.from(container.children).forEach(child => {
+        if (child !== pendingEl) {
+          container.removeChild(child);
+        }
+      });
       pendingEl.innerHTML = '';
       currentBlocks.clear();
       maxBlockIndex = -1;

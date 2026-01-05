@@ -76,7 +76,7 @@ describe("Session Filtering", () => {
         })}\n`,
       );
 
-      const app = createApp({ sdk: mockSdk, projectsDir: testDir });
+      const { app } = createApp({ sdk: mockSdk, projectsDir: testDir });
       const res = await app.request(`/api/projects/${projectId}/sessions`);
       const json = await res.json();
 
@@ -104,7 +104,7 @@ describe("Session Filtering", () => {
         );
       }
 
-      const app = createApp({ sdk: mockSdk, projectsDir: testDir });
+      const { app } = createApp({ sdk: mockSdk, projectsDir: testDir });
       const res = await app.request("/api/projects");
       const json = await res.json();
 
@@ -135,7 +135,7 @@ describe("Session Filtering", () => {
         "   \n\n  ",
       );
 
-      const app = createApp({ sdk: mockSdk, projectsDir: testDir });
+      const { app } = createApp({ sdk: mockSdk, projectsDir: testDir });
       const res = await app.request(`/api/projects/${projectId}/sessions`);
       const json = await res.json();
 
@@ -178,7 +178,7 @@ describe("Session Filtering", () => {
         })}\n`,
       );
 
-      const app = createApp({ sdk: mockSdk, projectsDir: testDir });
+      const { app } = createApp({ sdk: mockSdk, projectsDir: testDir });
       const res = await app.request(`/api/projects/${projectId}/sessions`);
       const json = await res.json();
 
@@ -218,7 +218,7 @@ describe("Session Filtering", () => {
         ].join("\n")}\n`,
       );
 
-      const app = createApp({ sdk: mockSdk, projectsDir: testDir });
+      const { app } = createApp({ sdk: mockSdk, projectsDir: testDir });
       const res = await app.request(`/api/projects/${projectId}/sessions`);
       const json = await res.json();
 
@@ -253,7 +253,7 @@ describe("Session Filtering", () => {
         ].join("\n")}\n`,
       );
 
-      const app = createApp({ sdk: mockSdk, projectsDir: testDir });
+      const { app } = createApp({ sdk: mockSdk, projectsDir: testDir });
       const res = await app.request(`/api/projects/${projectId}/sessions`);
       const json = await res.json();
 
@@ -270,7 +270,7 @@ describe("Session Filtering", () => {
         `${createMessage("user", longMessage, null, { cwd: projectPath })}\n`,
       );
 
-      const app = createApp({ sdk: mockSdk, projectsDir: testDir });
+      const { app } = createApp({ sdk: mockSdk, projectsDir: testDir });
       const res = await app.request(`/api/projects/${projectId}/sessions`);
       const json = await res.json();
 
@@ -286,7 +286,7 @@ describe("Session Filtering", () => {
         `${createMessage("assistant", "Hello!", null, { cwd: projectPath })}\n`,
       );
 
-      const app = createApp({ sdk: mockSdk, projectsDir: testDir });
+      const { app } = createApp({ sdk: mockSdk, projectsDir: testDir });
       const res = await app.request(`/api/projects/${projectId}/sessions`);
       const json = await res.json();
 
@@ -306,7 +306,7 @@ describe("Session Filtering", () => {
         ].join("\n")}\n`,
       );
 
-      const app = createApp({ sdk: mockSdk, projectsDir: testDir });
+      const { app } = createApp({ sdk: mockSdk, projectsDir: testDir });
       const res = await app.request(`/api/projects/${projectId}/sessions`);
       const json = await res.json();
 
@@ -322,7 +322,7 @@ describe("Session Filtering", () => {
         `${createMessage("assistant", "Continuing from where we left off...", null, { cwd: projectPath })}\n`,
       );
 
-      const app = createApp({ sdk: mockSdk, projectsDir: testDir });
+      const { app } = createApp({ sdk: mockSdk, projectsDir: testDir });
       const res = await app.request(`/api/projects/${projectId}/sessions`);
       const json = await res.json();
 

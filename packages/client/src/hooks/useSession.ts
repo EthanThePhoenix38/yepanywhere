@@ -59,6 +59,13 @@ export interface EditAugmentCallbacks {
   onEditAugment?: (augment: EditAugment) => void;
 }
 
+/** Pending message waiting for server confirmation */
+export interface PendingMessage {
+  tempId: string;
+  content: string;
+  timestamp: string;
+}
+
 export function useSession(
   projectId: string,
   sessionId: string,
@@ -103,6 +110,10 @@ export function useSession(
   const [lastSSEActivityAt, setLastSSEActivityAt] = useState<string | null>(
     null,
   );
+
+  // Pending messages queue - messages waiting for server confirmation
+  // These are displayed separately from the main message list
+  const [pendingMessages, setPendingMessages] = useState<PendingMessage[]>([]);
 
   // Edit augments loaded from REST response (keyed by toolUseId)
   // SSE events are handled via callbacks, but REST responses need state
@@ -192,9 +203,6 @@ export function useSession(
   // Track last message ID for incremental fetching
   const lastMessageIdRef = useRef<string | undefined>(undefined);
 
-  // Track temp ID → real ID mappings for parent chain resolution
-  const tempIdMappingsRef = useRef<Map<string, string>>(new Map());
-
   // Streaming state: accumulates content from stream_event messages
   // Key is the message uuid, value is the accumulated content blocks
   const streamingContentRef = useRef<
@@ -218,44 +226,23 @@ export function useSession(
     pendingIds: Set<string>;
   }>({ timer: null, pendingIds: new Set() });
 
-  // Add user message optimistically with a temp ID
-  // Uses SDK message structure: { type, message: { role, content } }
-  // Sets parentUuid for DAG-aware deduplication of identical messages
-  const addUserMessage = useCallback((text: string) => {
-    const tempId = `temp-${Date.now()}`;
-    setMessages((prev) => {
-      const lastMsg = prev[prev.length - 1];
-      // Use getMessageId for parent reference (prefers uuid over id)
-      const parentId = lastMsg ? getMessageId(lastMsg) : null;
-      const msg: Message = {
-        // Phase 4c: Set both uuid and id for consistency during transition
-        uuid: tempId,
-        id: tempId,
-        type: "user",
-        message: { role: "user", content: text },
-        parentUuid: parentId,
-        timestamp: new Date().toISOString(),
-      };
-      return [...prev, msg];
-    });
-  }, []);
+  // Add a message to the pending queue
+  // Generates a tempId that will be sent to the server and echoed back in SSE
+  const addPendingMessage = useCallback(
+    (content: string): string => {
+      const tempId = `temp-${Date.now()}`;
+      setPendingMessages((prev) => [
+        ...prev,
+        { tempId, content, timestamp: new Date().toISOString() },
+      ]);
+      return tempId;
+    },
+    [],
+  );
 
-  // Remove an optimistic message by matching content (used when send fails)
-  const removeOptimisticMessage = useCallback((text: string) => {
-    setMessages((prev) => {
-      // Find the last temp message with matching content (iterate backwards)
-      // Check raw id for temp- prefix (temp messages have id but may also have uuid)
-      for (let i = prev.length - 1; i >= 0; i--) {
-        const m = prev[i];
-        if (!m) continue;
-        // Phase 4c: prefer message.content over top-level content
-        const msgContent = m.message?.content ?? m.content;
-        if (m.id?.startsWith("temp-") && msgContent === text) {
-          return [...prev.slice(0, i), ...prev.slice(i + 1)];
-        }
-      }
-      return prev;
-    });
+  // Remove a pending message by tempId (used when server confirms or send fails)
+  const removePendingMessage = useCallback((tempId: string) => {
+    setPendingMessages((prev) => prev.filter((p) => p.tempId !== tempId));
   }, []);
 
   // Update lastMessageIdRef when messages change
@@ -406,15 +393,7 @@ export function useSession(
       );
       if (data.messages.length > 0) {
         setMessages((prev) => {
-          const result = mergeJSONLMessages(
-            prev,
-            data.messages,
-            tempIdMappingsRef.current,
-          );
-          // Update mappings with any new temp→real ID mappings
-          for (const [tempId, realId] of result.newMappings) {
-            tempIdMappingsRef.current.set(tempId, realId);
-          }
+          const result = mergeJSONLMessages(prev, data.messages);
           return result.messages;
         });
       }
@@ -828,6 +807,13 @@ export function useSession(
         // Remove eventType from the message (it's SSE envelope, not message data)
         (incoming as { eventType?: string }).eventType = undefined;
 
+        // Handle tempId for pending message resolution
+        // When server echoes back tempId, remove from pending queue
+        const tempId = sdkMessage.tempId as string | undefined;
+        if (msgType === "user" && tempId) {
+          removePendingMessage(tempId);
+        }
+
         // Route subagent messages to agentContent instead of main messages
         // This keeps the parent session's DAG clean and allows proper nesting in UI
         // Use parentToolUseId as the routing key (it's the Task tool_use id)
@@ -870,19 +856,7 @@ export function useSession(
         }
 
         setMessages((prev) => {
-          const result = mergeSSEMessage(
-            prev,
-            incoming,
-            tempIdMappingsRef.current,
-          );
-          // Update mappings if a temp was replaced
-          // Use getMessageId to get the canonical incoming message ID
-          if (result.replacedTempId) {
-            tempIdMappingsRef.current.set(
-              result.replacedTempId,
-              getMessageId(incoming),
-            );
-          }
+          const result = mergeSSEMessage(prev, incoming);
           return result.messages;
         });
       } else if (data.eventType === "status") {
@@ -1079,7 +1053,8 @@ export function useSession(
     setProcessState,
     setPermissionMode,
     setHold, // Set hold (soft pause) state
-    addUserMessage,
-    removeOptimisticMessage,
+    pendingMessages, // Messages waiting for server confirmation
+    addPendingMessage, // Add to pending queue, returns tempId
+    removePendingMessage, // Remove from pending by tempId
   };
 }

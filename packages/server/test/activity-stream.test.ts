@@ -35,7 +35,7 @@ describe("Activity Stream SSE", () => {
 
   it("emits process-state-changed event when session starts", async () => {
     const eventBus = new EventBus();
-    const app = createApp({ sdk: mockSdk, projectsDir: testDir, eventBus });
+    const { app } = createApp({ sdk: mockSdk, projectsDir: testDir, eventBus });
 
     // Set up a mock scenario
     mockSdk.addScenario(createMockScenario("test-session", "Hello response"));
@@ -171,7 +171,7 @@ describe("Activity Stream SSE", () => {
     });
     await sessionMetadataService.initialize();
 
-    const app = createApp({
+    const { app } = createApp({
       sdk: mockSdk,
       projectsDir: testDir,
       eventBus,

@@ -61,7 +61,7 @@ describe("Files API", () => {
 
   describe("GET /api/projects/:projectId/files", () => {
     it("returns file metadata and content for text file", async () => {
-      const app = createApp({
+      const { app } = createApp({
         sdk: mockSdk,
         projectsDir: join(testDir, "sessions"),
       });
@@ -82,7 +82,7 @@ describe("Files API", () => {
     });
 
     it("returns file metadata and content for TypeScript file", async () => {
-      const app = createApp({
+      const { app } = createApp({
         sdk: mockSdk,
         projectsDir: join(testDir, "sessions"),
       });
@@ -100,7 +100,7 @@ describe("Files API", () => {
     });
 
     it("returns file metadata without content for binary file", async () => {
-      const app = createApp({
+      const { app } = createApp({
         sdk: mockSdk,
         projectsDir: join(testDir, "sessions"),
       });
@@ -119,7 +119,7 @@ describe("Files API", () => {
     });
 
     it("returns 400 for missing path parameter", async () => {
-      const app = createApp({
+      const { app } = createApp({
         sdk: mockSdk,
         projectsDir: join(testDir, "sessions"),
       });
@@ -132,7 +132,7 @@ describe("Files API", () => {
     });
 
     it("returns 400 for invalid project ID format", async () => {
-      const app = createApp({
+      const { app } = createApp({
         sdk: mockSdk,
         projectsDir: join(testDir, "sessions"),
       });
@@ -147,7 +147,7 @@ describe("Files API", () => {
     });
 
     it("returns 404 for non-existent project", async () => {
-      const app = createApp({
+      const { app } = createApp({
         sdk: mockSdk,
         projectsDir: join(testDir, "sessions"),
       });
@@ -163,7 +163,7 @@ describe("Files API", () => {
     });
 
     it("returns 404 for non-existent file", async () => {
-      const app = createApp({
+      const { app } = createApp({
         sdk: mockSdk,
         projectsDir: join(testDir, "sessions"),
       });
@@ -178,7 +178,7 @@ describe("Files API", () => {
     });
 
     it("returns 400 for path traversal attempt with ..", async () => {
-      const app = createApp({
+      const { app } = createApp({
         sdk: mockSdk,
         projectsDir: join(testDir, "sessions"),
       });
@@ -193,7 +193,7 @@ describe("Files API", () => {
     });
 
     it("returns 400 for absolute path", async () => {
-      const app = createApp({
+      const { app } = createApp({
         sdk: mockSdk,
         projectsDir: join(testDir, "sessions"),
       });
@@ -208,7 +208,7 @@ describe("Files API", () => {
     });
 
     it("returns 400 for directory path", async () => {
-      const app = createApp({
+      const { app } = createApp({
         sdk: mockSdk,
         projectsDir: join(testDir, "sessions"),
       });
@@ -226,7 +226,7 @@ describe("Files API", () => {
       // Create a file with dots in path
       await writeFile(join(projectPath, ".env"), "SECRET=value");
 
-      const app = createApp({
+      const { app } = createApp({
         sdk: mockSdk,
         projectsDir: join(testDir, "sessions"),
       });
@@ -244,7 +244,7 @@ describe("Files API", () => {
 
   describe("GET /api/projects/:projectId/files/raw", () => {
     it("returns raw text file with correct content-type", async () => {
-      const app = createApp({
+      const { app } = createApp({
         sdk: mockSdk,
         projectsDir: join(testDir, "sessions"),
       });
@@ -261,7 +261,7 @@ describe("Files API", () => {
     });
 
     it("returns raw TypeScript file with correct content-type", async () => {
-      const app = createApp({
+      const { app } = createApp({
         sdk: mockSdk,
         projectsDir: join(testDir, "sessions"),
       });
@@ -277,7 +277,7 @@ describe("Files API", () => {
     });
 
     it("returns raw binary file with correct content-type", async () => {
-      const app = createApp({
+      const { app } = createApp({
         sdk: mockSdk,
         projectsDir: join(testDir, "sessions"),
       });
@@ -293,7 +293,7 @@ describe("Files API", () => {
     });
 
     it("sets attachment disposition when download=true", async () => {
-      const app = createApp({
+      const { app } = createApp({
         sdk: mockSdk,
         projectsDir: join(testDir, "sessions"),
       });
@@ -308,7 +308,7 @@ describe("Files API", () => {
     });
 
     it("sets inline disposition by default", async () => {
-      const app = createApp({
+      const { app } = createApp({
         sdk: mockSdk,
         projectsDir: join(testDir, "sessions"),
       });
@@ -322,7 +322,7 @@ describe("Files API", () => {
     });
 
     it("returns 400 for path traversal attempt", async () => {
-      const app = createApp({
+      const { app } = createApp({
         sdk: mockSdk,
         projectsDir: join(testDir, "sessions"),
       });
@@ -337,7 +337,7 @@ describe("Files API", () => {
     });
 
     it("returns 404 for non-existent file", async () => {
-      const app = createApp({
+      const { app } = createApp({
         sdk: mockSdk,
         projectsDir: join(testDir, "sessions"),
       });
@@ -375,7 +375,7 @@ describe("Files API", () => {
       // Create the file
       await writeFile(join(projectPath, filename), "test content");
 
-      const app = createApp({
+      const { app } = createApp({
         sdk: mockSdk,
         projectsDir: join(testDir, "sessions"),
       });
@@ -403,7 +403,7 @@ describe("Files API", () => {
     ])("correctly identifies %s as text=%s", async (filename, isText) => {
       await writeFile(join(projectPath, filename), "test content");
 
-      const app = createApp({
+      const { app } = createApp({
         sdk: mockSdk,
         projectsDir: join(testDir, "sessions"),
       });
@@ -424,7 +424,7 @@ describe("Files API", () => {
       const largeContent = "x".repeat(1024 * 1024 + 1);
       await writeFile(join(projectPath, "large.txt"), largeContent);
 
-      const app = createApp({
+      const { app } = createApp({
         sdk: mockSdk,
         projectsDir: join(testDir, "sessions"),
       });
@@ -446,7 +446,7 @@ describe("Files API", () => {
       const largeContent = "x".repeat(1024 * 1024 + 1);
       await writeFile(join(projectPath, "large.txt"), largeContent);
 
-      const app = createApp({
+      const { app } = createApp({
         sdk: mockSdk,
         projectsDir: join(testDir, "sessions"),
       });

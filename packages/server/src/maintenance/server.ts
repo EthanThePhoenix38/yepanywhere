@@ -30,6 +30,7 @@ import {
   getLogLevels,
   setLogLevels,
 } from "../logging/logger.js";
+import { handleDebugRequest } from "./debug-routes.js";
 
 /** Current PROXY_DEBUG state (can be toggled at runtime) */
 let proxyDebugEnabled =
@@ -135,6 +136,12 @@ export function startMaintenanceServer(options: MaintenanceServerOptions): {
 
     // Route handling
     try {
+      // Try debug routes first (async)
+      if (path.startsWith("/debug")) {
+        const handled = await handleDebugRequest(req, res, url);
+        if (handled) return;
+      }
+
       if (path === "/health" && method === "GET") {
         handleHealth(res);
       } else if (path === "/status" && method === "GET") {

@@ -38,12 +38,21 @@ function groupItemsIntoTurns(
   return groups;
 }
 
+/** Pending message waiting for server confirmation */
+interface PendingMessage {
+  tempId: string;
+  content: string;
+  timestamp: string;
+}
+
 interface Props {
   messages: Message[];
   isStreaming?: boolean;
   isProcessing?: boolean;
   /** Increment this to force scroll to bottom (e.g., when user sends a message) */
   scrollTrigger?: number;
+  /** Messages waiting for server confirmation (shown as "Sending...") */
+  pendingMessages?: PendingMessage[];
 }
 
 export const MessageList = memo(function MessageList({
@@ -51,6 +60,7 @@ export const MessageList = memo(function MessageList({
   isStreaming = false,
   isProcessing = false,
   scrollTrigger = 0,
+  pendingMessages = [],
 }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
   const shouldAutoScrollRef = useRef(true);
@@ -216,6 +226,15 @@ export const MessageList = memo(function MessageList({
           </div>
         );
       })}
+      {/* Pending messages - shown as "Sending..." until server confirms */}
+      {pendingMessages.map((pending) => (
+        <div key={pending.tempId} className="pending-message">
+          <div className="message-user-prompt pending-message-bubble">
+            {pending.content}
+          </div>
+          <div className="pending-message-status">Sending...</div>
+        </div>
+      ))}
       <ProcessingIndicator isProcessing={isProcessing} />
     </div>
   );

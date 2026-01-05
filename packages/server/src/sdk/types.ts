@@ -79,6 +79,8 @@ export interface UserMessage {
   mode?: PermissionMode;
   /** UUID to use for this message. If not provided, SDK will generate one. */
   uuid?: string;
+  /** Client-generated temp ID for optimistic UI tracking. Echoed back in SSE. */
+  tempId?: string;
 }
 
 export interface SDKSessionOptions {

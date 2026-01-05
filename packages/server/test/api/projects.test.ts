@@ -31,7 +31,7 @@ describe("Projects API", () => {
 
   describe("GET /api/projects", () => {
     it("returns list of projects", async () => {
-      const app = createApp({ sdk: mockSdk, projectsDir: testDir });
+      const { app } = createApp({ sdk: mockSdk, projectsDir: testDir });
 
       const res = await app.request("/api/projects");
       const json = await res.json();
@@ -42,7 +42,7 @@ describe("Projects API", () => {
     });
 
     it("returns empty list when no projects directory", async () => {
-      const app = createApp({
+      const { app } = createApp({
         sdk: mockSdk,
         projectsDir: "/nonexistent/path",
       });
@@ -55,7 +55,7 @@ describe("Projects API", () => {
     });
 
     it("discovers projects from directory structure", async () => {
-      const app = createApp({ sdk: mockSdk, projectsDir: testDir });
+      const { app } = createApp({ sdk: mockSdk, projectsDir: testDir });
 
       const res = await app.request("/api/projects");
       const json = await res.json();
@@ -68,7 +68,7 @@ describe("Projects API", () => {
 
   describe("GET /api/projects/:projectId", () => {
     it("returns 404 for unknown project", async () => {
-      const app = createApp({ sdk: mockSdk, projectsDir: testDir });
+      const { app } = createApp({ sdk: mockSdk, projectsDir: testDir });
 
       const res = await app.request("/api/projects/unknown-id");
 
@@ -80,7 +80,7 @@ describe("Projects API", () => {
 
   describe("GET /api/projects/:projectId/sessions", () => {
     it("returns 404 for unknown project", async () => {
-      const app = createApp({ sdk: mockSdk, projectsDir: testDir });
+      const { app } = createApp({ sdk: mockSdk, projectsDir: testDir });
 
       const res = await app.request("/api/projects/unknown-id/sessions");
 

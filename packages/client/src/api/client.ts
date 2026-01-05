@@ -207,6 +207,7 @@ export const api = {
     message: string,
     options?: SessionOptions,
     attachments?: UploadedFile[],
+    tempId?: string,
   ) =>
     fetchJSON<{
       processId: string;
@@ -221,6 +222,7 @@ export const api = {
         thinking: options?.thinking,
         provider: options?.provider,
         attachments,
+        tempId,
       }),
     }),
 
@@ -229,10 +231,14 @@ export const api = {
     message: string,
     mode?: PermissionMode,
     attachments?: UploadedFile[],
+    tempId?: string,
   ) =>
     fetchJSON<{ queued: boolean; position: number }>(
       `/sessions/${sessionId}/messages`,
-      { method: "POST", body: JSON.stringify({ message, mode, attachments }) },
+      {
+        method: "POST",
+        body: JSON.stringify({ message, mode, attachments, tempId }),
+      },
     ),
 
   abortProcess: (processId: string) =>

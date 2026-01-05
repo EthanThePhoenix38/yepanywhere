@@ -38,7 +38,7 @@ describe("Sessions API", () => {
 
   describe("POST /api/projects/:projectId/sessions", () => {
     it("returns 400 if message is missing", async () => {
-      const app = createApp({ sdk: mockSdk, projectsDir: testDir });
+      const { app } = createApp({ sdk: mockSdk, projectsDir: testDir });
 
       const res = await app.request(`/api/projects/${projectId}/sessions`, {
         method: "POST",
@@ -55,7 +55,7 @@ describe("Sessions API", () => {
     });
 
     it("returns 400 for invalid JSON", async () => {
-      const app = createApp({ sdk: mockSdk, projectsDir: testDir });
+      const { app } = createApp({ sdk: mockSdk, projectsDir: testDir });
 
       const res = await app.request(`/api/projects/${projectId}/sessions`, {
         method: "POST",
@@ -72,7 +72,7 @@ describe("Sessions API", () => {
     });
 
     it("returns 404 for unknown project", async () => {
-      const app = createApp({ sdk: mockSdk, projectsDir: testDir });
+      const { app } = createApp({ sdk: mockSdk, projectsDir: testDir });
 
       const res = await app.request("/api/projects/unknown/sessions", {
         method: "POST",
@@ -90,7 +90,7 @@ describe("Sessions API", () => {
 
     it("starts a session and returns processId", async () => {
       mockSdk.addScenario(createMockScenario("new-session", "Hello!"));
-      const app = createApp({ sdk: mockSdk, projectsDir: testDir });
+      const { app } = createApp({ sdk: mockSdk, projectsDir: testDir });
 
       const res = await app.request(`/api/projects/${projectId}/sessions`, {
         method: "POST",
@@ -109,7 +109,7 @@ describe("Sessions API", () => {
 
     it("accepts permission mode parameter", async () => {
       mockSdk.addScenario(createMockScenario("new-session", "Hello!"));
-      const app = createApp({ sdk: mockSdk, projectsDir: testDir });
+      const { app } = createApp({ sdk: mockSdk, projectsDir: testDir });
 
       const res = await app.request(`/api/projects/${projectId}/sessions`, {
         method: "POST",
@@ -128,7 +128,7 @@ describe("Sessions API", () => {
 
     it("returns permissionMode and modeVersion in response", async () => {
       mockSdk.addScenario(createMockScenario("new-session", "Hello!"));
-      const app = createApp({ sdk: mockSdk, projectsDir: testDir });
+      const { app } = createApp({ sdk: mockSdk, projectsDir: testDir });
 
       const res = await app.request(`/api/projects/${projectId}/sessions`, {
         method: "POST",
@@ -147,7 +147,7 @@ describe("Sessions API", () => {
 
     it("returns default permissionMode when not specified", async () => {
       mockSdk.addScenario(createMockScenario("new-session", "Hello!"));
-      const app = createApp({ sdk: mockSdk, projectsDir: testDir });
+      const { app } = createApp({ sdk: mockSdk, projectsDir: testDir });
 
       const res = await app.request(`/api/projects/${projectId}/sessions`, {
         method: "POST",
@@ -167,7 +167,7 @@ describe("Sessions API", () => {
 
   describe("POST /api/projects/:projectId/sessions/:sessionId/resume", () => {
     it("returns 400 if message is missing", async () => {
-      const app = createApp({ sdk: mockSdk, projectsDir: testDir });
+      const { app } = createApp({ sdk: mockSdk, projectsDir: testDir });
 
       const res = await app.request(
         `/api/projects/${projectId}/sessions/sess-123/resume`,
@@ -187,7 +187,7 @@ describe("Sessions API", () => {
     });
 
     it("returns 404 for unknown project", async () => {
-      const app = createApp({ sdk: mockSdk, projectsDir: testDir });
+      const { app } = createApp({ sdk: mockSdk, projectsDir: testDir });
 
       const res = await app.request(
         "/api/projects/unknown/sessions/sess-123/resume",
@@ -206,7 +206,7 @@ describe("Sessions API", () => {
 
     it("resumes a session and returns processId", async () => {
       mockSdk.addScenario(createMockScenario("sess-123", "Resumed!"));
-      const app = createApp({ sdk: mockSdk, projectsDir: testDir });
+      const { app } = createApp({ sdk: mockSdk, projectsDir: testDir });
 
       const res = await app.request(
         `/api/projects/${projectId}/sessions/sess-123/resume`,
@@ -227,7 +227,7 @@ describe("Sessions API", () => {
 
     it("accepts permission mode parameter", async () => {
       mockSdk.addScenario(createMockScenario("sess-123", "Resumed!"));
-      const app = createApp({ sdk: mockSdk, projectsDir: testDir });
+      const { app } = createApp({ sdk: mockSdk, projectsDir: testDir });
 
       const res = await app.request(
         `/api/projects/${projectId}/sessions/sess-123/resume`,
@@ -248,7 +248,7 @@ describe("Sessions API", () => {
 
     it("returns permissionMode and modeVersion in response", async () => {
       mockSdk.addScenario(createMockScenario("sess-123", "Resumed!"));
-      const app = createApp({ sdk: mockSdk, projectsDir: testDir });
+      const { app } = createApp({ sdk: mockSdk, projectsDir: testDir });
 
       const res = await app.request(
         `/api/projects/${projectId}/sessions/sess-123/resume`,
@@ -274,7 +274,7 @@ describe("Sessions API", () => {
 
   describe("POST /api/sessions/:sessionId/messages", () => {
     it("returns 404 if no active process", async () => {
-      const app = createApp({ sdk: mockSdk, projectsDir: testDir });
+      const { app } = createApp({ sdk: mockSdk, projectsDir: testDir });
 
       const res = await app.request("/api/sessions/unknown/messages", {
         method: "POST",
@@ -293,7 +293,7 @@ describe("Sessions API", () => {
 
   describe("GET /api/sessions/:sessionId/pending-input", () => {
     it("returns null request when no active process", async () => {
-      const app = createApp({ sdk: mockSdk, projectsDir: testDir });
+      const { app } = createApp({ sdk: mockSdk, projectsDir: testDir });
 
       const res = await app.request("/api/sessions/unknown/pending-input");
       const json = await res.json();
@@ -305,7 +305,7 @@ describe("Sessions API", () => {
 
   describe("POST /api/sessions/:sessionId/input", () => {
     it("returns 404 if no active process", async () => {
-      const app = createApp({ sdk: mockSdk, projectsDir: testDir });
+      const { app } = createApp({ sdk: mockSdk, projectsDir: testDir });
 
       const res = await app.request("/api/sessions/unknown/input", {
         method: "POST",
@@ -324,7 +324,7 @@ describe("Sessions API", () => {
     it("returns 400 if process is not waiting for input", async () => {
       // Create a session that immediately completes (not waiting for input)
       mockSdk.addScenario(createMockScenario("sess-no-wait", "Done!"));
-      const app = createApp({ sdk: mockSdk, projectsDir: testDir });
+      const { app } = createApp({ sdk: mockSdk, projectsDir: testDir });
 
       // Start the session
       const startRes = await app.request(
@@ -375,7 +375,7 @@ describe("Sessions API", () => {
         ],
         delayMs: 5,
       });
-      const app = createApp({ sdk: mockSdk, projectsDir: testDir });
+      const { app } = createApp({ sdk: mockSdk, projectsDir: testDir });
 
       // Start the session
       const startRes = await app.request(
@@ -427,7 +427,7 @@ describe("Sessions API", () => {
         ],
         delayMs: 5,
       });
-      const app = createApp({ sdk: mockSdk, projectsDir: testDir });
+      const { app } = createApp({ sdk: mockSdk, projectsDir: testDir });
 
       // Start the session
       const startRes = await app.request(
@@ -480,7 +480,7 @@ describe("Sessions API", () => {
         ],
         delayMs: 5,
       });
-      const app = createApp({ sdk: mockSdk, projectsDir: testDir });
+      const { app } = createApp({ sdk: mockSdk, projectsDir: testDir });
 
       // Start the session
       const startRes = await app.request(
@@ -542,7 +542,7 @@ describe("Sessions API", () => {
         ],
         delayMs: 5,
       });
-      const app = createApp({ sdk: mockSdk, projectsDir: testDir });
+      const { app } = createApp({ sdk: mockSdk, projectsDir: testDir });
 
       // Start the session
       const startRes = await app.request(
@@ -580,7 +580,7 @@ describe("Sessions API", () => {
 
   describe("GET /api/projects/:projectId/sessions/:sessionId/agents/:agentId", () => {
     it("returns agent messages for existing agent file", async () => {
-      const app = createApp({ sdk: mockSdk, projectsDir: testDir });
+      const { app } = createApp({ sdk: mockSdk, projectsDir: testDir });
 
       // Get project path from projectId
       const projectPath = "/home/user/myproject";
@@ -610,7 +610,7 @@ describe("Sessions API", () => {
     });
 
     it("returns 200 with empty messages for unknown agent", async () => {
-      const app = createApp({ sdk: mockSdk, projectsDir: testDir });
+      const { app } = createApp({ sdk: mockSdk, projectsDir: testDir });
 
       const res = await app.request(
         `/api/projects/${projectId}/sessions/sess-existing/agents/unknown-agent`,
@@ -624,7 +624,7 @@ describe("Sessions API", () => {
     });
 
     it("returns 404 for unknown project", async () => {
-      const app = createApp({ sdk: mockSdk, projectsDir: testDir });
+      const { app } = createApp({ sdk: mockSdk, projectsDir: testDir });
 
       const res = await app.request(
         "/api/projects/unknown/sessions/sess-1/agents/agent-1",
@@ -636,7 +636,7 @@ describe("Sessions API", () => {
     });
 
     it("infers status correctly for failed agent", async () => {
-      const app = createApp({ sdk: mockSdk, projectsDir: testDir });
+      const { app } = createApp({ sdk: mockSdk, projectsDir: testDir });
 
       const projectPath = "/home/user/myproject";
       const encodedPath = projectPath.replaceAll("/", "-");
@@ -661,7 +661,7 @@ describe("Sessions API", () => {
     });
 
     it("infers status correctly for running agent", async () => {
-      const app = createApp({ sdk: mockSdk, projectsDir: testDir });
+      const { app } = createApp({ sdk: mockSdk, projectsDir: testDir });
 
       const projectPath = "/home/user/myproject";
       const encodedPath = projectPath.replaceAll("/", "-");

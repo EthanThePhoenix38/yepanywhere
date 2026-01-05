@@ -750,6 +750,13 @@ h2 {
   flex: 1;
 }
 
+.session-header-right {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-shrink: 0;
+}
+
 .back-button {
   display: flex;
   align-items: center;
@@ -1490,6 +1497,22 @@ a.sidebar-nav-item {
   max-width: 80%;
   padding: 0.25rem 0.5rem;
   font-size: var(--font-size-base);
+}
+
+/* Pending messages - waiting for server confirmation */
+.pending-message {
+  margin-bottom: var(--space-3);
+}
+
+.pending-message-bubble {
+  opacity: 0.7;
+}
+
+.pending-message-status {
+  font-size: var(--font-size-xs);
+  color: var(--text-dimmed);
+  margin-top: var(--space-1);
+  font-style: italic;
 }
 
 /* User prompt metadata (opened files, etc.) */

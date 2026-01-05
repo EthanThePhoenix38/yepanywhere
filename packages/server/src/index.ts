@@ -17,7 +17,10 @@ import {
   initLogger,
   interceptConsole,
 } from "./logging/index.js";
-import { startMaintenanceServer } from "./maintenance/index.js";
+import {
+  setDebugContext,
+  startMaintenanceServer,
+} from "./maintenance/index.js";
 import { SessionMetadataService } from "./metadata/index.js";
 import { NotificationService } from "./notifications/index.js";
 import { ProjectScanner } from "./projects/scanner.js";
@@ -26,6 +29,7 @@ import { createUploadRoutes } from "./routes/upload.js";
 import { detectClaudeCli } from "./sdk/cli-detection.js";
 import { initMessageLogger } from "./sdk/messageLogger.js";
 import { RealClaudeSDK } from "./sdk/real.js";
+import { ClaudeSessionReader } from "./sessions/reader.js";
 import { EventBus, FileWatcher, SourceWatcher } from "./watcher/index.js";
 
 // Allow many concurrent Claude sessions without listener warnings.
@@ -176,7 +180,7 @@ async function startServer() {
 
   // Create the app first (without WebSocket support initially)
   // We'll add WebSocket routes after setting up WebSocket support
-  const app = createApp({
+  const { app, supervisor, scanner } = createApp({
     realSdk,
     projectsDir: config.claudeProjectsDir,
     idleTimeoutMs: config.idleTimeoutMs,
@@ -192,6 +196,19 @@ async function startServer() {
     authService,
     authEnabled: config.authEnabled,
     // Note: frontendProxy not passed - will be added below
+  });
+
+  // Set up debug context for maintenance server
+  setDebugContext({
+    supervisor,
+    claudeSessionsDir: config.claudeSessionsDir,
+    getSessionReader: async (projectPath: string) => {
+      // Find the project by scanning - projectPath is the absolute path
+      const projects = await scanner.listProjects();
+      const project = projects.find((p) => p.path === projectPath);
+      if (!project || project.provider !== "claude") return null;
+      return new ClaudeSessionReader({ sessionDir: project.sessionDir });
+    },
   });
 
   // Create WebSocket support with the main app

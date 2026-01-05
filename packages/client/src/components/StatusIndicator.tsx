@@ -17,6 +17,11 @@ export function StatusIndicator({
     return null;
   }
 
+  // Hide running state - now shown in ProviderBadge's thinking indicator
+  if (processState === "running" && connected && status.state === "owned") {
+    return null;
+  }
+
   // Determine status text for tooltip/accessibility
   const getStatusText = () => {
     if (!connected && status.state === "owned") return "Reconnecting...";

@@ -12,6 +12,10 @@ import { StatusIndicator } from "../components/StatusIndicator";
 import { ToolApprovalPanel } from "../components/ToolApprovalPanel";
 import { AgentContentProvider } from "../contexts/AgentContentContext";
 import {
+  EditAugmentProvider,
+  useEditAugmentContext,
+} from "../contexts/EditAugmentContext";
+import {
   StreamingMarkdownProvider,
   useStreamingMarkdownContext,
 } from "../contexts/StreamingMarkdownContext";
@@ -21,6 +25,7 @@ import type { DraftControls } from "../hooks/useDraftPersistence";
 import { useEngagementTracking } from "../hooks/useEngagementTracking";
 import { getModelSetting, getThinkingSetting } from "../hooks/useModelSettings";
 import {
+  type EditAugmentCallbacks,
   type StreamingMarkdownCallbacks,
   useSession,
 } from "../hooks/useSession";
@@ -42,13 +47,16 @@ export function SessionPage() {
 
   // Key ensures component remounts on session change, resetting all state
   // Wrap with StreamingMarkdownProvider for server-rendered markdown streaming
+  // Wrap with EditAugmentProvider for server-computed unified diffs
   return (
     <StreamingMarkdownProvider>
-      <SessionPageContent
-        key={sessionId}
-        projectId={projectId}
-        sessionId={sessionId}
-      />
+      <EditAugmentProvider>
+        <SessionPageContent
+          key={sessionId}
+          projectId={projectId}
+          sessionId={sessionId}
+        />
+      </EditAugmentProvider>
     </StreamingMarkdownProvider>
   );
 }
@@ -94,6 +102,19 @@ function SessionPageContent({
     };
   }, [streamingMarkdownContext]);
 
+  // Get edit augment context for server-computed unified diffs
+  const editAugmentContext = useEditAugmentContext();
+
+  // Memoize edit augment callbacks
+  const editAugmentCallbacks = useMemo<EditAugmentCallbacks | undefined>(() => {
+    if (!editAugmentContext) return undefined;
+    return {
+      onEditAugment: (augment) => {
+        editAugmentContext.setAugment(augment.toolUseId, augment);
+      },
+    };
+  }, [editAugmentContext]);
+
   const {
     session,
     messages,
@@ -115,13 +136,15 @@ function SessionPageContent({
     setPermissionMode,
     setHold,
     isHeld,
-    addUserMessage,
-    removeOptimisticMessage,
+    pendingMessages,
+    addPendingMessage,
+    removePendingMessage,
   } = useSession(
     projectId,
     sessionId,
     initialStatus,
     streamingMarkdownCallbacks,
+    editAugmentCallbacks,
   );
   const [scrollTrigger, setScrollTrigger] = useState(0);
   const draftControlsRef = useRef<DraftControls | null>(null);
@@ -198,7 +221,8 @@ function SessionPageContent({
   });
 
   const handleSend = async (text: string) => {
-    addUserMessage(text); // Optimistic display with temp ID
+    // Add to pending queue and get tempId to pass to server
+    const tempId = addPendingMessage(text);
     setProcessState("running"); // Optimistic: show processing indicator immediately
     setScrollTrigger((prev) => prev + 1); // Force scroll to bottom
 
@@ -224,6 +248,7 @@ function SessionPageContent({
             provider: session?.provider,
           },
           currentAttachments.length > 0 ? currentAttachments : undefined,
+          tempId,
         );
         // Update status to trigger SSE connection
         setStatus({ state: "owned", processId: result.processId });
@@ -234,14 +259,15 @@ function SessionPageContent({
           text,
           permissionMode,
           currentAttachments.length > 0 ? currentAttachments : undefined,
+          tempId,
         );
       }
       // Success - clear the draft from localStorage
       draftControlsRef.current?.clearDraft();
     } catch (err) {
       console.error("Failed to send:", err);
-      // Restore the message from localStorage and clean up
-      removeOptimisticMessage(text);
+      // Remove from pending queue and restore draft on error
+      removePendingMessage(tempId);
       draftControlsRef.current?.restoreFromStorage();
       setAttachments(currentAttachments); // Restore attachments on error
       setProcessState("idle");
@@ -651,12 +677,6 @@ function SessionPageContent({
                 {!loading && isArchived && (
                   <span className="archived-badge">Archived</span>
                 )}
-                {!loading && session?.provider && (
-                  <ProviderBadge
-                    provider={session.provider}
-                    model={session.model}
-                  />
-                )}
                 {!loading && (
                   <SessionMenu
                     sessionId={sessionId}
@@ -672,11 +692,20 @@ function SessionPageContent({
                 )}
               </div>
             </div>
-            <StatusIndicator
-              status={status}
-              connected={connected}
-              processState={processState}
-            />
+            <div className="session-header-right">
+              {!loading && session?.provider && (
+                <ProviderBadge
+                  provider={session.provider}
+                  model={session.model}
+                  isThinking={processState === "running"}
+                />
+              )}
+              <StatusIndicator
+                status={status}
+                connected={connected}
+                processState={processState}
+              />
+            </div>
           </div>
         </header>
 
@@ -714,6 +743,7 @@ function SessionPageContent({
                   status.state === "owned" && processState === "running"
                 }
                 scrollTrigger={scrollTrigger}
+                pendingMessages={pendingMessages}
               />
             </AgentContentProvider>
           )}

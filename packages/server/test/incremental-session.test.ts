@@ -64,7 +64,7 @@ describe("Incremental Session Loading", () => {
         ].join("\n")}\n`,
       );
 
-      const app = createApp({ sdk: mockSdk, projectsDir: testDir });
+      const { app } = createApp({ sdk: mockSdk, projectsDir: testDir });
       const res = await app.request(
         `/api/projects/${projectId}/sessions/session`,
       );
@@ -104,7 +104,7 @@ describe("Incremental Session Loading", () => {
         ].join("\n")}\n`,
       );
 
-      const app = createApp({ sdk: mockSdk, projectsDir: testDir });
+      const { app } = createApp({ sdk: mockSdk, projectsDir: testDir });
       const res = await app.request(
         `/api/projects/${projectId}/sessions/session?afterMessageId=${msg1Id}`,
       );
@@ -139,7 +139,7 @@ describe("Incremental Session Loading", () => {
         ].join("\n")}\n`,
       );
 
-      const app = createApp({ sdk: mockSdk, projectsDir: testDir });
+      const { app } = createApp({ sdk: mockSdk, projectsDir: testDir });
       const res = await app.request(
         `/api/projects/${projectId}/sessions/session?afterMessageId=${msg2Id}`,
       );
@@ -163,7 +163,7 @@ describe("Incremental Session Loading", () => {
         })}\n`,
       );
 
-      const app = createApp({ sdk: mockSdk, projectsDir: testDir });
+      const { app } = createApp({ sdk: mockSdk, projectsDir: testDir });
       const res = await app.request(
         `/api/projects/${projectId}/sessions/session?afterMessageId=nonexistent`,
       );
@@ -199,7 +199,7 @@ describe("Incremental Session Loading", () => {
         ].join("\n")}\n`,
       );
 
-      const app = createApp({ sdk: mockSdk, projectsDir: testDir });
+      const { app } = createApp({ sdk: mockSdk, projectsDir: testDir });
       const res = await app.request(
         `/api/projects/${projectId}/sessions/session?afterMessageId=${msg1Id}`,
       );

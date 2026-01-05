@@ -105,8 +105,9 @@ export function createStreamRoutes(deps: StreamDeps): Hono {
         // Must be an assistant message
         if (message.type !== "assistant") return null;
 
-        // Check for content array with tool_use blocks
-        const content = message.content;
+        // SDK messages have content nested at message.message.content
+        const innerMessage = message.message as Record<string, unknown> | undefined;
+        const content = innerMessage?.content ?? message.content;
         if (!Array.isArray(content)) return null;
 
         // Look for Edit tool_use blocks

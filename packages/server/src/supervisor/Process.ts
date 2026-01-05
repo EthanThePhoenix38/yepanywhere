@@ -22,6 +22,25 @@ import { DEFAULT_IDLE_TIMEOUT_MS } from "./types.js";
 type Listener = (event: ProcessEvent) => void;
 
 /**
+ * IMPORTANT: Never filter out messages by type before emitting to SSE!
+ *
+ * Tool results are user-type messages containing tool_result content blocks.
+ * If you filter out user messages, tool calls will appear stuck in "pending"
+ * state until the page is refreshed (when JSONL is fetched from disk).
+ *
+ * The client-side mergeMessages handles deduplication by UUID, so duplicate
+ * emissions are safe and expected (queueMessage emits user messages, and
+ * the iterator also yields them).
+ *
+ * @returns true - always emit the message
+ */
+export function shouldEmitMessage(_message: SDKMessage): boolean {
+  // Always emit. DO NOT add filtering here!
+  // See docstring above for why this is critical.
+  return true;
+}
+
+/**
  * Pending tool approval request.
  * The SDK's canUseTool callback creates this and waits for respondToInput.
  */
@@ -53,6 +72,9 @@ export class Process {
   private idleTimer: NodeJS.Timeout | null = null;
   private idleTimeoutMs: number;
   private iteratorDone = false;
+
+  /** Set synchronously when transport/spawn fails to prevent race with queueMessage */
+  private transportFailed = false;
 
   /** In-memory message history for mock SDK (real SDK persists to disk) */
   private messageHistory: SDKMessage[] = [];
@@ -366,11 +388,13 @@ export class Process {
    *
    * @param text - The message text
    * @param uuid - The UUID to use (should match what was passed to SDK)
+   * @param tempId - Optional client temp ID for optimistic UI tracking
    */
-  addInitialUserMessage(text: string, uuid: string): void {
+  addInitialUserMessage(text: string, uuid: string, tempId?: string): void {
     const sdkMessage = {
       type: "user",
       uuid,
+      tempId,
       message: { role: "user", content: text },
     } as SDKMessage;
 
@@ -420,11 +444,20 @@ export class Process {
     position?: number;
     error?: string;
   } {
-    // Check if process is terminated
+    // Check if process is terminated or transport failed
     if (this._state.type === "terminated") {
       return {
         success: false,
         error: `Process terminated: ${this._state.reason}`,
+      };
+    }
+
+    // Check if transport failed (spawn error, etc.) - this flag is set synchronously
+    // to prevent race conditions where queueMessage is called before markTerminated completes
+    if (this.transportFailed) {
+      return {
+        success: false,
+        error: "Process transport failed",
       };
     }
 
@@ -439,6 +472,7 @@ export class Process {
     const sdkMessage = {
       type: "user",
       uuid,
+      tempId: message.tempId,
       message: { role: "user", content },
     } as SDKMessage;
 
@@ -773,8 +807,8 @@ export class Process {
         const message = result.value;
 
         // Store message in history (for mock SDK that doesn't persist to disk)
-        // Skip user messages - they're already added by queueMessage() to avoid duplicates
-        if (message.type !== "user") {
+        // See shouldEmitMessage() for why we never filter messages
+        if (shouldEmitMessage(message)) {
           this.messageHistory.push(message);
         }
 
@@ -818,8 +852,8 @@ export class Process {
         }
 
         // Emit to SSE subscribers
-        // Skip user messages - they're already emitted by queueMessage() to avoid duplicates
-        if (message.type !== "user") {
+        // See shouldEmitMessage() for why we never filter messages
+        if (shouldEmitMessage(message)) {
           this.emit({ type: "message", message });
         }
 
@@ -850,8 +884,10 @@ export class Process {
 
       this.emit({ type: "error", error: err });
 
-      // Detect process termination errors
+      // Detect process termination errors - set flag synchronously BEFORE markTerminated
+      // to prevent race where queueMessage is called before state changes to terminated
       if (this.isProcessTerminationError(err)) {
+        this.transportFailed = true;
         this.markTerminated("underlying process terminated", err);
         return;
       }
