@@ -19,8 +19,9 @@ function saveFunPhrasesEnabled(enabled: boolean) {
  * When disabled, just shows "Thinking..."
  */
 export function useFunPhrases() {
-  const [funPhrasesEnabled, setFunPhrasesEnabledState] =
-    useState<boolean>(loadFunPhrasesEnabled);
+  const [funPhrasesEnabled, setFunPhrasesEnabledState] = useState<boolean>(
+    loadFunPhrasesEnabled,
+  );
 
   const setFunPhrasesEnabled = useCallback((enabled: boolean) => {
     setFunPhrasesEnabledState(enabled);

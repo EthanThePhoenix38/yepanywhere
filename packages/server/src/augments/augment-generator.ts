@@ -13,10 +13,7 @@ import {
   bundledLanguages,
   createHighlighter,
 } from "shiki";
-import type {
-  CompletedBlock,
-  StreamingCodeBlock,
-} from "./block-detector.js";
+import type { CompletedBlock, StreamingCodeBlock } from "./block-detector.js";
 
 export interface Augment {
   blockIndex: number;
@@ -186,7 +183,13 @@ async function renderCodeBlock(
 ): Promise<string> {
   const code = extractCodeContent(block.content);
   const lang = block.lang ?? "";
-  return renderCodeWithHighlighter(code, lang, highlighter, loadedLanguages, theme);
+  return renderCodeWithHighlighter(
+    code,
+    lang,
+    highlighter,
+    loadedLanguages,
+    theme,
+  );
 }
 
 /**

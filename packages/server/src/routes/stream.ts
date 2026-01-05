@@ -106,7 +106,9 @@ export function createStreamRoutes(deps: StreamDeps): Hono {
         if (message.type !== "assistant") return null;
 
         // SDK messages have content nested at message.message.content
-        const innerMessage = message.message as Record<string, unknown> | undefined;
+        const innerMessage = message.message as
+          | Record<string, unknown>
+          | undefined;
         const content = innerMessage?.content ?? message.content;
         if (!Array.isArray(content)) return null;
 
