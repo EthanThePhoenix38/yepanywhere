@@ -1,5 +1,17 @@
 import { describe, expect, it } from "vitest";
-import { computeEditAugment } from "../../src/augments/edit-augments.js";
+import {
+  __test__,
+  computeEditAugment,
+} from "../../src/augments/edit-augments.js";
+
+const {
+  extractShikiLines,
+  addDiffLineClasses,
+  convertHunks,
+  patchToUnifiedText,
+  escapeHtml,
+  computeWordDiff,
+} = __test__;
 
 describe("computeEditAugment", () => {
   describe("structuredPatch computation", () => {
@@ -258,5 +270,455 @@ describe("computeEditAugment", () => {
 
       expect(augment.structuredPatch.length).toBeGreaterThan(0);
     });
+  });
+});
+
+describe("extractShikiLines", () => {
+  it("extracts content from single line", () => {
+    const html =
+      '<pre class="shiki"><code><span class="line">content</span></code></pre>';
+    const lines = extractShikiLines(html);
+    expect(lines).toEqual(["content"]);
+  });
+
+  it("extracts content from multiple lines", () => {
+    const html =
+      '<pre class="shiki"><code><span class="line">line1</span>\n<span class="line">line2</span>\n<span class="line">line3</span></code></pre>';
+    const lines = extractShikiLines(html);
+    expect(lines).toEqual(["line1", "line2", "line3"]);
+  });
+
+  it("handles lines with nested spans (syntax tokens)", () => {
+    const html =
+      '<pre class="shiki"><code><span class="line"><span style="color:var(--shiki-token-keyword)">const</span> <span style="color:var(--shiki-token-constant)">x</span> = 1;</span></code></pre>';
+    const lines = extractShikiLines(html);
+    expect(lines).toHaveLength(1);
+    expect(lines[0]).toContain("<span");
+    expect(lines[0]).toContain("const");
+  });
+
+  it("handles empty lines", () => {
+    const html =
+      '<pre class="shiki"><code><span class="line">first</span>\n<span class="line"></span>\n<span class="line">third</span></code></pre>';
+    const lines = extractShikiLines(html);
+    expect(lines).toEqual(["first", "", "third"]);
+  });
+
+  it("handles deeply nested spans", () => {
+    const html =
+      '<pre class="shiki"><code><span class="line"><span class="outer"><span class="inner">deep</span></span></span></code></pre>';
+    const lines = extractShikiLines(html);
+    expect(lines).toHaveLength(1);
+    expect(lines[0]).toContain("deep");
+  });
+
+  it("returns empty array for HTML without line spans", () => {
+    const html = '<pre class="shiki"><code>no line spans here</code></pre>';
+    const lines = extractShikiLines(html);
+    expect(lines).toEqual([]);
+  });
+
+  it("handles malformed HTML with unclosed spans gracefully", () => {
+    const html =
+      '<pre class="shiki"><code><span class="line">content<span>unclosed</code></pre>';
+    const lines = extractShikiLines(html);
+    // Should handle gracefully without crashing
+    expect(Array.isArray(lines)).toBe(true);
+  });
+
+  it("handles HTML with multiple class attributes on line span", () => {
+    // Only matches class="line" exactly per current implementation
+    const html =
+      '<pre class="shiki"><code><span class="line highlight">highlighted line</span></code></pre>';
+    const lines = extractShikiLines(html);
+    // The regex looks for 'class="line"' exactly, so this won't match
+    expect(lines).toEqual([]);
+  });
+
+  it("preserves HTML entities in content", () => {
+    const html =
+      '<pre class="shiki"><code><span class="line">&lt;div&gt;escaped&lt;/div&gt;</span></code></pre>';
+    const lines = extractShikiLines(html);
+    expect(lines[0]).toBe("&lt;div&gt;escaped&lt;/div&gt;");
+  });
+});
+
+describe("addDiffLineClasses", () => {
+  it("adds line-deleted class for lines starting with -", () => {
+    const html =
+      '<pre class="shiki"><code><span class="line">-removed line</span></code></pre>';
+    const result = addDiffLineClasses(html);
+    expect(result).toContain('class="line line-deleted"');
+  });
+
+  it("adds line-inserted class for lines starting with +", () => {
+    const html =
+      '<pre class="shiki"><code><span class="line">+added line</span></code></pre>';
+    const result = addDiffLineClasses(html);
+    expect(result).toContain('class="line line-inserted"');
+  });
+
+  it("adds line-context class for lines starting with space", () => {
+    const html =
+      '<pre class="shiki"><code><span class="line"> context line</span></code></pre>';
+    const result = addDiffLineClasses(html);
+    expect(result).toContain('class="line line-context"');
+  });
+
+  it("adds line-hunk class for lines starting with @", () => {
+    const html =
+      '<pre class="shiki"><code><span class="line">@@ -1,3 +1,4 @@</span></code></pre>';
+    const result = addDiffLineClasses(html);
+    expect(result).toContain('class="line line-hunk"');
+  });
+
+  it("handles HTML entities for detection", () => {
+    // Content might have &lt; for < - verify it still detects correctly
+    const html =
+      '<pre class="shiki"><code><span class="line">+&lt;div&gt;</span></code></pre>';
+    const result = addDiffLineClasses(html);
+    expect(result).toContain('class="line line-inserted"');
+  });
+
+  it("keeps line class for unrecognized prefixes", () => {
+    const html =
+      '<pre class="shiki"><code><span class="line">regular text</span></code></pre>';
+    const result = addDiffLineClasses(html);
+    expect(result).toContain('class="line"');
+    expect(result).not.toContain("line-deleted");
+    expect(result).not.toContain("line-inserted");
+    expect(result).not.toContain("line-context");
+    expect(result).not.toContain("line-hunk");
+  });
+
+  it("handles multiple lines with different types", () => {
+    const html =
+      '<pre class="shiki"><code><span class="line">@@ -1,2 +1,2 @@</span>\n<span class="line">-old</span>\n<span class="line">+new</span>\n<span class="line"> same</span></code></pre>';
+    const result = addDiffLineClasses(html);
+    expect(result).toContain('class="line line-hunk"');
+    expect(result).toContain('class="line line-deleted"');
+    expect(result).toContain('class="line line-inserted"');
+    expect(result).toContain('class="line line-context"');
+  });
+
+  it("handles lines with nested spans for syntax highlighting", () => {
+    const html =
+      '<pre class="shiki"><code><span class="line"><span style="color:red">-</span><span style="color:blue">deleted</span></span></code></pre>';
+    const result = addDiffLineClasses(html);
+    // Should detect the - prefix even with spans
+    expect(result).toContain('class="line line-deleted"');
+  });
+
+  it("handles empty line content", () => {
+    const html =
+      '<pre class="shiki"><code><span class="line"></span></code></pre>';
+    const result = addDiffLineClasses(html);
+    // Empty line should just have "line" class
+    expect(result).toContain('class="line"');
+  });
+});
+
+describe("convertHunks", () => {
+  it("converts jsdiff hunk format to PatchHunk format", () => {
+    const jsdiffHunks = [
+      {
+        oldStart: 1,
+        oldLines: 3,
+        newStart: 1,
+        newLines: 4,
+        lines: [" context", "-old", "+new1", "+new2", " context2"],
+      },
+    ];
+
+    const result = convertHunks(jsdiffHunks);
+
+    expect(result).toHaveLength(1);
+    expect(result[0]).toEqual({
+      oldStart: 1,
+      oldLines: 3,
+      newStart: 1,
+      newLines: 4,
+      lines: [" context", "-old", "+new1", "+new2", " context2"],
+    });
+  });
+
+  it("filters out 'No newline at end of file' marker", () => {
+    const jsdiffHunks = [
+      {
+        oldStart: 1,
+        oldLines: 1,
+        newStart: 1,
+        newLines: 1,
+        lines: ["-old", "+new", "\\ No newline at end of file"],
+      },
+    ];
+
+    const result = convertHunks(jsdiffHunks);
+
+    expect(result[0].lines).toEqual(["-old", "+new"]);
+    expect(result[0].lines).not.toContain("\\ No newline at end of file");
+  });
+
+  it("handles multiple hunks", () => {
+    const jsdiffHunks = [
+      {
+        oldStart: 1,
+        oldLines: 2,
+        newStart: 1,
+        newLines: 2,
+        lines: ["-a", "+b"],
+      },
+      {
+        oldStart: 10,
+        oldLines: 1,
+        newStart: 10,
+        newLines: 1,
+        lines: ["-x", "+y"],
+      },
+    ];
+
+    const result = convertHunks(jsdiffHunks);
+
+    expect(result).toHaveLength(2);
+    expect(result[0].oldStart).toBe(1);
+    expect(result[1].oldStart).toBe(10);
+  });
+
+  it("handles empty hunks array", () => {
+    const result = convertHunks([]);
+    expect(result).toEqual([]);
+  });
+
+  it("handles hunk with only context lines", () => {
+    const jsdiffHunks = [
+      {
+        oldStart: 5,
+        oldLines: 3,
+        newStart: 5,
+        newLines: 3,
+        lines: [" line1", " line2", " line3"],
+      },
+    ];
+
+    const result = convertHunks(jsdiffHunks);
+
+    expect(result[0].lines).toEqual([" line1", " line2", " line3"]);
+  });
+});
+
+describe("patchToUnifiedText", () => {
+  it("generates unified diff text from hunks", () => {
+    const hunks = [
+      {
+        oldStart: 1,
+        oldLines: 3,
+        newStart: 1,
+        newLines: 4,
+        lines: [" context", "-old", "+new1", "+new2"],
+      },
+    ];
+
+    const result = patchToUnifiedText(hunks);
+
+    expect(result).toBe("@@ -1,3 +1,4 @@\n context\n-old\n+new1\n+new2");
+  });
+
+  it("handles multiple hunks", () => {
+    const hunks = [
+      {
+        oldStart: 1,
+        oldLines: 1,
+        newStart: 1,
+        newLines: 1,
+        lines: ["-a", "+b"],
+      },
+      {
+        oldStart: 10,
+        oldLines: 1,
+        newStart: 10,
+        newLines: 1,
+        lines: ["-x", "+y"],
+      },
+    ];
+
+    const result = patchToUnifiedText(hunks);
+
+    expect(result).toContain("@@ -1,1 +1,1 @@");
+    expect(result).toContain("@@ -10,1 +10,1 @@");
+    expect(result).toContain("-a");
+    expect(result).toContain("+b");
+    expect(result).toContain("-x");
+    expect(result).toContain("+y");
+  });
+
+  it("returns empty string for empty hunks", () => {
+    const result = patchToUnifiedText([]);
+    expect(result).toBe("");
+  });
+
+  it("preserves line content exactly", () => {
+    const hunks = [
+      {
+        oldStart: 1,
+        oldLines: 1,
+        newStart: 1,
+        newLines: 1,
+        lines: ["-const x = 1;", "+const x = 2;"],
+      },
+    ];
+
+    const result = patchToUnifiedText(hunks);
+
+    expect(result).toContain("-const x = 1;");
+    expect(result).toContain("+const x = 2;");
+  });
+});
+
+describe("escapeHtml", () => {
+  it("escapes ampersand", () => {
+    expect(escapeHtml("a & b")).toBe("a &amp; b");
+  });
+
+  it("escapes less than", () => {
+    expect(escapeHtml("<div>")).toBe("&lt;div&gt;");
+  });
+
+  it("escapes greater than", () => {
+    expect(escapeHtml("a > b")).toBe("a &gt; b");
+  });
+
+  it("escapes double quotes", () => {
+    expect(escapeHtml('say "hello"')).toBe("say &quot;hello&quot;");
+  });
+
+  it("escapes single quotes", () => {
+    expect(escapeHtml("it's")).toBe("it&#039;s");
+  });
+
+  it("escapes all special characters together", () => {
+    expect(escapeHtml('<a href="test">it\'s a & b</a>')).toBe(
+      "&lt;a href=&quot;test&quot;&gt;it&#039;s a &amp; b&lt;/a&gt;",
+    );
+  });
+
+  it("returns empty string for empty input", () => {
+    expect(escapeHtml("")).toBe("");
+  });
+
+  it("leaves regular text unchanged", () => {
+    expect(escapeHtml("hello world 123")).toBe("hello world 123");
+  });
+
+  it("handles unicode characters", () => {
+    expect(escapeHtml("emoji: 😀 & more")).toBe("emoji: 😀 &amp; more");
+  });
+
+  it("handles multiple consecutive special characters", () => {
+    expect(escapeHtml("<<>>&&")).toBe("&lt;&lt;&gt;&gt;&amp;&amp;");
+  });
+});
+
+describe("computeWordDiff", () => {
+  it("returns single unchanged segment for identical strings", () => {
+    const result = computeWordDiff("hello world", "hello world");
+    expect(result).toEqual([{ text: "hello world", type: "unchanged" }]);
+  });
+
+  it("handles single word change", () => {
+    const result = computeWordDiff("const x = 1", "const y = 1");
+    expect(result).toEqual([
+      { text: "const ", type: "unchanged" },
+      { text: "x", type: "removed" },
+      { text: "y", type: "added" },
+      { text: " = 1", type: "unchanged" },
+    ]);
+  });
+
+  it("handles word addition", () => {
+    const result = computeWordDiff("a b", "a b c");
+    expect(result).toEqual([
+      { text: "a b ", type: "unchanged" },
+      { text: "c", type: "added" },
+    ]);
+  });
+
+  it("handles word removal", () => {
+    const result = computeWordDiff("a b c", "a b");
+    expect(result).toEqual([
+      { text: "a b", type: "unchanged" },
+      { text: " c", type: "removed" },
+    ]);
+  });
+
+  it("handles multiple changes", () => {
+    const result = computeWordDiff("one two three", "one TWO THREE");
+    expect(result).toEqual([
+      { text: "one ", type: "unchanged" },
+      { text: "two three", type: "removed" },
+      { text: "TWO THREE", type: "added" },
+    ]);
+  });
+
+  it("handles both strings empty", () => {
+    const result = computeWordDiff("", "");
+    expect(result).toEqual([]);
+  });
+
+  it("handles empty old string", () => {
+    const result = computeWordDiff("", "new content");
+    expect(result).toEqual([{ text: "new content", type: "added" }]);
+  });
+
+  it("handles empty new string", () => {
+    const result = computeWordDiff("old content", "");
+    expect(result).toEqual([{ text: "old content", type: "removed" }]);
+  });
+
+  it("preserves whitespace correctly", () => {
+    const result = computeWordDiff("  hello  ", "  world  ");
+    // Whitespace should be preserved in the output
+    expect(result.map((s) => s.text).join("")).toBe("  hello    world  ");
+    expect(result.some((s) => s.type === "removed")).toBe(true);
+    expect(result.some((s) => s.type === "added")).toBe(true);
+  });
+
+  it("handles punctuation as separate tokens", () => {
+    const result = computeWordDiff("foo.bar", "foo.baz");
+    // jsdiff treats punctuation as word boundaries
+    expect(result.some((s) => s.text === "bar" && s.type === "removed")).toBe(
+      true,
+    );
+    expect(result.some((s) => s.text === "baz" && s.type === "added")).toBe(
+      true,
+    );
+  });
+
+  it("handles full line replacement", () => {
+    const result = computeWordDiff(
+      "completely different text",
+      "totally new content",
+    );
+    // Should have removed and added segments
+    expect(result.some((s) => s.type === "removed")).toBe(true);
+    expect(result.some((s) => s.type === "added")).toBe(true);
+    // Concatenated segments should form the original and new strings
+    const removedText = result
+      .filter((s) => s.type === "removed" || s.type === "unchanged")
+      .map((s) => s.text)
+      .join("");
+    const addedText = result
+      .filter((s) => s.type === "added" || s.type === "unchanged")
+      .map((s) => s.text)
+      .join("");
+    expect(removedText).toBe("completely different text");
+    expect(addedText).toBe("totally new content");
+  });
+
+  it("handles code-like content with operators", () => {
+    const result = computeWordDiff("x = 1 + 2", "x = 1 + 3");
+    expect(result.some((s) => s.text === "2" && s.type === "removed")).toBe(
+      true,
+    );
+    expect(result.some((s) => s.text === "3" && s.type === "added")).toBe(true);
   });
 });

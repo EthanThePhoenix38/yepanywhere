@@ -245,3 +245,12 @@ export async function highlightFile(
 
   return highlightCode(content, lang);
 }
+
+/**
+ * @internal
+ * Exported for testing purposes only. Do not use in production code.
+ */
+export const __test__ = {
+  MAX_LINES,
+  EXTENSION_TO_LANG,
+};

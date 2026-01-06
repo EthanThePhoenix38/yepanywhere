@@ -7,7 +7,7 @@
  */
 
 import type { EditAugment, PatchHunk } from "@yep-anywhere/shared";
-import { structuredPatch } from "diff";
+import { diffWords, structuredPatch } from "diff";
 import { getLanguageForPath, highlightCode } from "../highlighting/index.js";
 
 /** Number of context lines to include in the diff */
@@ -278,3 +278,41 @@ function escapeHtml(text: string): string {
     .replace(/"/g, "&quot;")
     .replace(/'/g, "&#039;");
 }
+
+/**
+ * Represents a segment of a word-level diff.
+ */
+export interface WordDiffSegment {
+  text: string;
+  type: "unchanged" | "removed" | "added";
+}
+
+/**
+ * Compute word-level diff between two strings.
+ * Uses jsdiff's diffWords to find word-by-word changes.
+ *
+ * @param oldLine - The original string
+ * @param newLine - The modified string
+ * @returns Array of diff segments with their types
+ */
+function computeWordDiff(oldLine: string, newLine: string): WordDiffSegment[] {
+  const changes = diffWords(oldLine, newLine);
+
+  return changes.map((change) => ({
+    text: change.value,
+    type: change.added ? "added" : change.removed ? "removed" : "unchanged",
+  }));
+}
+
+/**
+ * @internal
+ * Exported for testing purposes only. Do not use in production code.
+ */
+export const __test__ = {
+  extractShikiLines,
+  addDiffLineClasses,
+  convertHunks,
+  patchToUnifiedText,
+  escapeHtml,
+  computeWordDiff,
+};
