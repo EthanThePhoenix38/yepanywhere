@@ -8,7 +8,7 @@
 
 import type { EditAugment, PatchHunk } from "@yep-anywhere/shared";
 import { structuredPatch } from "diff";
-import { highlightCode } from "../highlighting/index.js";
+import { getLanguageForPath, highlightCode } from "../highlighting/index.js";
 
 /** Number of context lines to include in the diff */
 const CONTEXT_LINES = 3;
@@ -64,6 +64,117 @@ function patchToUnifiedText(hunks: PatchHunk[]): string {
 }
 
 /**
+ * Extract the inner content of each <span class="line">...</span> from Shiki HTML.
+ * Handles nested spans by counting depth.
+ */
+function extractShikiLines(html: string): string[] {
+  const lines: string[] = [];
+  const lineStartRegex = /<span class="line">/g;
+  let match: RegExpExecArray | null;
+
+  while ((match = lineStartRegex.exec(html)) !== null) {
+    const startPos = match.index + match[0].length;
+    let depth = 1;
+    let pos = startPos;
+
+    // Find the matching closing </span> by tracking nesting depth
+    while (depth > 0 && pos < html.length) {
+      const nextOpen = html.indexOf("<span", pos);
+      const nextClose = html.indexOf("</span>", pos);
+
+      if (nextClose === -1) break;
+
+      if (nextOpen !== -1 && nextOpen < nextClose) {
+        depth++;
+        pos = nextOpen + 5; // Move past "<span"
+      } else {
+        depth--;
+        if (depth === 0) {
+          lines.push(html.slice(startPos, nextClose));
+        }
+        pos = nextClose + 7; // Move past "</span>"
+      }
+    }
+  }
+
+  return lines;
+}
+
+/**
+ * Build syntax-highlighted diff HTML by highlighting old_string and new_string
+ * separately with the file's language, then reconstructing the diff.
+ *
+ * @returns Highlighted HTML or null if language is unknown/unsupported
+ */
+async function highlightDiffWithSyntax(
+  oldString: string,
+  newString: string,
+  hunks: PatchHunk[],
+  filePath: string,
+): Promise<string | null> {
+  // Detect language from file extension
+  const lang = getLanguageForPath(filePath);
+  if (!lang) return null;
+
+  // Highlight both strings with the file's language
+  // Handle empty strings - highlightCode returns null for empty input
+  const oldResult =
+    oldString.length > 0 ? await highlightCode(oldString, lang) : null;
+  const newResult =
+    newString.length > 0 ? await highlightCode(newString, lang) : null;
+
+  // If both fail (not just empty), fall back
+  if (!oldResult && oldString.length > 0) return null;
+  if (!newResult && newString.length > 0) return null;
+
+  // Extract lines from Shiki HTML
+  const oldLines = oldResult ? extractShikiLines(oldResult.html) : [];
+  const newLines = newResult ? extractShikiLines(newResult.html) : [];
+
+  // Build diff HTML by mapping hunk lines to highlighted source lines
+  const resultLines: string[] = [];
+
+  for (const hunk of hunks) {
+    // Add hunk header (hidden by CSS but needed for tests)
+    resultLines.push(
+      `<span class="line line-hunk">@@ -${hunk.oldStart},${hunk.oldLines} +${hunk.newStart},${hunk.newLines} @@</span>`,
+    );
+
+    let oldIdx = hunk.oldStart - 1; // 0-indexed
+    let newIdx = hunk.newStart - 1;
+
+    for (const line of hunk.lines) {
+      const prefix = line[0];
+      let lineClass: string;
+      let content: string;
+
+      if (prefix === " ") {
+        // Context line - use old (identical in both)
+        lineClass = "line line-context";
+        content = oldLines[oldIdx++] ?? "";
+        newIdx++;
+      } else if (prefix === "-") {
+        // Deleted line - use old
+        lineClass = "line line-deleted";
+        content = oldLines[oldIdx++] ?? "";
+      } else if (prefix === "+") {
+        // Inserted line - use new
+        lineClass = "line line-inserted";
+        content = newLines[newIdx++] ?? "";
+      } else {
+        continue; // Skip unexpected
+      }
+
+      resultLines.push(
+        `<span class="${lineClass}"><span class="diff-prefix">${escapeHtml(prefix)}</span>${content}</span>`,
+      );
+    }
+  }
+
+  return `<pre class="shiki"><code class="language-${lang}">${resultLines.join("\n")}</code></pre>`;
+}
+
+/**
  * Compute an edit augment for an Edit tool_use.
  *
  * @param toolUseId - The tool_use ID to associate with this augment
@@ -90,18 +201,25 @@ export async function computeEditAugment(
   // Convert hunks to our format
   const structuredPatchResult = convertHunks(patch.hunks);
 
-  // Convert to unified diff text for highlighting
-  const diffText = patchToUnifiedText(structuredPatchResult);
+  // Try syntax-highlighted diff first (highlights code with file's language)
+  let diffHtml = await highlightDiffWithSyntax(
+    old_string,
+    new_string,
+    structuredPatchResult,
+    file_path,
+  );
 
-  // Highlight with shiki using diff language
-  let diffHtml: string;
-  const highlightResult = await highlightCode(diffText, "diff");
-  if (highlightResult) {
-    // Post-process to add line type classes for background colors
-    diffHtml = addDiffLineClasses(highlightResult.html);
-  } else {
-    // Fallback to plain text wrapped in pre/code
-    diffHtml = `<pre class="shiki"><code class="language-diff">${escapeHtml(diffText)}</code></pre>`;
+  // Fall back to diff-only highlighting if syntax highlighting fails
+  if (!diffHtml) {
+    const diffText = patchToUnifiedText(structuredPatchResult);
+    const highlightResult = await highlightCode(diffText, "diff");
+    if (highlightResult) {
+      // Post-process to add line type classes for background colors
+      diffHtml = addDiffLineClasses(highlightResult.html);
+    } else {
+      // Fallback to plain text wrapped in pre/code
+      diffHtml = `<pre class="shiki"><code class="language-diff">${escapeHtml(diffText)}</code></pre>`;
+    }
   }
 
   return {

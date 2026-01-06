@@ -1023,19 +1023,28 @@ details[open] .collapsible__icon {
   /* Remove whitespace between line spans */
   display: flex;
   flex-direction: column;
+  /* Collapse whitespace text nodes (from \n between spans) */
+  font-size: 0;
 }
 
 .highlighted-diff .line {
   padding: 0 0.5rem;
+  /* Restore font size collapsed above */
+  font-size: var(--font-size-base);
+}
+
+/* Override any token background colors from Shiki syntax tokens */
+.highlighted-diff .line span[style] {
+  background-color: transparent !important;
 }
 
 /* Diff line background colors */
 .highlighted-diff .line-deleted {
-  background: var(--bg-diff-deleted, rgba(248, 81, 73, 0.15));
+  background: var(--bg-diff-deleted, rgba(248, 81, 73, 0.15)) !important;
 }
 
 .highlighted-diff .line-inserted {
-  background: var(--bg-diff-inserted, rgba(63, 185, 80, 0.15));
+  background: var(--bg-diff-inserted, rgba(63, 185, 80, 0.15)) !important;
 }
 
 .highlighted-diff .line-hunk {
@@ -1044,6 +1053,12 @@ details[open] .collapsible__icon {
 
 .highlighted-diff .line-context {
   background: transparent;
+}
+
+.highlighted-diff .diff-prefix {
+  user-select: none;
+  opacity: 0.5;
+  margin-right: 0.5ch;
 }
 
 /* Diff view container with truncation */

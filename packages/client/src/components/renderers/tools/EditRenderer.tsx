@@ -94,21 +94,27 @@ function HighlightedDiff({
 }) {
   // If truncation is needed, we need to limit the visible lines
   // The HTML is wrapped in <pre class="shiki"><code>...</code></pre>
-  // Each line is a <span class="line">...</span>
+  // Each line is a <span class="line ...">...</span>
   const htmlToRender = useMemo(() => {
     if (!truncateLines) return diffHtml;
 
     // Parse and truncate by counting line spans
-    // Simple approach: find closing </code> and count lines before it
-    const lines = diffHtml.split('<span class="line">');
-    if (lines.length <= truncateLines + 1) return diffHtml;
+    // Match any span with class starting with "line" (e.g. "line", "line line-deleted")
+    const lineRegex = /<span class="line[^"]*">/g;
+    const matches = [...diffHtml.matchAll(lineRegex)];
+    if (matches.length <= truncateLines) return diffHtml;
 
-    // Rebuild with only truncateLines worth of lines
-    const truncated = lines
-      .slice(0, truncateLines + 1)
-      .join('<span class="line">');
-    // Close any open tags
-    return `${truncated}</code></pre>`;
+    // Find the position to truncate at (after truncateLines lines)
+    const lastMatch = matches[truncateLines - 1];
+    if (!lastMatch) return diffHtml;
+
+    // Find the closing </span> for this line
+    const startPos = lastMatch.index! + lastMatch[0].length;
+    const closeSpanPos = diffHtml.indexOf("</span>", startPos);
+    if (closeSpanPos === -1) return diffHtml;
+
+    // Truncate and close tags
+    return `${diffHtml.slice(0, closeSpanPos + 7)}</code></pre>`;
   }, [diffHtml, truncateLines]);
 
   return (
