@@ -62,6 +62,10 @@ export const TextBlock = memo(function TextBlock({
 
   const showStreamingContent = isStreaming && useStreamingContent;
 
+  // Always render streaming container when isStreaming so refs are attached
+  // before first augment arrives. Hidden until useStreamingContent becomes true.
+  const renderStreamingContainer = isStreaming;
+
   return (
     <div
       className={`text-block timeline-item${isStreaming ? " streaming" : ""}`}
@@ -76,9 +80,9 @@ export const TextBlock = memo(function TextBlock({
         {copied ? <CheckIcon /> : <CopyIcon />}
       </button>
 
-      {showStreamingContent ? (
-        // Server-rendered streaming content
-        <>
+      {/* Always render streaming elements when streaming so refs are ready for augments */}
+      {renderStreamingContainer && (
+        <div style={showStreamingContent ? undefined : { display: "none" }}>
           <div
             ref={streamingMarkdown.containerRef}
             className="streaming-blocks"
@@ -87,14 +91,18 @@ export const TextBlock = memo(function TextBlock({
             ref={streamingMarkdown.pendingRef}
             className="streaming-pending"
           />
-        </>
-      ) : augmentHtml ? (
-        // biome-ignore lint/security/noDangerouslySetInnerHtml: server-rendered HTML
-        <div dangerouslySetInnerHTML={{ __html: augmentHtml }} />
-      ) : (
-        // Plain text fallback (no server augment available)
-        <p>{text}</p>
+        </div>
       )}
+
+      {/* Show fallback content when not actively streaming */}
+      {!showStreamingContent &&
+        (augmentHtml ? (
+          // biome-ignore lint/security/noDangerouslySetInnerHtml: server-rendered HTML
+          <div dangerouslySetInnerHTML={{ __html: augmentHtml }} />
+        ) : (
+          // Plain text fallback (no server augment available)
+          <p>{text}</p>
+        ))}
     </div>
   );
 });

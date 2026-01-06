@@ -1,101 +1,94 @@
-import { useCallback, useSyncExternalStore } from "react";
-
-const STORAGE_KEY = "recent-sessions";
-const MAX_RECENT_SESSIONS = 20;
+import { useCallback, useEffect, useState } from "react";
+import { api } from "../api/client";
 
 export interface RecentSessionEntry {
   sessionId: string;
   projectId: string;
-  visitedAt: number;
-}
-
-// In-memory cache for SSR safety and performance
-let cache: RecentSessionEntry[] | null = null;
-
-function getRecentSessionsFromStorage(): RecentSessionEntry[] {
-  if (cache !== null) return cache;
-  if (typeof window === "undefined") return [];
-
-  try {
-    const stored = localStorage.getItem(STORAGE_KEY);
-    if (stored) {
-      cache = JSON.parse(stored);
-      return cache as RecentSessionEntry[];
-    }
-  } catch (e) {
-    console.error("Failed to parse recent sessions:", e);
-  }
-  cache = [];
-  return cache;
-}
-
-function setRecentSessionsToStorage(entries: RecentSessionEntry[]): void {
-  cache = entries;
-  try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(entries));
-  } catch (e) {
-    console.error("Failed to save recent sessions:", e);
-  }
-  // Notify subscribers
-  for (const listener of listeners) {
-    listener();
-  }
-}
-
-// External store pattern for useSyncExternalStore
-type Listener = () => void;
-const listeners = new Set<Listener>();
-
-function subscribe(listener: Listener): () => void {
-  listeners.add(listener);
-  return () => listeners.delete(listener);
-}
-
-function getSnapshot(): RecentSessionEntry[] {
-  return getRecentSessionsFromStorage();
+  visitedAt: string;
 }
 
 /**
- * Record a session visit. Updates the recent sessions list:
- * - If session exists, move to front with updated timestamp
- * - If new, add to front
- * - Trim to MAX_RECENT_SESSIONS
- *
- * This function can be called from outside React (e.g., in useEffect).
+ * Record a session visit (fire-and-forget).
+ * Can be called from outside React components.
  */
 export function recordSessionVisit(sessionId: string, projectId: string): void {
-  const entries = getRecentSessionsFromStorage();
-
-  // Remove existing entry if present
-  const filtered = entries.filter((e) => e.sessionId !== sessionId);
-
-  // Add to front with current timestamp
-  const updated: RecentSessionEntry[] = [
-    { sessionId, projectId, visitedAt: Date.now() },
-    ...filtered,
-  ].slice(0, MAX_RECENT_SESSIONS);
-
-  setRecentSessionsToStorage(updated);
+  api.recordVisit(sessionId, projectId).catch((err) => {
+    console.error("Failed to record session visit:", err);
+  });
 }
 
 /**
- * Hook to access recent sessions list.
- * Updates reactively when sessions are visited.
+ * Hook to access recent sessions list from the server.
+ * Fetches on mount and provides methods to record visits and clear.
  */
 export function useRecentSessions(): {
   recentSessions: RecentSessionEntry[];
+  isLoading: boolean;
+  error: Error | null;
   recordVisit: (sessionId: string, projectId: string) => void;
   clearRecents: () => void;
+  refetch: () => void;
 } {
-  const recentSessions = useSyncExternalStore(subscribe, getSnapshot);
+  const [recentSessions, setRecentSessions] = useState<RecentSessionEntry[]>(
+    [],
+  );
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<Error | null>(null);
 
-  const recordVisit = useCallback((sessionId: string, projectId: string) => {
-    recordSessionVisit(sessionId, projectId);
+  const fetchRecents = useCallback(async () => {
+    try {
+      const response = await api.getRecents();
+      setRecentSessions(response.recents);
+      setError(null);
+    } catch (err) {
+      setError(err instanceof Error ? err : new Error("Failed to fetch"));
+    } finally {
+      setIsLoading(false);
+    }
   }, []);
+
+  useEffect(() => {
+    fetchRecents();
+  }, [fetchRecents]);
+
+  const recordVisit = useCallback(
+    (sessionId: string, projectId: string) => {
+      // Optimistic update: move to front
+      setRecentSessions((prev) => {
+        const filtered = prev.filter((e) => e.sessionId !== sessionId);
+        return [
+          { sessionId, projectId, visitedAt: new Date().toISOString() },
+          ...filtered,
+        ];
+      });
+
+      // Fire and forget to server
+      api.recordVisit(sessionId, projectId).catch((err) => {
+        console.error("Failed to record session visit:", err);
+        // Refetch to sync with server state
+        fetchRecents();
+      });
+    },
+    [fetchRecents],
+  );
 
   const clearRecents = useCallback(() => {
-    setRecentSessionsToStorage([]);
-  }, []);
+    // Optimistic update
+    setRecentSessions([]);
 
-  return { recentSessions, recordVisit, clearRecents };
+    api.clearRecents().catch((err) => {
+      console.error("Failed to clear recents:", err);
+      // Refetch to sync with server state
+      fetchRecents();
+    });
+  }, [fetchRecents]);
+
+  return {
+    recentSessions,
+    isLoading,
+    error,
+    recordVisit,
+    clearRecents,
+    refetch: fetchRecents,
+  };
 }

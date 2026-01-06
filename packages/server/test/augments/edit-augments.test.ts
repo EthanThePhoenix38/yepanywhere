@@ -977,9 +977,7 @@ describe("computeEditAugment with word-level diffs", () => {
     });
 
     // Both replacement pairs should have word diff markers
-    const removedMatches = augment.diffHtml.match(
-      /class="diff-word-removed"/g,
-    );
+    const removedMatches = augment.diffHtml.match(/class="diff-word-removed"/g);
     const addedMatches = augment.diffHtml.match(/class="diff-word-added"/g);
 
     // Should have markers for both changed lines
@@ -994,20 +992,33 @@ describe("injectWordDiffMarkers", () => {
     text,
     type: "unchanged",
   });
-  const removed = (text: string): WordDiffSegment => ({ text, type: "removed" });
+  const removed = (text: string): WordDiffSegment => ({
+    text,
+    type: "removed",
+  });
   const added = (text: string): WordDiffSegment => ({ text, type: "added" });
 
   describe("plain text (no HTML tags)", () => {
     it("wraps removed word in old mode", () => {
       const html = "const x = 1";
-      const wordDiff = [unchanged("const "), removed("x"), added("y"), unchanged(" = 1")];
+      const wordDiff = [
+        unchanged("const "),
+        removed("x"),
+        added("y"),
+        unchanged(" = 1"),
+      ];
       const result = injectWordDiffMarkers(html, wordDiff, "old");
       expect(result).toBe('const <span class="diff-word-removed">x</span> = 1');
     });
 
     it("wraps added word in new mode", () => {
       const html = "const y = 1";
-      const wordDiff = [unchanged("const "), removed("x"), added("y"), unchanged(" = 1")];
+      const wordDiff = [
+        unchanged("const "),
+        removed("x"),
+        added("y"),
+        unchanged(" = 1"),
+      ];
       const result = injectWordDiffMarkers(html, wordDiff, "new");
       expect(result).toBe('const <span class="diff-word-added">y</span> = 1');
     });
@@ -1155,28 +1166,48 @@ describe("injectWordDiffMarkers", () => {
   describe("HTML entities", () => {
     it("handles &lt; entity correctly", () => {
       const html = "a &lt; b";
-      const wordDiff = [unchanged("a "), removed("<"), added(">"), unchanged(" b")];
+      const wordDiff = [
+        unchanged("a "),
+        removed("<"),
+        added(">"),
+        unchanged(" b"),
+      ];
       const result = injectWordDiffMarkers(html, wordDiff, "old");
       expect(result).toBe('a <span class="diff-word-removed">&lt;</span> b');
     });
 
     it("handles &gt; entity correctly", () => {
       const html = "a &gt; b";
-      const wordDiff = [unchanged("a "), removed(">"), added("<"), unchanged(" b")];
+      const wordDiff = [
+        unchanged("a "),
+        removed(">"),
+        added("<"),
+        unchanged(" b"),
+      ];
       const result = injectWordDiffMarkers(html, wordDiff, "old");
       expect(result).toBe('a <span class="diff-word-removed">&gt;</span> b');
     });
 
     it("handles &amp; entity correctly", () => {
       const html = "a &amp; b";
-      const wordDiff = [unchanged("a "), removed("&"), added("|"), unchanged(" b")];
+      const wordDiff = [
+        unchanged("a "),
+        removed("&"),
+        added("|"),
+        unchanged(" b"),
+      ];
       const result = injectWordDiffMarkers(html, wordDiff, "old");
       expect(result).toBe('a <span class="diff-word-removed">&amp;</span> b');
     });
 
     it("handles &quot; entity correctly", () => {
-      const html = 'say &quot;hello&quot;';
-      const wordDiff = [unchanged('say "'), removed("hello"), added("world"), unchanged('"')];
+      const html = "say &quot;hello&quot;";
+      const wordDiff = [
+        unchanged('say "'),
+        removed("hello"),
+        added("world"),
+        unchanged('"'),
+      ];
       const result = injectWordDiffMarkers(html, wordDiff, "old");
       expect(result).toBe(
         'say &quot;<span class="diff-word-removed">hello</span>&quot;',
@@ -1192,28 +1223,47 @@ describe("injectWordDiffMarkers", () => {
 
     it("handles hex entity &#x3C; (Shiki-style < encoding)", () => {
       const html = "a &#x3C; b";
-      const wordDiff = [unchanged("a "), removed("<"), added(">"), unchanged(" b")];
+      const wordDiff = [
+        unchanged("a "),
+        removed("<"),
+        added(">"),
+        unchanged(" b"),
+      ];
       const result = injectWordDiffMarkers(html, wordDiff, "old");
       expect(result).toBe('a <span class="diff-word-removed">&#x3C;</span> b');
     });
 
     it("handles hex entity &#x26; (Shiki-style & encoding)", () => {
       const html = "a &#x26; b";
-      const wordDiff = [unchanged("a "), removed("&"), added("|"), unchanged(" b")];
+      const wordDiff = [
+        unchanged("a "),
+        removed("&"),
+        added("|"),
+        unchanged(" b"),
+      ];
       const result = injectWordDiffMarkers(html, wordDiff, "old");
       expect(result).toBe('a <span class="diff-word-removed">&#x26;</span> b');
     });
 
     it("handles decimal entity &#60; (decimal < encoding)", () => {
       const html = "a &#60; b";
-      const wordDiff = [unchanged("a "), removed("<"), added(">"), unchanged(" b")];
+      const wordDiff = [
+        unchanged("a "),
+        removed("<"),
+        added(">"),
+        unchanged(" b"),
+      ];
       const result = injectWordDiffMarkers(html, wordDiff, "old");
       expect(result).toBe('a <span class="diff-word-removed">&#60;</span> b');
     });
 
     it("handles mixed hex and named entities", () => {
       const html = "&#x3C;div&#x3E; &amp; more";
-      const wordDiff = [removed("<div>"), added("<span>"), unchanged(" & more")];
+      const wordDiff = [
+        removed("<div>"),
+        added("<span>"),
+        unchanged(" & more"),
+      ];
       const result = injectWordDiffMarkers(html, wordDiff, "old");
       expect(result).toBe(
         '<span class="diff-word-removed">&#x3C;div&#x3E;</span> &amp; more',
@@ -1225,7 +1275,12 @@ describe("injectWordDiffMarkers", () => {
     it("handles shiki nested span structure", () => {
       const html =
         '<span style="color:var(--shiki-token-keyword)">const</span> <span style="color:var(--shiki-token-constant)">x</span> = 1';
-      const wordDiff = [unchanged("const "), removed("x"), added("y"), unchanged(" = 1")];
+      const wordDiff = [
+        unchanged("const "),
+        removed("x"),
+        added("y"),
+        unchanged(" = 1"),
+      ];
       const result = injectWordDiffMarkers(html, wordDiff, "old");
       expect(result).toContain('<span class="diff-word-removed">x</span>');
       expect(result).toContain(
@@ -1234,8 +1289,7 @@ describe("injectWordDiffMarkers", () => {
     });
 
     it("handles deeply nested spans", () => {
-      const html =
-        '<span class="outer"><span class="inner">text</span></span>';
+      const html = '<span class="outer"><span class="inner">text</span></span>';
       const wordDiff = [removed("text"), added("new")];
       const result = injectWordDiffMarkers(html, wordDiff, "old");
       expect(result).toBe(
@@ -1245,7 +1299,12 @@ describe("injectWordDiffMarkers", () => {
   });
 
   describe("mode old vs new", () => {
-    const wordDiff = [unchanged("a "), removed("old"), added("new"), unchanged(" b")];
+    const wordDiff = [
+      unchanged("a "),
+      removed("old"),
+      added("new"),
+      unchanged(" b"),
+    ];
 
     it("applies diff-word-removed class in old mode", () => {
       const html = "a old b";
@@ -1265,14 +1324,24 @@ describe("injectWordDiffMarkers", () => {
   describe("edge cases", () => {
     it("handles whitespace-only changes", () => {
       const html = "a  b";
-      const wordDiff = [unchanged("a"), removed("  "), added(" "), unchanged("b")];
+      const wordDiff = [
+        unchanged("a"),
+        removed("  "),
+        added(" "),
+        unchanged("b"),
+      ];
       const result = injectWordDiffMarkers(html, wordDiff, "old");
       expect(result).toBe('a<span class="diff-word-removed">  </span>b');
     });
 
     it("handles unicode content", () => {
       const html = "hello 😀 world";
-      const wordDiff = [unchanged("hello "), removed("😀"), added("🎉"), unchanged(" world")];
+      const wordDiff = [
+        unchanged("hello "),
+        removed("😀"),
+        added("🎉"),
+        unchanged(" world"),
+      ];
       const result = injectWordDiffMarkers(html, wordDiff, "old");
       expect(result).toBe(
         'hello <span class="diff-word-removed">😀</span> world',
@@ -1290,7 +1359,11 @@ describe("injectWordDiffMarkers", () => {
 
     it("handles text before any HTML tags", () => {
       const html = 'prefix <span style="color:red">suffix</span>';
-      const wordDiff = [removed("prefix"), added("PREFIX"), unchanged(" suffix")];
+      const wordDiff = [
+        removed("prefix"),
+        added("PREFIX"),
+        unchanged(" suffix"),
+      ];
       const result = injectWordDiffMarkers(html, wordDiff, "old");
       expect(result).toBe(
         '<span class="diff-word-removed">prefix</span> <span style="color:red">suffix</span>',

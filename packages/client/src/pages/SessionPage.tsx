@@ -24,6 +24,7 @@ import {
   type StreamingMarkdownCallbacks,
   useSession,
 } from "../hooks/useSession";
+import { recordSessionVisit } from "../hooks/useRecentSessions";
 import { useProjectLayout } from "../layouts";
 import { preprocessMessages } from "../lib/preprocessMessages";
 import { truncateText } from "../lib/text";
@@ -163,6 +164,11 @@ function SessionPageContent({
     setLocalIsStarred(undefined);
     setLocalHasUnread(undefined);
   }, [sessionId]);
+
+  // Record session visit for recents tracking
+  useEffect(() => {
+    recordSessionVisit(sessionId, projectId);
+  }, [sessionId, projectId]);
 
   // File attachment state
   const [attachments, setAttachments] = useState<UploadedFile[]>([]);

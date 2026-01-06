@@ -6,6 +6,7 @@ import { createAuthRoutes } from "./auth/routes.js";
 import type { FrontendProxy } from "./frontend/index.js";
 import type { SessionIndexService } from "./indexes/index.js";
 import type { SessionMetadataService } from "./metadata/index.js";
+import type { RecentsService } from "./recents/index.js";
 import { createAuthMiddleware } from "./middleware/auth.js";
 import { corsMiddleware, requireCustomHeader } from "./middleware/security.js";
 import type { NotificationService } from "./notifications/index.js";
@@ -28,6 +29,7 @@ import { createInboxRoutes } from "./routes/inbox.js";
 import { createProcessesRoutes } from "./routes/processes.js";
 import { createProjectsRoutes } from "./routes/projects.js";
 import { createProvidersRoutes } from "./routes/providers.js";
+import { createRecentsRoutes } from "./routes/recents.js";
 import { createSessionsRoutes } from "./routes/sessions.js";
 import { createStreamRoutes } from "./routes/stream.js";
 import { type UploadDeps, createUploadRoutes } from "./routes/upload.js";
@@ -71,6 +73,8 @@ export interface AppOptions {
   frontendProxy?: FrontendProxy;
   /** PushService for web push notifications */
   pushService?: PushService;
+  /** RecentsService for tracking recently visited sessions */
+  recentsService?: RecentsService;
   /** Maximum upload file size in bytes. 0 = unlimited */
   maxUploadSizeBytes?: number;
   /** Maximum queue size for pending requests. 0 = unlimited */
@@ -248,6 +252,14 @@ export function createApp(options: AppOptions): AppResult {
 
   // Files routes (file browser)
   app.route("/api/projects", createFilesRoutes({ scanner }));
+
+  // Recents routes (recently visited sessions)
+  if (options.recentsService) {
+    app.route(
+      "/api/recents",
+      createRecentsRoutes({ recentsService: options.recentsService }),
+    );
+  }
 
   // Provider routes (multi-provider detection)
   app.route("/api/providers", createProvidersRoutes());

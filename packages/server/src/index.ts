@@ -23,6 +23,7 @@ import {
 } from "./maintenance/index.js";
 import { SessionMetadataService } from "./metadata/index.js";
 import { NotificationService } from "./notifications/index.js";
+import { RecentsService } from "./recents/index.js";
 import { ProjectScanner } from "./projects/scanner.js";
 import { PushService, loadVapidKeys } from "./push/index.js";
 import { createUploadRoutes } from "./routes/upload.js";
@@ -125,6 +126,7 @@ const sessionIndexService = new SessionIndexService({
   dataDir: path.join(config.dataDir, "indexes"),
 });
 const pushService = new PushService({ dataDir: config.dataDir });
+const recentsService = new RecentsService({ dataDir: config.dataDir });
 const authService = new AuthService({
   dataDir: config.dataDir,
   sessionTtlMs: config.authSessionTtlMs,
@@ -137,6 +139,7 @@ async function startServer() {
   await sessionMetadataService.initialize();
   await sessionIndexService.initialize();
   await pushService.initialize();
+  await recentsService.initialize();
   await authService.initialize();
 
   // Log auth status
@@ -193,6 +196,7 @@ async function startServer() {
     maxWorkers: config.maxWorkers,
     idlePreemptThresholdMs: config.idlePreemptThresholdMs,
     pushService,
+    recentsService,
     authService,
     authEnabled: config.authEnabled,
     // Note: frontendProxy not passed - will be added below

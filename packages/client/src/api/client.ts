@@ -382,4 +382,25 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ currentPassword, newPassword }),
     }),
+
+  // Recents API
+  getRecents: (limit?: number) =>
+    fetchJSON<{
+      recents: Array<{
+        sessionId: string;
+        projectId: string;
+        visitedAt: string;
+      }>;
+    }>(limit ? `/recents?limit=${limit}` : "/recents"),
+
+  recordVisit: (sessionId: string, projectId: string) =>
+    fetchJSON<{ recorded: boolean }>("/recents/visit", {
+      method: "POST",
+      body: JSON.stringify({ sessionId, projectId }),
+    }),
+
+  clearRecents: () =>
+    fetchJSON<{ cleared: boolean }>("/recents", {
+      method: "DELETE",
+    }),
 };

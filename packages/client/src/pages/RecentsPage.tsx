@@ -38,20 +38,29 @@ interface RecentItemData {
 
 /**
  * Recents page showing recently visited sessions.
- * Sessions are tracked in localStorage and displayed with project context.
+ * Sessions are tracked on the server and displayed with project context.
  */
 export function RecentsPage() {
   const { openSidebar, isWideScreen, toggleSidebar, isSidebarCollapsed } =
     useNavigationLayout();
-  const { recentSessions, clearRecents } = useRecentSessions();
+  const {
+    recentSessions,
+    isLoading: recentsLoading,
+    error: recentsError,
+    clearRecents,
+  } = useRecentSessions();
 
   // Fetch projects to get session data
   const [projects, setProjects] = useState<Map<string, Project>>(new Map());
   const [sessions, setSessions] = useState<Map<string, SessionSummary>>(
     new Map(),
   );
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<Error | null>(null);
+  const [projectsLoading, setProjectsLoading] = useState(true);
+  const [projectsError, setProjectsError] = useState<Error | null>(null);
+
+  // Combined loading/error state
+  const loading = recentsLoading || projectsLoading;
+  const error = recentsError || projectsError;
 
   // Get unique project IDs from recent sessions
   const projectIds = useMemo(() => {
@@ -65,15 +74,15 @@ export function RecentsPage() {
   // Fetch project data for all projects containing recent sessions
   useEffect(() => {
     if (projectIds.length === 0) {
-      setLoading(false);
+      setProjectsLoading(false);
       return;
     }
 
     let cancelled = false;
 
     async function fetchData() {
-      setLoading(true);
-      setError(null);
+      setProjectsLoading(true);
+      setProjectsError(null);
 
       try {
         const results = await Promise.all(
@@ -98,11 +107,13 @@ export function RecentsPage() {
         setSessions(sessionMap);
       } catch (err) {
         if (!cancelled) {
-          setError(err instanceof Error ? err : new Error("Failed to load"));
+          setProjectsError(
+            err instanceof Error ? err : new Error("Failed to load"),
+          );
         }
       } finally {
         if (!cancelled) {
-          setLoading(false);
+          setProjectsLoading(false);
         }
       }
     }

@@ -141,13 +141,13 @@ function FileViewerModal({
   return (
     // biome-ignore lint/a11y/useKeyWithClickEvents: Escape key handled in useEffect, click is for overlay dismiss
     <div
-      className="file-viewer-modal-overlay"
+      className="modal-overlay"
       onClick={handleOverlayClick}
       onMouseDown={(e) => e.stopPropagation()}
     >
       {/* biome-ignore lint/a11y/useKeyWithClickEvents: click only stops propagation, keyboard handled globally */}
       <dialog
-        className="file-viewer-modal"
+        className="modal file-viewer-modal"
         open
         onClick={(e) => e.stopPropagation()}
       >
