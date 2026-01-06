@@ -280,6 +280,124 @@ function escapeHtml(text: string): string {
 }
 
 /**
+ * Represents a paired line in a replacement hunk (a line that was modified).
+ */
+interface LinePair {
+  oldLineIndex: number; // Index into the removed lines array (0-based within the group)
+  newLineIndex: number; // Index into the added lines array (0-based within the group)
+  oldText: string; // The text content (without the - prefix)
+  newText: string; // The text content (without the + prefix)
+}
+
+/**
+ * Result of analyzing a hunk for replacement pairs.
+ */
+interface HunkReplacePairs {
+  pairs: LinePair[];
+  // Lines that don't have a pair (pure additions/deletions)
+  unpairedRemovals: Array<{ index: number; text: string }>;
+  unpairedAdditions: Array<{ index: number; text: string }>;
+}
+
+/**
+ * Find consecutive -/+ line pairs in diff hunk lines that represent "replacements".
+ * These pairs are candidates for word-level diffing.
+ *
+ * Pairing strategy:
+ * - Match removed lines with added lines in order (first - with first +, etc.)
+ * - If there are more - than +, extra removed lines have no pair
+ * - If there are more + than -, extra added lines have no pair
+ * - Context lines (space prefix) or hunk headers (@@) reset the grouping
+ *
+ * @param hunkLines - Array of diff lines with prefixes: ' ', '-', '+', or starting with '@@'
+ * @returns Object containing pairs and unpaired lines
+ */
+function findReplacePairs(hunkLines: string[]): HunkReplacePairs {
+  const result: HunkReplacePairs = {
+    pairs: [],
+    unpairedRemovals: [],
+    unpairedAdditions: [],
+  };
+
+  // Collect removals and additions in the current contiguous group
+  let currentRemovals: Array<{ index: number; text: string }> = [];
+  let currentAdditions: Array<{ index: number; text: string }> = [];
+
+  /**
+   * Process the current group of removals and additions, creating pairs
+   * and tracking unpaired lines.
+   */
+  function flushGroup() {
+    // Pair up removals and additions in order
+    const pairCount = Math.min(currentRemovals.length, currentAdditions.length);
+
+    for (let i = 0; i < pairCount; i++) {
+      const removal = currentRemovals[i];
+      const addition = currentAdditions[i];
+      if (removal && addition) {
+        result.pairs.push({
+          oldLineIndex: i,
+          newLineIndex: i,
+          oldText: removal.text,
+          newText: addition.text,
+        });
+      }
+    }
+
+    // Track unpaired removals (when more - than +)
+    for (let i = pairCount; i < currentRemovals.length; i++) {
+      const removal = currentRemovals[i];
+      if (removal) {
+        result.unpairedRemovals.push(removal);
+      }
+    }
+
+    // Track unpaired additions (when more + than -)
+    for (let i = pairCount; i < currentAdditions.length; i++) {
+      const addition = currentAdditions[i];
+      if (addition) {
+        result.unpairedAdditions.push(addition);
+      }
+    }
+
+    // Reset for next group
+    currentRemovals = [];
+    currentAdditions = [];
+  }
+
+  for (const line of hunkLines) {
+    const prefix = line[0];
+
+    if (prefix === "-") {
+      // If we were collecting additions, flush the group first
+      // (additions after removals is normal, but - after + means new group)
+      if (currentAdditions.length > 0) {
+        flushGroup();
+      }
+      currentRemovals.push({
+        index: currentRemovals.length,
+        text: line.slice(1),
+      });
+    } else if (prefix === "+") {
+      // Additions are added to current group
+      currentAdditions.push({
+        index: currentAdditions.length,
+        text: line.slice(1),
+      });
+    } else if (prefix === " " || line.startsWith("@@")) {
+      // Context line or hunk header - flush current group and reset
+      flushGroup();
+    }
+    // Skip other lines (like "\ No newline at end of file")
+  }
+
+  // Flush any remaining group
+  flushGroup();
+
+  return result;
+}
+
+/**
  * Represents a segment of a word-level diff.
  */
 export interface WordDiffSegment {
@@ -315,4 +433,5 @@ export const __test__ = {
   patchToUnifiedText,
   escapeHtml,
   computeWordDiff,
+  findReplacePairs,
 };

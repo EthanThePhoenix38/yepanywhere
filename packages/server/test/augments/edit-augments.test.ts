@@ -722,3 +722,145 @@ describe("computeWordDiff", () => {
     expect(result.some((s) => s.text === "3" && s.type === "added")).toBe(true);
   });
 });
+
+describe("findReplacePairs", () => {
+  const { findReplacePairs } = __test__;
+
+  it("simple 1:1 replacement - one - followed by one +", () => {
+    const result = findReplacePairs([" ctx", "-old", "+new", " ctx2"]);
+    expect(result.pairs).toEqual([
+      { oldLineIndex: 0, newLineIndex: 0, oldText: "old", newText: "new" },
+    ]);
+    expect(result.unpairedRemovals).toEqual([]);
+    expect(result.unpairedAdditions).toEqual([]);
+  });
+
+  it("multiple 1:1 replacements - two - followed by two +", () => {
+    const result = findReplacePairs([
+      " ctx",
+      "-old1",
+      "-old2",
+      "+new1",
+      "+new2",
+      " ctx",
+    ]);
+    expect(result.pairs).toEqual([
+      { oldLineIndex: 0, newLineIndex: 0, oldText: "old1", newText: "new1" },
+      { oldLineIndex: 1, newLineIndex: 1, oldText: "old2", newText: "new2" },
+    ]);
+    expect(result.unpairedRemovals).toEqual([]);
+    expect(result.unpairedAdditions).toEqual([]);
+  });
+
+  it("more removals than additions - 3 - followed by 1 + (2 unpaired removals)", () => {
+    const result = findReplacePairs([
+      " ctx",
+      "-old1",
+      "-old2",
+      "-old3",
+      "+new1",
+      " ctx",
+    ]);
+    expect(result.pairs).toEqual([
+      { oldLineIndex: 0, newLineIndex: 0, oldText: "old1", newText: "new1" },
+    ]);
+    expect(result.unpairedRemovals).toEqual([
+      { index: 1, text: "old2" },
+      { index: 2, text: "old3" },
+    ]);
+    expect(result.unpairedAdditions).toEqual([]);
+  });
+
+  it("more additions than removals - 1 - followed by 3 + (2 unpaired additions)", () => {
+    const result = findReplacePairs([
+      " ctx",
+      "-old1",
+      "+new1",
+      "+new2",
+      "+new3",
+      " ctx",
+    ]);
+    expect(result.pairs).toEqual([
+      { oldLineIndex: 0, newLineIndex: 0, oldText: "old1", newText: "new1" },
+    ]);
+    expect(result.unpairedRemovals).toEqual([]);
+    expect(result.unpairedAdditions).toEqual([
+      { index: 1, text: "new2" },
+      { index: 2, text: "new3" },
+    ]);
+  });
+
+  it("pure addition - only + lines (all unpaired)", () => {
+    const result = findReplacePairs([" ctx", "+new1", "+new2", " ctx"]);
+    expect(result.pairs).toEqual([]);
+    expect(result.unpairedRemovals).toEqual([]);
+    expect(result.unpairedAdditions).toEqual([
+      { index: 0, text: "new1" },
+      { index: 1, text: "new2" },
+    ]);
+  });
+
+  it("pure deletion - only - lines (all unpaired)", () => {
+    const result = findReplacePairs([" ctx", "-old1", "-old2", " ctx"]);
+    expect(result.pairs).toEqual([]);
+    expect(result.unpairedRemovals).toEqual([
+      { index: 0, text: "old1" },
+      { index: 1, text: "old2" },
+    ]);
+    expect(result.unpairedAdditions).toEqual([]);
+  });
+
+  it("context breaks replacement - -, space, + should NOT pair", () => {
+    const result = findReplacePairs(["-old", " context", "+new"]);
+    expect(result.pairs).toEqual([]);
+    expect(result.unpairedRemovals).toEqual([{ index: 0, text: "old" }]);
+    expect(result.unpairedAdditions).toEqual([{ index: 0, text: "new" }]);
+  });
+
+  it("multiple replacement groups - -, +, space, -, + (two separate pairs)", () => {
+    const result = findReplacePairs([
+      "-old1",
+      "+new1",
+      " context",
+      "-old2",
+      "+new2",
+    ]);
+    expect(result.pairs).toEqual([
+      { oldLineIndex: 0, newLineIndex: 0, oldText: "old1", newText: "new1" },
+      { oldLineIndex: 0, newLineIndex: 0, oldText: "old2", newText: "new2" },
+    ]);
+    expect(result.unpairedRemovals).toEqual([]);
+    expect(result.unpairedAdditions).toEqual([]);
+  });
+
+  it("hunk header - lines starting with @@ are skipped", () => {
+    const result = findReplacePairs([
+      "@@ -1,2 +1,2 @@",
+      "-old",
+      "+new",
+      "@@ -10,1 +10,1 @@",
+      "-old2",
+      "+new2",
+    ]);
+    expect(result.pairs).toEqual([
+      { oldLineIndex: 0, newLineIndex: 0, oldText: "old", newText: "new" },
+      { oldLineIndex: 0, newLineIndex: 0, oldText: "old2", newText: "new2" },
+    ]);
+    expect(result.unpairedRemovals).toEqual([]);
+    expect(result.unpairedAdditions).toEqual([]);
+  });
+
+  it("empty input - returns empty arrays", () => {
+    const result = findReplacePairs([]);
+    expect(result.pairs).toEqual([]);
+    expect(result.unpairedRemovals).toEqual([]);
+    expect(result.unpairedAdditions).toEqual([]);
+  });
+
+  it("only context lines - returns empty arrays", () => {
+    const result = findReplacePairs([" line1", " line2", " line3"]);
+    expect(result.pairs).toEqual([]);
+    expect(result.unpairedRemovals).toEqual([]);
+    expect(result.unpairedAdditions).toEqual([]);
+  });
+});
