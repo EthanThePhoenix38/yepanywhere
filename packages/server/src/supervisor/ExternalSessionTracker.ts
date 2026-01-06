@@ -66,6 +66,8 @@ export class ExternalSessionTracker {
   ) => Promise<SessionSummary | null>;
   /** Batches session parsing to prevent OOM from concurrent file reads */
   private sessionParser: BatchProcessor<SessionSummary | null>;
+  /** Tracks sessions that have already emitted session-created */
+  private createdSessions: Set<string> = new Set();
 
   constructor(options: ExternalSessionTrackerOptions) {
     this.eventBus = options.eventBus;
@@ -81,17 +83,19 @@ export class ExternalSessionTracker {
       concurrency: 5,
       batchMs: 300,
       onResult: (sessionId, summary) => {
-        if (summary) {
-          // Update status to external
-          summary.status = { state: "external" };
+        if (!summary) return;
+        if (this.createdSessions.has(sessionId)) return;
 
-          const event: SessionCreatedEvent = {
-            type: "session-created",
-            session: summary,
-            timestamp: new Date().toISOString(),
-          };
-          this.eventBus.emit(event);
-        }
+        // Update status to external
+        summary.status = { state: "external" };
+
+        const event: SessionCreatedEvent = {
+          type: "session-created",
+          session: summary,
+          timestamp: new Date().toISOString(),
+        };
+        this.eventBus.emit(event);
+        this.createdSessions.add(sessionId);
       },
       onError: (sessionId, error) => {
         // Log but don't fail - session may not be readable yet
@@ -244,11 +248,16 @@ export class ExternalSessionTracker {
   private parseSessionPath(
     relativePath: string,
   ): { sessionId: string; dirProjectId: DirProjectId } | null {
-    // Expected format: projects/<projectId>/<sessionId>.jsonl
-    // or: projects/<hostname>/<projectId>/<sessionId>.jsonl
-    const parts = relativePath.split(path.sep);
+    // Expected formats:
+    // - projects/<projectId>/<sessionId>.jsonl
+    // - projects/<hostname>/<projectId>/<sessionId>.jsonl
+    // - <projectId>/<sessionId>.jsonl (when watchDir is already ~/.claude/projects)
+    // - <hostname>/<projectId>/<sessionId>.jsonl (same case with hostname)
+    const parts = relativePath.split(path.sep).filter(Boolean);
+    if (parts.length < 2) return null;
 
-    if (parts[0] !== "projects" || parts.length < 2) return null;
+    const startIdx = parts[0] === "projects" ? 1 : 0;
+    if (parts.length - startIdx < 2) return null;
 
     // Find the .jsonl file
     const filename = parts[parts.length - 1];
@@ -263,7 +272,7 @@ export class ExternalSessionTracker {
     // ProjectId is everything between 'projects/' and the filename
     // For: projects/aG9tZS.../.../session.jsonl
     // ProjectId could be single part or multiple parts (hostname + encoded path)
-    const projectParts = parts.slice(1, -1);
+    const projectParts = parts.slice(startIdx, -1);
     if (projectParts.length === 0) return null;
 
     // Use the first part as projectId (encoded project path)
@@ -282,6 +291,21 @@ export class ExternalSessionTracker {
       clearTimeout(existing.timeoutId);
       existing.lastActivity = now;
       existing.timeoutId = this.createDecayTimeout(sessionId);
+      // Retry session summary parsing until we can emit session-created
+      if (this.getSessionSummary && !this.createdSessions.has(sessionId)) {
+        const getSessionSummary = this.getSessionSummary;
+        this.sessionParser.enqueue(sessionId, async () => {
+          const project =
+            await this.scanner.getProjectBySessionDirSuffix(dirProjectId);
+          if (!project) {
+            console.warn(
+              `[ExternalSessionTracker] Cannot emit session-created - project not found: ${dirProjectId}`,
+            );
+            return null;
+          }
+          return getSessionSummary(sessionId, project.id as UrlProjectId);
+        });
+      }
     } else {
       // New external session
       const info: ExternalSessionInfo = {
