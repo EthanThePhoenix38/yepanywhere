@@ -311,6 +311,32 @@ export function SessionsPage() {
     }
   }, [selectedIds, isBulkActionPending, handleClearSelection]);
 
+  const handleBulkMarkRead = useCallback(async () => {
+    if (isBulkActionPending) return;
+    setIsBulkActionPending(true);
+    try {
+      await Promise.all(
+        Array.from(selectedIds).map((id) => api.markSessionSeen(id)),
+      );
+      handleClearSelection();
+    } finally {
+      setIsBulkActionPending(false);
+    }
+  }, [selectedIds, isBulkActionPending, handleClearSelection]);
+
+  const handleBulkMarkUnread = useCallback(async () => {
+    if (isBulkActionPending) return;
+    setIsBulkActionPending(true);
+    try {
+      await Promise.all(
+        Array.from(selectedIds).map((id) => api.markSessionUnread(id)),
+      );
+      handleClearSelection();
+    } finally {
+      setIsBulkActionPending(false);
+    }
+  }, [selectedIds, isBulkActionPending, handleClearSelection]);
+
   // Compute which bulk actions are applicable based on selection
   const bulkActionState = useMemo(() => {
     const selectedSessions = sessions.filter((s) => selectedIds.has(s.id));
@@ -319,6 +345,8 @@ export function SessionsPage() {
       canUnarchive: selectedSessions.some((s) => s.isArchived),
       canStar: selectedSessions.some((s) => !s.isStarred),
       canUnstar: selectedSessions.some((s) => s.isStarred),
+      canMarkRead: selectedSessions.some((s) => s.hasUnread),
+      canMarkUnread: selectedSessions.some((s) => !s.hasUnread),
     };
   }, [sessions, selectedIds]);
 
@@ -473,12 +501,16 @@ export function SessionsPage() {
               onUnarchive={handleBulkUnarchive}
               onStar={handleBulkStar}
               onUnstar={handleBulkUnstar}
+              onMarkRead={handleBulkMarkRead}
+              onMarkUnread={handleBulkMarkUnread}
               onClearSelection={handleClearSelection}
               isPending={isBulkActionPending}
               canArchive={bulkActionState.canArchive}
               canUnarchive={bulkActionState.canUnarchive}
               canStar={bulkActionState.canStar}
               canUnstar={bulkActionState.canUnstar}
+              canMarkRead={bulkActionState.canMarkRead}
+              canMarkUnread={bulkActionState.canMarkUnread}
             />
           </div>
         </main>

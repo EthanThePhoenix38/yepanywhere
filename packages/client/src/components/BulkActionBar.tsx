@@ -4,6 +4,8 @@ interface BulkActionBarProps {
   onUnarchive: () => Promise<void>;
   onStar: () => Promise<void>;
   onUnstar: () => Promise<void>;
+  onMarkRead: () => Promise<void>;
+  onMarkUnread: () => Promise<void>;
   onClearSelection: () => void;
   isPending?: boolean;
   /** True if any selected item can be archived (is not archived) */
@@ -14,6 +16,10 @@ interface BulkActionBarProps {
   canStar?: boolean;
   /** True if any selected item can be unstarred (is starred) */
   canUnstar?: boolean;
+  /** True if any selected item can be marked as read (has unread) */
+  canMarkRead?: boolean;
+  /** True if any selected item can be marked as unread (is read) */
+  canMarkUnread?: boolean;
 }
 
 /**
@@ -26,12 +32,16 @@ export function BulkActionBar({
   onUnarchive,
   onStar,
   onUnstar,
+  onMarkRead,
+  onMarkUnread,
   onClearSelection,
   isPending = false,
   canArchive = true,
   canUnarchive = true,
   canStar = true,
   canUnstar = true,
+  canMarkRead = true,
+  canMarkUnread = true,
 }: BulkActionBarProps) {
   if (selectedCount === 0) {
     return null;
@@ -169,6 +179,58 @@ export function BulkActionBar({
               <line x1="4" y1="4" x2="20" y2="20" />
             </svg>
             <span>Unstar</span>
+          </button>
+        )}
+
+        {canMarkRead && (
+          <button
+            type="button"
+            className="bulk-action-button"
+            onClick={onMarkRead}
+            disabled={isPending}
+            title="Mark as read"
+          >
+            <svg
+              width="16"
+              height="16"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              aria-hidden="true"
+            >
+              <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" />
+              <polyline points="22 4 12 14.01 9 11.01" />
+            </svg>
+            <span>Mark read</span>
+          </button>
+        )}
+
+        {canMarkUnread && (
+          <button
+            type="button"
+            className="bulk-action-button"
+            onClick={onMarkUnread}
+            disabled={isPending}
+            title="Mark as unread"
+          >
+            <svg
+              width="16"
+              height="16"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              aria-hidden="true"
+            >
+              <circle cx="12" cy="12" r="10" />
+              <circle cx="12" cy="12" r="4" fill="currentColor" />
+            </svg>
+            <span>Mark unread</span>
           </button>
         )}
       </div>
