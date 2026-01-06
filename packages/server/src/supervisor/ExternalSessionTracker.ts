@@ -1,10 +1,12 @@
 import * as path from "node:path";
+import { readFile, stat } from "node:fs/promises";
 import {
   type DirProjectId,
   type UrlProjectId,
   asDirProjectId,
 } from "@yep-anywhere/shared";
 import type { ProjectScanner } from "../projects/scanner.js";
+import { encodeProjectId } from "../projects/paths.js";
 import { BatchProcessor } from "../watcher/BatchProcessor.js";
 import type {
   BusEvent,
@@ -21,7 +23,11 @@ interface ExternalSessionInfo {
   detectedAt: Date;
   lastActivity: Date;
   /** Directory-format projectId (from file path, NOT base64url) */
-  dirProjectId: DirProjectId;
+  dirProjectId?: DirProjectId;
+  /** URL-format projectId (base64url) */
+  projectId?: UrlProjectId;
+  /** Session provider */
+  provider: FileChangeEvent["provider"];
   timeoutId: ReturnType<typeof setTimeout>;
 }
 
@@ -109,7 +115,7 @@ export class ExternalSessionTracker {
     // Subscribe to bus events
     this.unsubscribe = options.eventBus.subscribe((event: BusEvent) => {
       if (event.type === "file-change") {
-        this.handleFileChange(event);
+        void this.handleFileChange(event);
       } else if (event.type === "session-aborted") {
         this.handleSessionAborted(event);
       }
@@ -136,6 +142,7 @@ export class ExternalSessionTracker {
   ): { lastActivity: Date; dirProjectId: DirProjectId } | null {
     const info = this.externalSessions.get(sessionId);
     if (!info) return null;
+    if (!info.dirProjectId) return null;
     return { lastActivity: info.lastActivity, dirProjectId: info.dirProjectId };
   }
 
@@ -148,6 +155,15 @@ export class ExternalSessionTracker {
   ): Promise<{ lastActivity: Date; projectId: UrlProjectId } | null> {
     const info = this.externalSessions.get(sessionId);
     if (!info) return null;
+
+    if (info.projectId) {
+      return {
+        lastActivity: info.lastActivity,
+        projectId: info.projectId,
+      };
+    }
+
+    if (!info.dirProjectId) return null;
 
     const project = await this.scanner.getProjectBySessionDirSuffix(
       info.dirProjectId,
@@ -214,9 +230,14 @@ export class ExternalSessionTracker {
     this.recentlyAborted.clear();
   }
 
-  private handleFileChange(event: FileChangeEvent): void {
+  private async handleFileChange(event: FileChangeEvent): Promise<void> {
     // Only care about session files
     if (event.fileType !== "session" && event.fileType !== "agent-session") {
+      return;
+    }
+
+    if (event.provider === "codex") {
+      await this.handleCodexFileChange(event);
       return;
     }
 
@@ -242,7 +263,7 @@ export class ExternalSessionTracker {
     }
 
     // We don't own it and it's not in grace period - mark as external
-    this.markExternal(sessionId, dirProjectId);
+    this.markExternal(sessionId, { provider: event.provider, dirProjectId });
   }
 
   private parseSessionPath(
@@ -282,7 +303,121 @@ export class ExternalSessionTracker {
     return { sessionId, dirProjectId };
   }
 
-  private markExternal(sessionId: string, dirProjectId: DirProjectId): void {
+  private async handleCodexFileChange(event: FileChangeEvent): Promise<void> {
+    const sessionId = this.extractCodexSessionId(event.relativePath);
+    if (!sessionId) return;
+
+    const process = this.supervisor.getProcessForSession(sessionId);
+    if (process) {
+      this.removeExternal(sessionId);
+      return;
+    }
+
+    if (this.isInAbortGracePeriod(sessionId)) {
+      return;
+    }
+
+    const projectId = await this.readCodexProjectIdFromFile(event.path);
+    if (!projectId) return;
+
+    this.markExternal(sessionId, { provider: event.provider, projectId });
+    await this.ensureCodexSessionCreated(sessionId, event.path, projectId);
+  }
+
+  private extractCodexSessionId(relativePath: string): string | null {
+    const filename = relativePath.split(path.sep).pop();
+    if (!filename || !filename.endsWith(".jsonl")) return null;
+    const base = filename.slice(0, -6);
+    const match = base.match(/([0-9a-fA-F-]{36})$/);
+    return match?.[1] ?? null;
+  }
+
+  private async readCodexProjectIdFromFile(
+    filePath: string,
+  ): Promise<UrlProjectId | null> {
+    const meta = await this.readCodexSessionMeta(filePath);
+    if (!meta) return null;
+    return encodeProjectId(meta.cwd);
+  }
+
+  private async readCodexSessionMeta(
+    filePath: string,
+  ): Promise<{ cwd: string; timestamp: string; model?: string } | null> {
+    try {
+      const content = await readFile(filePath, { encoding: "utf-8" });
+      const firstNewline = content.indexOf("\n");
+      const firstLine =
+        firstNewline > 0 ? content.slice(0, firstNewline) : content;
+
+      if (!firstLine.trim()) return null;
+
+      const parsed = JSON.parse(firstLine) as {
+        type?: string;
+        payload?: { cwd?: string; timestamp?: string; model?: string };
+      };
+      if (
+        parsed.type !== "session_meta" ||
+        !parsed.payload?.cwd ||
+        !parsed.payload?.timestamp
+      ) {
+        return null;
+      }
+
+      return {
+        cwd: parsed.payload.cwd,
+        timestamp: parsed.payload.timestamp,
+        model: parsed.payload.model,
+      };
+    } catch {
+      return null;
+    }
+  }
+
+  private async ensureCodexSessionCreated(
+    sessionId: string,
+    filePath: string,
+    projectId: UrlProjectId,
+  ): Promise<void> {
+    if (this.createdSessions.has(sessionId)) return;
+
+    const meta = await this.readCodexSessionMeta(filePath);
+    if (!meta) return;
+
+    try {
+      const stats = await stat(filePath);
+      const summary: SessionSummary = {
+        id: sessionId,
+        projectId,
+        title: null,
+        fullTitle: null,
+        createdAt: meta.timestamp,
+        updatedAt: stats.mtime.toISOString(),
+        messageCount: 0,
+        status: { state: "external" },
+        provider: "codex",
+        model: meta.model,
+      };
+
+      const event: SessionCreatedEvent = {
+        type: "session-created",
+        session: summary,
+        timestamp: new Date().toISOString(),
+      };
+      this.eventBus.emit(event);
+      this.createdSessions.add(sessionId);
+    } catch {
+      // Ignore failures until next file change
+    }
+  }
+
+  private markExternal(
+    sessionId: string,
+    info: {
+      provider: FileChangeEvent["provider"];
+      dirProjectId?: DirProjectId;
+      projectId?: UrlProjectId;
+    },
+  ): void {
     const now = new Date();
     const existing = this.externalSessions.get(sessionId);
 
@@ -295,45 +430,37 @@ export class ExternalSessionTracker {
       if (this.getSessionSummary && !this.createdSessions.has(sessionId)) {
         const getSessionSummary = this.getSessionSummary;
         this.sessionParser.enqueue(sessionId, async () => {
-          const project =
-            await this.scanner.getProjectBySessionDirSuffix(dirProjectId);
-          if (!project) {
-            console.warn(
-              `[ExternalSessionTracker] Cannot emit session-created - project not found: ${dirProjectId}`,
-            );
-            return null;
-          }
+          const project = await this.resolveProjectForSession(info);
+          if (!project) return null;
           return getSessionSummary(sessionId, project.id as UrlProjectId);
         });
       }
     } else {
       // New external session
-      const info: ExternalSessionInfo = {
+      const externalInfo: ExternalSessionInfo = {
         detectedAt: now,
         lastActivity: now,
-        dirProjectId,
+        dirProjectId: info.dirProjectId,
+        projectId: info.projectId,
+        provider: info.provider,
         timeoutId: this.createDecayTimeout(sessionId),
       };
-      this.externalSessions.set(sessionId, info);
+      this.externalSessions.set(sessionId, externalInfo);
 
       // Queue session parsing - batched to prevent OOM from bulk file operations
       if (this.getSessionSummary) {
         const getSessionSummary = this.getSessionSummary;
         this.sessionParser.enqueue(sessionId, async () => {
-          const project =
-            await this.scanner.getProjectBySessionDirSuffix(dirProjectId);
-          if (!project) {
-            console.warn(
-              `[ExternalSessionTracker] Cannot emit session-created - project not found: ${dirProjectId}`,
-            );
-            return null;
-          }
+          const project = await this.resolveProjectForSession(externalInfo);
+          if (!project) return null;
           return getSessionSummary(sessionId, project.id as UrlProjectId);
         });
       }
 
       // Emit status change event
-      this.emitStatusChange(sessionId, dirProjectId, { state: "external" });
+      void this.emitStatusChangeByInfo(sessionId, externalInfo, {
+        state: "external",
+      });
     }
   }
 
@@ -344,9 +471,7 @@ export class ExternalSessionTracker {
       this.externalSessions.delete(sessionId);
 
       // Emit status change event
-      this.emitStatusChange(sessionId, existing.dirProjectId, {
-        state: "idle",
-      });
+      void this.emitStatusChangeByInfo(sessionId, existing, { state: "idle" });
     }
   }
 
@@ -356,22 +481,37 @@ export class ExternalSessionTracker {
       if (info) {
         this.externalSessions.delete(sessionId);
         // Emit status change to idle
-        this.emitStatusChange(sessionId, info.dirProjectId, { state: "idle" });
+        void this.emitStatusChangeByInfo(sessionId, info, { state: "idle" });
       }
     }, this.decayMs);
   }
 
-  private async emitStatusChange(
+  private async emitStatusChangeByInfo(
     sessionId: string,
-    dirProjectId: DirProjectId,
+    info: ExternalSessionInfo,
     status: SessionStatus,
   ): Promise<void> {
+    if (info.projectId) {
+      const event: SessionStatusEvent = {
+        type: "session-status-changed",
+        sessionId,
+        projectId: info.projectId,
+        status,
+        timestamp: new Date().toISOString(),
+      };
+      this.eventBus.emit(event);
+      return;
+    }
+
+    if (!info.dirProjectId) return;
+
     // Convert directory format to URL format for events
-    const project =
-      await this.scanner.getProjectBySessionDirSuffix(dirProjectId);
+    const project = await this.scanner.getProjectBySessionDirSuffix(
+      info.dirProjectId,
+    );
     if (!project) {
       console.warn(
-        `[ExternalSessionTracker] Cannot emit status change - project not found: ${dirProjectId}`,
+        `[ExternalSessionTracker] Cannot emit status change - project not found: ${info.dirProjectId}`,
       );
       return;
     }
@@ -386,5 +526,28 @@ export class ExternalSessionTracker {
 
     // Emit through EventBus so it gets broadcast via SSE
     this.eventBus.emit(event);
+  }
+
+  private async resolveProjectForSession(
+    info: {
+      provider: FileChangeEvent["provider"];
+      dirProjectId?: DirProjectId;
+      projectId?: UrlProjectId;
+    },
+  ): Promise<{ id: UrlProjectId } | null> {
+    if (info.projectId) {
+      return { id: info.projectId };
+    }
+    if (!info.dirProjectId) return null;
+    const project = await this.scanner.getProjectBySessionDirSuffix(
+      info.dirProjectId,
+    );
+    if (!project) {
+      console.warn(
+        `[ExternalSessionTracker] Cannot emit session-created - project not found: ${info.dirProjectId}`,
+      );
+      return null;
+    }
+    return { id: project.id as UrlProjectId };
   }
 }
