@@ -36,3 +36,10 @@ export {
   type WriteInput,
   type WriteAugmentResult,
 } from "./write-augments.js";
+
+// Read augments (syntax highlighting for read file content)
+export {
+  computeReadAugment,
+  type ReadAugmentInput,
+  type ReadAugmentResult,
+} from "./read-augments.js";

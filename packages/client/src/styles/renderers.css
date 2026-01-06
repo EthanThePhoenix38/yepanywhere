@@ -934,12 +934,16 @@ details[open] .collapsible__icon {
 }
 
 .edit-collapsed-preview .diff-expand-button {
-  opacity: 1;
   position: relative;
   bottom: auto;
   right: auto;
   align-self: flex-end;
   margin-top: 0.25rem;
+}
+
+/* Show button on hover for desktop */
+.edit-collapsed-preview:hover .diff-expand-button {
+  opacity: 1;
 }
 
 .edit-collapsed-error {
@@ -1087,6 +1091,13 @@ details[open] .collapsible__icon {
 
 .diff-expand-button:hover {
   background: var(--vscode-button-hoverBackground, #1177bb);
+}
+
+/* Always show expand button on mobile (no hover on touch devices) */
+@media (max-width: 600px) {
+  .diff-expand-button {
+    opacity: 1;
+  }
 }
 
 /* ==========================================================================

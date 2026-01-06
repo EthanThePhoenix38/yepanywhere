@@ -5,6 +5,7 @@ import {
   parseUserPrompt,
 } from "../../lib/parseUserPrompt";
 import type { ContentBlock } from "../../types";
+import { Modal } from "../ui/Modal";
 
 const MAX_LINES = 12;
 const MAX_CHARS = MAX_LINES * 100;
@@ -35,6 +36,71 @@ function OpenedFilesMetadata({ files }: { files: string[] }) {
 }
 
 /**
+ * Check if a MIME type is an image type
+ */
+function isImageMimeType(mimeType: string): boolean {
+  return mimeType.startsWith("image/");
+}
+
+/**
+ * Extract URL components from an uploaded file path.
+ * Path format: /.../.yep-anywhere/uploads/{projectId}/{sessionId}/{filename}
+ */
+function getUploadUrl(filePath: string): string | null {
+  // Split path and get last 3 components: projectId, sessionId, filename
+  const parts = filePath.split("/");
+  if (parts.length < 3) return null;
+
+  const filename = parts[parts.length - 1];
+  const sessionId = parts[parts.length - 2];
+  const projectId = parts[parts.length - 3];
+
+  if (!filename || !sessionId || !projectId) return null;
+
+  // Validate filename has UUID prefix
+  if (!/^[0-9a-f-]{36}_/.test(filename)) return null;
+
+  return `/api/projects/${projectId}/sessions/${sessionId}/upload/${encodeURIComponent(filename)}`;
+}
+
+/**
+ * Single uploaded file attachment - clickable for images
+ */
+function UploadedFileItem({ file }: { file: UploadedFileInfo }) {
+  const [showModal, setShowModal] = useState(false);
+  const isImage = isImageMimeType(file.mimeType);
+  const uploadUrl = isImage ? getUploadUrl(file.path) : null;
+
+  if (isImage && uploadUrl) {
+    return (
+      <>
+        <button
+          type="button"
+          className="uploaded-file uploaded-file-clickable"
+          title={`${file.mimeType}, ${file.size}`}
+          onClick={() => setShowModal(true)}
+        >
+          📎 {file.originalName}
+        </button>
+        {showModal && (
+          <Modal title={file.originalName} onClose={() => setShowModal(false)}>
+            <div className="uploaded-image-modal">
+              <img src={uploadUrl} alt={file.originalName} />
+            </div>
+          </Modal>
+        )}
+      </>
+    );
+  }
+
+  return (
+    <span className="uploaded-file" title={`${file.mimeType}, ${file.size}`}>
+      📎 {file.originalName}
+    </span>
+  );
+}
+
+/**
  * Renders uploaded file attachments below the user prompt
  */
 function UploadedFilesMetadata({ files }: { files: UploadedFileInfo[] }) {
@@ -43,13 +109,7 @@ function UploadedFilesMetadata({ files }: { files: UploadedFileInfo[] }) {
   return (
     <div className="user-prompt-metadata">
       {files.map((file) => (
-        <span
-          key={file.path}
-          className="uploaded-file"
-          title={`${file.mimeType}, ${file.size}`}
-        >
-          📎 {file.originalName}
-        </span>
+        <UploadedFileItem key={file.path} file={file} />
       ))}
     </div>
   );

@@ -15,6 +15,7 @@ import {
   augmentTextBlocks,
   renderMarkdownToHtml,
 } from "../augments/markdown-augments.js";
+import { computeReadAugment } from "../augments/read-augments.js";
 import {
   type WriteInput,
   computeWriteAugment,
@@ -225,6 +226,21 @@ interface WriteInputWithAugment extends WriteInput {
   _highlightedTruncated?: boolean;
 }
 
+/** Read tool_result structured data with augment fields */
+interface ReadResultWithAugment {
+  type?: "text" | "image";
+  file?: {
+    filePath?: string;
+    content?: string;
+    numLines?: number;
+    startLine?: number;
+    totalLines?: number;
+  };
+  _highlightedContentHtml?: string;
+  _highlightedLanguage?: string;
+  _highlightedTruncated?: boolean;
+}
+
 /**
  * Embed Write augment data directly into tool_use inputs.
  * Adds _highlightedContentHtml to Write tool_use input blocks.
@@ -325,6 +341,34 @@ async function augmentExitPlanModeMessages(messages: Message[]): Promise<void> {
             })
             .catch(() => {
               // Ignore render errors
+            }),
+        );
+      }
+
+      // Check for Read tool_result and augment with syntax highlighting
+      const readResult = (toolUseResult ?? toolUseResultSnake) as
+        | ReadResultWithAugment
+        | undefined;
+      if (
+        readResult?.type === "text" &&
+        readResult.file?.filePath &&
+        readResult.file?.content &&
+        !readResult._highlightedContentHtml
+      ) {
+        promises.push(
+          computeReadAugment({
+            file_path: readResult.file.filePath,
+            content: readResult.file.content,
+          })
+            .then((augment) => {
+              if (augment) {
+                readResult._highlightedContentHtml = augment.highlightedHtml;
+                readResult._highlightedLanguage = augment.language;
+                readResult._highlightedTruncated = augment.truncated;
+              }
+            })
+            .catch(() => {
+              // Ignore augment computation errors
             }),
         );
       }

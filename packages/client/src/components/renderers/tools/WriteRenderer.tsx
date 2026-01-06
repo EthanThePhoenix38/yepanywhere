@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import type { ZodError } from "zod";
 import { useSchemaValidationContext } from "../../../contexts/SchemaValidationContext";
 import { validateToolResult } from "../../../lib/validateToolResult";
@@ -21,6 +21,20 @@ interface WriteInputWithAugment extends WriteInput {
  */
 function getFileName(filePath: string): string {
   return filePath.split("/").pop() || filePath;
+}
+
+/**
+ * Truncate highlighted HTML to a specified number of lines.
+ * Shiki output wraps each line in <span class="line">.
+ */
+function truncateHighlightedHtml(html: string, maxLines: number): string {
+  const lines = html.split('<span class="line">');
+  if (lines.length <= maxLines + 1) return html;
+
+  // Rebuild with only maxLines worth of lines
+  const truncated = lines.slice(0, maxLines + 1).join('<span class="line">');
+  // Close any open tags
+  return `${truncated}</code></pre>`;
 }
 
 /**
@@ -267,8 +281,16 @@ function WriteCollapsedPreview({
   const fileName = getFileName(filePath);
   const lines = content.split("\n");
   const lineCount = result?.file?.numLines ?? lines.length;
-  const previewLines = lines.slice(0, PREVIEW_LINES);
   const isTruncated = lines.length > PREVIEW_LINES;
+
+  // Truncate highlighted HTML for preview
+  const previewHtml = useMemo(() => {
+    if (!input._highlightedContentHtml) return null;
+    return truncateHighlightedHtml(
+      input._highlightedContentHtml,
+      PREVIEW_LINES,
+    );
+  }, [input._highlightedContentHtml]);
 
   if (isError) {
     // Extract error message from result - can be a string or object with content
@@ -307,9 +329,17 @@ function WriteCollapsedPreview({
         <div
           className={`write-preview-content ${isTruncated ? "write-preview-truncated" : ""}`}
         >
-          <pre>
-            <code>{previewLines.join("\n")}</code>
-          </pre>
+          {previewHtml ? (
+            <div
+              className="shiki-container"
+              // biome-ignore lint/security/noDangerouslySetInnerHtml: server-rendered HTML
+              dangerouslySetInnerHTML={{ __html: previewHtml }}
+            />
+          ) : (
+            <pre>
+              <code>{lines.slice(0, PREVIEW_LINES).join("\n")}</code>
+            </pre>
+          )}
           {isTruncated && <div className="write-preview-fade" />}
         </div>
       </button>

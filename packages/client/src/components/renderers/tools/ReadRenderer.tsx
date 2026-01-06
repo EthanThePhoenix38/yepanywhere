@@ -12,6 +12,13 @@ import type {
   ToolRenderer,
 } from "./types";
 
+/** Extended result type with server-rendered syntax highlighting */
+interface ReadResultWithAugment extends ReadResult {
+  _highlightedContentHtml?: string;
+  _highlightedLanguage?: string;
+  _highlightedTruncated?: boolean;
+}
+
 /**
  * Extract filename from path
  */
@@ -40,9 +47,38 @@ function ReadToolUse({ input }: { input: ReadInput }) {
 /**
  * Modal content for viewing file contents
  */
-function FileModalContent({ file }: { file: TextFile }) {
+function FileModalContent({
+  file,
+  highlightedHtml,
+  highlightedTruncated,
+}: {
+  file: TextFile;
+  highlightedHtml?: string;
+  highlightedTruncated?: boolean;
+}) {
   const lines = file.content.split("\n");
 
+  // Use highlighted HTML if available
+  if (highlightedHtml) {
+    return (
+      <div className="file-content-modal">
+        <div className="file-viewer-code file-viewer-code-highlighted">
+          <div
+            className="shiki-container"
+            // biome-ignore lint/security/noDangerouslySetInnerHtml: server-rendered HTML
+            dangerouslySetInnerHTML={{ __html: highlightedHtml }}
+          />
+          {highlightedTruncated && (
+            <div className="file-viewer-truncated">
+              Content truncated for highlighting (showing first 2000 lines)
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  // Fallback: plain text with line numbers
   return (
     <div className="file-content-modal">
       <div className="file-content-with-lines">
@@ -83,7 +119,15 @@ function FileModalTitle({ file }: { file: TextFile }) {
 /**
  * Text file result - clickable filename that opens modal
  */
-function TextFileResult({ file }: { file: TextFile }) {
+function TextFileResult({
+  file,
+  highlightedHtml,
+  highlightedTruncated,
+}: {
+  file: TextFile;
+  highlightedHtml?: string;
+  highlightedTruncated?: boolean;
+}) {
   const [showModal, setShowModal] = useState(false);
   const fileName = getFileName(file.filePath);
   const showRange = file.startLine > 1 || file.numLines < file.totalLines;
@@ -111,7 +155,11 @@ function TextFileResult({ file }: { file: TextFile }) {
           title={<FileModalTitle file={file} />}
           onClose={() => setShowModal(false)}
         >
-          <FileModalContent file={file} />
+          <FileModalContent
+            file={file}
+            highlightedHtml={highlightedHtml}
+            highlightedTruncated={highlightedTruncated}
+          />
         </Modal>
       )}
     </>
@@ -149,7 +197,7 @@ function ReadToolResult({
   result,
   isError,
 }: {
-  result: ReadResult;
+  result: ReadResultWithAugment;
   isError: boolean;
 }) {
   const { enabled, reportValidationError, isToolIgnored } =
@@ -203,7 +251,11 @@ function ReadToolResult({
       {showValidationWarning && validationErrors && (
         <SchemaWarning toolName="Read" errors={validationErrors} />
       )}
-      <TextFileResult file={result.file as TextFile} />
+      <TextFileResult
+        file={result.file as TextFile}
+        highlightedHtml={result._highlightedContentHtml}
+        highlightedTruncated={result._highlightedTruncated}
+      />
     </>
   );
 }
@@ -217,7 +269,7 @@ function ReadInteractiveSummary({
   isError,
 }: {
   input: ReadInput;
-  result: ReadResult | undefined;
+  result: ReadResultWithAugment | undefined;
   isError: boolean;
 }) {
   const [showModal, setShowModal] = useState(false);
@@ -260,14 +312,29 @@ function ReadInteractiveSummary({
   }
 
   if (result.type === "image") {
-    // For images, just show the filename (no modal needed, would need different handling)
+    const imageFile = result.file as ImageFile;
     return (
-      <span>
-        {fileName} (image)
-        {showValidationWarning && validationErrors && (
-          <SchemaWarning toolName="Read" errors={validationErrors} />
+      <>
+        <button
+          type="button"
+          className="file-link-inline"
+          onClick={(e) => {
+            e.stopPropagation();
+            setShowModal(true);
+          }}
+        >
+          {fileName}
+          <span className="file-line-count-inline">(image)</span>
+          {showValidationWarning && validationErrors && (
+            <SchemaWarning toolName="Read" errors={validationErrors} />
+          )}
+        </button>
+        {showModal && (
+          <Modal title={fileName} onClose={() => setShowModal(false)}>
+            <ImageFileResult file={imageFile} />
+          </Modal>
         )}
-      </span>
+      </>
     );
   }
 
@@ -294,7 +361,11 @@ function ReadInteractiveSummary({
           title={<FileModalTitle file={file} />}
           onClose={() => setShowModal(false)}
         >
-          <FileModalContent file={file} />
+          <FileModalContent
+            file={file}
+            highlightedHtml={result._highlightedContentHtml}
+            highlightedTruncated={result._highlightedTruncated}
+          />
         </Modal>
       )}
     </>
@@ -309,7 +380,12 @@ export const readRenderer: ToolRenderer<ReadInput, ReadResult> = {
   },
 
   renderToolResult(result, isError, _context) {
-    return <ReadToolResult result={result as ReadResult} isError={isError} />;
+    return (
+      <ReadToolResult
+        result={result as ReadResultWithAugment}
+        isError={isError}
+      />
+    );
   },
 
   getUseSummary(input) {
@@ -332,7 +408,7 @@ export const readRenderer: ToolRenderer<ReadInput, ReadResult> = {
     return (
       <ReadInteractiveSummary
         input={input as ReadInput}
-        result={result as ReadResult | undefined}
+        result={result as ReadResultWithAugment | undefined}
         isError={isError}
       />
     );

@@ -151,17 +151,10 @@ function DiffHunk({ hunk }: { hunk: PatchHunk }) {
  * Reads augment data directly from input._structuredPatch and input._diffHtml.
  */
 function EditToolUse({ input }: { input: EditInputWithAugment }) {
-  const fileName = getFileName(input.file_path);
-  const isPlan = isPlanFile(input.file_path);
-
   // Show loading state if augment data not yet available
   if (!input._structuredPatch || input._structuredPatch.length === 0) {
     return (
       <div className="edit-result">
-        <div className="edit-header">
-          <span className="file-path">{fileName}</span>
-          {isPlan && <span className="badge badge-muted">Plan</span>}
-        </div>
         <div className="edit-loading">Computing diff...</div>
       </div>
     );
@@ -173,10 +166,6 @@ function EditToolUse({ input }: { input: EditInputWithAugment }) {
 
   return (
     <div className="edit-result">
-      <div className="edit-header">
-        <span className="file-path">{fileName}</span>
-        {isPlan && <span className="badge badge-muted">Plan</span>}
-      </div>
       {changeSummary && (
         <div className="edit-change-summary">{changeSummary}</div>
       )}
@@ -281,7 +270,6 @@ function EditCollapsedPreview({
   // Use result data if available, fall back to input
   const filePath = result?.filePath ?? input.file_path;
   const fileName = getFileName(filePath);
-  const isPlan = isPlanFile(filePath);
 
   // Get structuredPatch - prefer result, then input augment
   const structuredPatch =
@@ -318,10 +306,6 @@ function EditCollapsedPreview({
   if (structuredPatch.length === 0) {
     return (
       <div className="edit-collapsed-preview">
-        <div className="edit-header">
-          <span className="file-path">{fileName}</span>
-          {isPlan && <span className="badge badge-muted">Plan</span>}
-        </div>
         <div className="edit-loading">Computing diff...</div>
       </div>
     );
@@ -329,23 +313,15 @@ function EditCollapsedPreview({
 
   const diffLines = structuredPatch.flatMap((hunk) => hunk.lines);
   const isTruncated = diffLines.length > MAX_VISIBLE_LINES;
-  const changeSummary = computeChangeSummary(structuredPatch);
 
   return (
     <>
       <div className="edit-collapsed-preview">
-        <div className="edit-header">
-          <span className="file-path">{fileName}</span>
-          {isPlan && <span className="badge badge-muted">Plan</span>}
-          {result?.userModified && (
-            <span className="badge badge-info">User modified</span>
-          )}
-          {showValidationWarning && validationErrors && (
-            <SchemaWarning toolName="Edit" errors={validationErrors} />
-          )}
-        </div>
-        {changeSummary && (
-          <div className="edit-change-summary">{changeSummary}</div>
+        {result?.userModified && (
+          <span className="badge badge-info">User modified</span>
+        )}
+        {showValidationWarning && validationErrors && (
+          <SchemaWarning toolName="Edit" errors={validationErrors} />
         )}
         <div
           className={`diff-view-container ${isTruncated ? "truncated" : ""}`}
@@ -362,18 +338,113 @@ function EditCollapsedPreview({
           </div>
           {isTruncated && <div className="diff-fade-overlay" />}
         </div>
-        <button
-          type="button"
-          className="diff-expand-button"
-          onClick={handleClick}
-        >
-          Show full diff
-        </button>
+        {isTruncated && (
+          <button
+            type="button"
+            className="diff-expand-button"
+            onClick={handleClick}
+          >
+            Show full diff
+          </button>
+        )}
       </div>
       {isModalOpen && (
         <Modal
           title={<span className="file-path">{fileName}</span>}
           onClose={handleClose}
+        >
+          <DiffModalContent
+            diffHtml={diffHtml}
+            structuredPatch={structuredPatch}
+          />
+        </Modal>
+      )}
+    </>
+  );
+}
+
+/**
+ * Interactive summary for Edit tool - shows filename and change summary inline
+ * Similar to Read tool's interactive summary
+ */
+function EditInteractiveSummary({
+  input,
+  result,
+  isError,
+}: {
+  input: EditInputWithAugment;
+  result: EditResult | undefined;
+  isError: boolean;
+}) {
+  const [showModal, setShowModal] = useState(false);
+  const { enabled, reportValidationError, isToolIgnored } =
+    useSchemaValidationContext();
+  const [validationErrors, setValidationErrors] = useState<ZodError | null>(
+    null,
+  );
+
+  useEffect(() => {
+    if (enabled && result) {
+      const validation = validateToolResult("Edit", result);
+      if (!validation.valid && validation.errors) {
+        setValidationErrors(validation.errors);
+        reportValidationError("Edit", validation.errors);
+      } else {
+        setValidationErrors(null);
+      }
+    }
+  }, [enabled, result, reportValidationError]);
+
+  const showValidationWarning =
+    enabled && validationErrors && !isToolIgnored("Edit");
+
+  const filePath = result?.filePath ?? input.file_path;
+  const fileName = getFileName(filePath);
+
+  // Get structuredPatch - prefer result, then input augment
+  const structuredPatch =
+    result?.structuredPatch ?? input._structuredPatch ?? [];
+  const diffHtml = input._diffHtml;
+  const changeSummary = computeChangeSummary(structuredPatch);
+
+  if (isError) {
+    return (
+      <span>
+        {fileName}
+        {showValidationWarning && validationErrors && (
+          <SchemaWarning toolName="Edit" errors={validationErrors} />
+        )}
+      </span>
+    );
+  }
+
+  // Show loading state if no patch yet
+  if (structuredPatch.length === 0) {
+    return <span>{fileName}</span>;
+  }
+
+  return (
+    <>
+      <button
+        type="button"
+        className="file-link-inline"
+        onClick={(e) => {
+          e.stopPropagation();
+          setShowModal(true);
+        }}
+      >
+        {fileName}
+        {changeSummary && (
+          <span className="file-line-count-inline">{changeSummary}</span>
+        )}
+        {showValidationWarning && validationErrors && (
+          <SchemaWarning toolName="Edit" errors={validationErrors} />
+        )}
+      </button>
+      {showModal && (
+        <Modal
+          title={<span className="file-path">{fileName}</span>}
+          onClose={() => setShowModal(false)}
         >
           <DiffModalContent
             diffHtml={diffHtml}
@@ -597,6 +668,16 @@ export const editRenderer: ToolRenderer<EditInput, EditResult> = {
   renderCollapsedPreview(input, result, isError) {
     return (
       <EditCollapsedPreview
+        input={input as EditInputWithAugment}
+        result={result as EditResult | undefined}
+        isError={isError}
+      />
+    );
+  },
+
+  renderInteractiveSummary(input, result, isError, _context) {
+    return (
+      <EditInteractiveSummary
         input={input as EditInputWithAugment}
         result={result as EditResult | undefined}
         isError={isError}

@@ -9,6 +9,7 @@ import {
   createStreamCoordinator,
 } from "../augments/index.js";
 import { renderMarkdownToHtml } from "../augments/markdown-augments.js";
+import { computeReadAugment } from "../augments/read-augments.js";
 import {
   type WriteInput,
   computeWriteAugment,
@@ -27,6 +28,21 @@ interface ExitPlanModeInput {
 interface ExitPlanModeResult {
   plan?: string;
   _renderedHtml?: string;
+}
+
+/** Read tool_result structured data with augment fields */
+interface ReadResultWithAugment {
+  type?: "text" | "image";
+  file?: {
+    filePath?: string;
+    content?: string;
+    numLines?: number;
+    startLine?: number;
+    totalLines?: number;
+  };
+  _highlightedContentHtml?: string;
+  _highlightedLanguage?: string;
+  _highlightedTruncated?: boolean;
 }
 
 /** Edit tool_use input with embedded augment data */
@@ -184,6 +200,31 @@ export function createStreamRoutes(deps: StreamDeps): Hono {
                 { err, sessionId },
                 "Failed to render ExitPlanMode result plan HTML",
               );
+            }
+          }
+
+          // Check for Read tool_result and augment with syntax highlighting
+          const readResult = message.tool_use_result as
+            | ReadResultWithAugment
+            | undefined;
+          if (
+            readResult?.type === "text" &&
+            readResult.file?.filePath &&
+            readResult.file?.content &&
+            !readResult._highlightedContentHtml
+          ) {
+            try {
+              const augment = await computeReadAugment({
+                file_path: readResult.file.filePath,
+                content: readResult.file.content,
+              });
+              if (augment) {
+                readResult._highlightedContentHtml = augment.highlightedHtml;
+                readResult._highlightedLanguage = augment.language;
+                readResult._highlightedTruncated = augment.truncated;
+              }
+            } catch (err) {
+              log.warn({ err, sessionId }, "Failed to compute read augment");
             }
           }
         }

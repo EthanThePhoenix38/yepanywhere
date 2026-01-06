@@ -1,3 +1,6 @@
+import { createReadStream } from "node:fs";
+import { stat } from "node:fs/promises";
+import { join } from "node:path";
 import {
   type UploadClientMessage,
   type UploadCompleteMessage,
@@ -8,9 +11,10 @@ import {
 } from "@yep-anywhere/shared";
 import type { Context } from "hono";
 import { Hono } from "hono";
+import { stream } from "hono/streaming";
 import type { WSContext, WSEvents } from "hono/ws";
 import type { ProjectScanner } from "../projects/scanner.js";
-import { UploadManager } from "../uploads/index.js";
+import { UPLOADS_DIR, UploadManager } from "../uploads/index.js";
 
 /** Progress update interval in bytes (64KB) */
 const PROGRESS_INTERVAL_BYTES = 64 * 1024;
@@ -278,6 +282,74 @@ export function createUploadRoutes(deps: UploadDeps): Hono {
         },
       };
     }),
+  );
+
+  // GET endpoint: /projects/:projectId/sessions/:sessionId/upload/:filename
+  // Serves uploaded files for viewing in the client
+  routes.get(
+    "/projects/:projectId/sessions/:sessionId/upload/:filename",
+    async (c) => {
+      const projectId = c.req.param("projectId");
+      const sessionId = c.req.param("sessionId");
+      const filename = c.req.param("filename");
+
+      // Validate projectId format
+      if (!isUrlProjectId(projectId)) {
+        return c.json({ error: "Invalid project ID" }, 400);
+      }
+
+      // Validate filename - must have UUID prefix format
+      if (!filename || !/^[0-9a-f-]{36}_/.test(filename)) {
+        return c.json({ error: "Invalid filename" }, 400);
+      }
+
+      // Construct file path
+      const filePath = join(UPLOADS_DIR, projectId, sessionId, filename);
+
+      // Security: ensure the resolved path is within UPLOADS_DIR
+      if (!filePath.startsWith(UPLOADS_DIR)) {
+        return c.json({ error: "Invalid path" }, 400);
+      }
+
+      try {
+        const stats = await stat(filePath);
+        if (!stats.isFile()) {
+          return c.json({ error: "Not a file" }, 404);
+        }
+
+        // Determine content type from filename extension
+        const ext = filename.split(".").pop()?.toLowerCase() ?? "";
+        const mimeTypes: Record<string, string> = {
+          png: "image/png",
+          jpg: "image/jpeg",
+          jpeg: "image/jpeg",
+          gif: "image/gif",
+          webp: "image/webp",
+          svg: "image/svg+xml",
+          pdf: "application/pdf",
+          txt: "text/plain",
+          json: "application/json",
+        };
+        const contentType = mimeTypes[ext] ?? "application/octet-stream";
+
+        c.header("Content-Type", contentType);
+        c.header("Content-Length", stats.size.toString());
+        c.header("Cache-Control", "private, max-age=3600");
+
+        return stream(c, async (s) => {
+          const readable = createReadStream(filePath);
+          for await (const chunk of readable) {
+            await s.write(chunk);
+          }
+        });
+      } catch (err) {
+        if ((err as NodeJS.ErrnoException).code === "ENOENT") {
+          return c.json({ error: "File not found" }, 404);
+        }
+        console.error("[Upload] Error serving file:", err);
+        return c.json({ error: "Internal error" }, 500);
+      }
+    },
   );
 
   return routes;

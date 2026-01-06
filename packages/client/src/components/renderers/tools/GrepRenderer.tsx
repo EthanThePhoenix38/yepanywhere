@@ -177,9 +177,10 @@ function GrepToolResult({
 
   // Content mode - show search results
   if (mode === "content" && content) {
-    // Count actual match lines (lines with : after the line number indicate matches)
+    // Count actual match lines (lines with :linenum: pattern indicate matches)
+    // Handles both single-file format (42:content) and multi-file format (file:42:content)
     const lines = content.split("\n");
-    const matchCount = lines.filter((line) => /^\d+:/.test(line)).length;
+    const matchCount = lines.filter((line) => /(^|:)\d+:/.test(line)).length;
 
     return (
       <div className="grep-result">
@@ -256,7 +257,7 @@ export const grepRenderer: ToolRenderer<GrepInput, GrepResult> = {
     if (r.mode === "content" && r.content) {
       const matchCount = r.content
         .split("\n")
-        .filter((line) => /^\d+:/.test(line)).length;
+        .filter((line) => /(^|:)\d+:/.test(line)).length;
       return `${matchCount} ${matchCount === 1 ? "match" : "matches"}`;
     }
 
