@@ -26,7 +26,7 @@ export function normalizeSession(loaded: LoadedSession): Session {
         case "claude": {
             // Claude sessions are stored as raw messages in the session file.
             // We need to build the DAG to find the active branch.
-            const rawMessages = data.session.messages as RawSessionMessage[];
+            const rawMessages = data.session.messages;
 
             // Build DAG and get active branch (filters out dead branches)
             const { activeBranch } = buildDag(rawMessages);

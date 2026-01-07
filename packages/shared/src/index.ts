@@ -138,6 +138,8 @@ export {
 export type {
   UnifiedSession,
   ClaudeSessionFile,
+  ClaudeRawSessionMessage,
+  ClaudeRawContentBlock,
   CodexSessionContent,
 } from "./session/index.js";
 

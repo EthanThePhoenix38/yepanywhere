@@ -4,7 +4,6 @@ import {
   type AgentStatus,
   SESSION_TITLE_MAX_LENGTH,
   type UrlProjectId,
-  type UnifiedSession,
   isIdeMetadata,
   stripIdeMetadata,
 } from "@yep-anywhere/shared";
@@ -12,7 +11,6 @@ import type {
   ContentBlock,
   ContextUsage,
   Message,
-  Session,
   SessionSummary,
 } from "../supervisor/types.js";
 import type { GetSessionOptions, ISessionReader, LoadedSession } from "./types.js";
@@ -23,7 +21,7 @@ export type { GetSessionOptions, ISessionReader } from "./types.js";
 // Claude model context window size (200K tokens)
 const CONTEXT_WINDOW_SIZE = 200_000;
 
-import { buildDag, findOrphanedToolUses } from "./dag.js";
+import { buildDag, findOrphanedToolUses, type RawSessionMessage } from "./dag.js";
 
 export interface ClaudeSessionReaderOptions {
   sessionDir: string;
@@ -51,40 +49,6 @@ export interface AgentSession {
 export interface AgentMapping {
   toolUseId: string;
   agentId: string;
-}
-
-// JSONL content block format from claude-code - loosely typed to preserve all fields
-interface RawContentBlock {
-  type: string;
-  text?: string;
-  thinking?: string;
-  signature?: string;
-  id?: string;
-  name?: string;
-  input?: unknown;
-  tool_use_id?: string;
-  content?: string;
-  is_error?: boolean;
-  // Allow any additional fields
-  [key: string]: unknown;
-}
-
-// JSONL message format from claude-code - loosely typed to preserve all fields
-interface RawSessionMessage {
-  type: string;
-  message?: {
-    content: string | RawContentBlock[];
-    role?: string;
-    [key: string]: unknown;
-  };
-  timestamp?: string;
-  uuid?: string;
-  parentUuid?: string | null;
-  toolUseResult?: unknown;
-  // Agent session parent reference (links to Task tool_use id)
-  parent_tool_use_id?: string;
-  // Allow any additional fields from JSONL
-  [key: string]: unknown;
 }
 
 /**

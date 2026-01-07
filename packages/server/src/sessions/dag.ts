@@ -8,28 +8,10 @@
  * - Clean recovery (resumption picks any node as continuation point)
  */
 
-/** Raw content block from JSONL - loosely typed to preserve all fields */
-interface RawContentBlock {
-  type: string;
-  id?: string;
-  tool_use_id?: string;
-  [key: string]: unknown;
-}
+import type { ClaudeRawSessionMessage } from "@yep-anywhere/shared";
 
-/** Raw JSONL message format - loosely typed to preserve all fields */
-export interface RawSessionMessage {
-  type: string;
-  subtype?: string;
-  message?: {
-    content: string | RawContentBlock[];
-    [key: string]: unknown;
-  };
-  uuid?: string;
-  parentUuid?: string | null;
-  /** For compact_boundary messages, points to the last message before compaction */
-  logicalParentUuid?: string | null;
-  [key: string]: unknown;
-}
+// Re-export for backwards compatibility and use locally
+export type RawSessionMessage = ClaudeRawSessionMessage;
 
 /** A node in the conversation DAG */
 export interface DagNode {
