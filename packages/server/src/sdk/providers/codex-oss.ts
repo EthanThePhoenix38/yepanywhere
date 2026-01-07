@@ -4,6 +4,10 @@
  * Spawns `codex exec --oss` for local model support (Ollama/LMStudio).
  * Uses the same session format as the SDK-based Codex provider.
  *
+ * Multi-turn conversations use `codex exec resume <session_id>` to continue
+ * sessions. This requires models with sufficient context window (32K+ recommended)
+ * since Codex's system prompt is ~5-6K tokens.
+ *
  * See docs/research/codex-local-models.md for background.
  */
 
@@ -279,7 +283,16 @@ export class CodexOSSProvider implements AgentProvider {
   }
 
   /**
-   * Main session loop - spawns CLI per turn (like Gemini provider).
+   * Main session loop - uses `codex exec` for first turn, then `codex exec resume`
+   * for subsequent turns.
+   *
+   * Important: Models must have sufficient context window (32K+ recommended) since
+   * Codex's system prompt is ~5-6K tokens. With default 4K context, Ollama truncates
+   * the prompt and loses conversation history.
+   *
+   * Create models with larger context via Modelfile:
+   *   FROM qwen2.5-coder:32b-instruct-q4_K_M
+   *   PARAMETER num_ctx 32768
    */
   private async *runSession(
     options: StartSessionOptions,
@@ -297,6 +310,15 @@ export class CodexOSSProvider implements AgentProvider {
 
     let currentSessionId = options.resumeSessionId ?? "";
     let initEmitted = !!options.resumeSessionId;
+
+    // Turn counter for generating unique UUIDs per turn
+    let turnNumber = 0;
+
+    // Accumulator for streaming tokens within a turn
+    // Codex-oss emits each token as a separate item with incrementing IDs,
+    // but we want to merge them into a single message per response
+    let accumulatedText = "";
+    let accumulatedThinking = "";
 
     // If resuming, emit init immediately
     if (options.resumeSessionId) {
@@ -324,22 +346,44 @@ export class CodexOSSProvider implements AgentProvider {
         message: { role: "user", content: userPrompt },
       } as SDKMessage;
 
-      // Build CLI arguments
-      const args = this.buildCliArgs(options, currentSessionId);
+      // Increment turn number and reset accumulators for this new turn
+      turnNumber++;
+      accumulatedText = "";
+      accumulatedThinking = "";
+
+      // Build CLI arguments - use resume for subsequent turns
+      const isFirstTurn = turnNumber === 1 && !options.resumeSessionId;
+      const args = isFirstTurn
+        ? this.buildFirstTurnArgs(options)
+        : this.buildResumeTurnArgs(options, currentSessionId, userPrompt);
 
       // Spawn codex process
       let codexProcess: ChildProcess;
       try {
-        log.debug({ args, cwd: options.cwd }, "Spawning codex exec --oss");
+        log.debug(
+          {
+            args,
+            cwd: options.cwd,
+            turnNumber,
+            isFirstTurn,
+            sessionId: currentSessionId,
+          },
+          isFirstTurn
+            ? "Spawning codex exec --oss"
+            : "Spawning codex exec resume",
+        );
         codexProcess = spawn(codexPath, args, {
           cwd: options.cwd,
           stdio: ["pipe", "pipe", "pipe"],
           env: { ...process.env },
         });
 
-        // Send prompt via stdin
-        if (codexProcess.stdin) {
+        // For first turn, send prompt via stdin
+        // For resume, prompt is passed as argument
+        if (isFirstTurn && codexProcess.stdin) {
           codexProcess.stdin.write(userPrompt);
+          codexProcess.stdin.end();
+        } else if (codexProcess.stdin) {
           codexProcess.stdin.end();
         }
       } catch (error) {
@@ -380,34 +424,136 @@ export class CodexOSSProvider implements AgentProvider {
           stderr += chunk.toString();
         });
 
+        // For resume turns (no JSON), we need to parse text output
+        // The format is: header lines, then "codex" line, then response text
+        let inCodexResponse = false;
+        const textResponseLines: string[] = [];
+
         for await (const line of rl) {
           if (signal.aborted) break;
 
+          // First try JSON parsing (works for first turn with --json)
           const event = this.parseEvent(line);
-          if (!event) continue;
+          if (event) {
+            // Update session ID from thread.started (only on first turn)
+            if (event.type === "thread.started") {
+              log.debug(
+                { threadId: event.thread_id, turnNumber },
+                "Captured thread_id from thread.started",
+              );
+              currentSessionId = event.thread_id;
+              if (!initEmitted) {
+                initEmitted = true;
+                yield {
+                  type: "system",
+                  subtype: "init",
+                  session_id: currentSessionId,
+                  cwd: options.cwd,
+                } as SDKMessage;
+              }
+              continue;
+            }
 
-          // Update session ID from thread.started
-          if (event.type === "thread.started") {
-            currentSessionId = event.thread_id;
-            if (!initEmitted) {
-              initEmitted = true;
-              yield {
-                type: "system",
-                subtype: "init",
-                session_id: currentSessionId,
-                cwd: options.cwd,
-              } as SDKMessage;
+            // Handle item events specially to accumulate streaming tokens
+            // Codex-oss emits each token as a separate item with incrementing IDs,
+            // but we want to merge agent_message tokens into a single message
+            if (
+              event.type === "item.started" ||
+              event.type === "item.updated" ||
+              event.type === "item.completed"
+            ) {
+              const item = event.item;
+
+              // For agent_message, accumulate text and emit with stable UUID
+              if (item.type === "agent_message") {
+                accumulatedText += item.text;
+                yield {
+                  type: "assistant",
+                  session_id: currentSessionId,
+                  uuid: `response-turn${turnNumber}`,
+                  message: { role: "assistant", content: accumulatedText },
+                } as SDKMessage;
+                continue;
+              }
+
+              // For reasoning, accumulate thinking and emit with stable UUID
+              if (item.type === "reasoning") {
+                accumulatedThinking += item.text;
+                yield {
+                  type: "assistant",
+                  session_id: currentSessionId,
+                  uuid: `thinking-turn${turnNumber}`,
+                  message: {
+                    role: "assistant",
+                    content: [
+                      { type: "thinking", thinking: accumulatedThinking },
+                    ],
+                  },
+                } as SDKMessage;
+                continue;
+              }
+
+              // For other item types (tool calls, etc.), use per-turn unique UUID
+              const messages = this.convertItemToSDKMessages(
+                item,
+                currentSessionId,
+                `${item.id}-turn${turnNumber}`,
+                event.type === "item.completed",
+              );
+              for (const msg of messages) {
+                yield msg;
+              }
+              continue;
+            }
+
+            // Convert other events to SDKMessages
+            const messages = this.convertEventToSDKMessages(
+              event,
+              currentSessionId,
+            );
+            for (const msg of messages) {
+              yield msg;
             }
             continue;
           }
 
-          // Convert to SDKMessages
-          const messages = this.convertEventToSDKMessages(
-            event,
-            currentSessionId,
-          );
-          for (const msg of messages) {
-            yield msg;
+          // Text output parsing for resume turns (no JSON)
+          // Format: header, "codex", response lines, duplicate of response
+          if (line === "codex") {
+            inCodexResponse = true;
+            continue;
+          }
+
+          if (inCodexResponse) {
+            // Accumulate response lines
+            textResponseLines.push(line);
+            // Emit progressive updates
+            accumulatedText = textResponseLines.join("\n");
+            yield {
+              type: "assistant",
+              session_id: currentSessionId,
+              uuid: `response-turn${turnNumber}`,
+              message: { role: "assistant", content: accumulatedText },
+            } as SDKMessage;
+          }
+        }
+
+        // For text output, deduplicate the response (it appears twice)
+        if (!isFirstTurn && textResponseLines.length > 0) {
+          // The response is duplicated, so take first half
+          const halfLen = Math.floor(textResponseLines.length / 2);
+          if (
+            halfLen > 0 &&
+            textResponseLines.slice(0, halfLen).join("\n") ===
+              textResponseLines.slice(halfLen).join("\n")
+          ) {
+            accumulatedText = textResponseLines.slice(0, halfLen).join("\n");
+            yield {
+              type: "assistant",
+              session_id: currentSessionId,
+              uuid: `response-turn${turnNumber}`,
+              message: { role: "assistant", content: accumulatedText },
+            } as SDKMessage;
           }
         }
 
@@ -440,18 +586,15 @@ export class CodexOSSProvider implements AgentProvider {
   }
 
   /**
-   * Build CLI arguments for codex exec.
+   * Build CLI arguments for first turn: `codex exec --oss --json ...`
    */
-  private buildCliArgs(
-    options: StartSessionOptions,
-    sessionId: string,
-  ): string[] {
+  private buildFirstTurnArgs(options: StartSessionOptions): string[] {
     const args: string[] = [
       "exec",
       "--oss",
       "--local-provider",
       this.localProvider,
-      "--experimental-json",
+      "--json",
     ];
 
     if (options.model) {
@@ -465,9 +608,31 @@ export class CodexOSSProvider implements AgentProvider {
       args.push("-s", "workspace-write");
     }
 
-    // Resume if we have a session ID
-    if (sessionId) {
-      args.push("resume", "--last");
+    return args;
+  }
+
+  /**
+   * Build CLI arguments for subsequent turns: `codex exec resume <session_id> <prompt> -c ...`
+   *
+   * Note: The resume subcommand doesn't support --oss or --json flags directly.
+   * We must use -c config overrides to specify the model provider and model.
+   */
+  private buildResumeTurnArgs(
+    options: StartSessionOptions,
+    sessionId: string,
+    prompt: string,
+  ): string[] {
+    const args: string[] = [
+      "exec",
+      "resume",
+      sessionId,
+      prompt,
+      "-c",
+      `model_provider="${this.localProvider}"`,
+    ];
+
+    if (options.model) {
+      args.push("-c", `model="${options.model}"`);
     }
 
     return args;
@@ -524,14 +689,8 @@ export class CodexOSSProvider implements AgentProvider {
           } as SDKMessage,
         ];
 
-      case "item.started":
-      case "item.updated":
-        // For text-based items (agent_message, reasoning), and tool calls,
-        // emit intermediate status updates to support token-by-token streaming.
-        return this.convertItemToSDKMessages(event.item, sessionId, false);
-
-      case "item.completed":
-        return this.convertItemToSDKMessages(event.item, sessionId, true);
+      // item.started, item.updated, item.completed are handled in runSession
+      // to support token accumulation with stable UUIDs
 
       case "error":
         return [
@@ -549,19 +708,22 @@ export class CodexOSSProvider implements AgentProvider {
 
   /**
    * Convert a Codex item to SDKMessage(s).
+   * UUID is passed in to ensure uniqueness across turns.
    */
   private convertItemToSDKMessages(
     item: CodexItem,
     sessionId: string,
+    uuid: string,
     isComplete: boolean,
   ): SDKMessage[] {
     switch (item.type) {
+      // reasoning and agent_message are handled by accumulator in runSession
       case "reasoning":
         return [
           {
             type: "assistant",
             session_id: sessionId,
-            uuid: item.id,
+            uuid,
             message: {
               role: "assistant",
               content: [{ type: "thinking", thinking: item.text }],
@@ -574,7 +736,7 @@ export class CodexOSSProvider implements AgentProvider {
           {
             type: "assistant",
             session_id: sessionId,
-            uuid: item.id,
+            uuid,
             message: { role: "assistant", content: item.text },
           } as SDKMessage,
         ];
@@ -584,7 +746,7 @@ export class CodexOSSProvider implements AgentProvider {
           {
             type: "assistant",
             session_id: sessionId,
-            uuid: item.id,
+            uuid,
             message: {
               role: "assistant",
               content: [
@@ -629,7 +791,7 @@ export class CodexOSSProvider implements AgentProvider {
           {
             type: "assistant",
             session_id: sessionId,
-            uuid: item.id,
+            uuid,
             message: {
               role: "assistant",
               content: [
@@ -671,7 +833,7 @@ export class CodexOSSProvider implements AgentProvider {
           {
             type: "assistant",
             session_id: sessionId,
-            uuid: item.id,
+            uuid,
             message: {
               role: "assistant",
               content: [
@@ -714,7 +876,7 @@ export class CodexOSSProvider implements AgentProvider {
           {
             type: "assistant",
             session_id: sessionId,
-            uuid: item.id,
+            uuid,
             message: {
               role: "assistant",
               content: [
@@ -735,7 +897,7 @@ export class CodexOSSProvider implements AgentProvider {
             type: "system",
             subtype: "todo_list",
             session_id: sessionId,
-            uuid: item.id,
+            uuid,
             items: item.items,
           } as SDKMessage,
         ];
@@ -745,7 +907,7 @@ export class CodexOSSProvider implements AgentProvider {
           {
             type: "error",
             session_id: sessionId,
-            uuid: item.id,
+            uuid,
             error: item.message,
           } as SDKMessage,
         ];
