@@ -8,6 +8,7 @@ import {
 } from "../lib/mergeMessages";
 import { findPendingTasks } from "../lib/pendingTasks";
 import { extractSessionIdFromFileEvent } from "../lib/sessionFile";
+import { getProvider } from "../providers/registry";
 import type {
   ContentBlock,
   InputRequest,
@@ -382,7 +383,8 @@ export function useSession(
       if (data.messages.length > 0) {
         setMessages((prev) => {
           const result = mergeJSONLMessages(prev, data.messages, {
-            skipDagOrdering: data.session.provider === "gemini",
+            skipDagOrdering: !getProvider(data.session.provider).capabilities
+              .supportsDag,
           });
           return result.messages;
         });

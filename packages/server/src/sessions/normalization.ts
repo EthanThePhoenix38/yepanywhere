@@ -126,7 +126,6 @@ function convertClaudeMessage(
 function convertCodexEntries(entries: CodexSessionEntry[]): Message[] {
   const messages: Message[] = [];
   let messageIndex = 0;
-  let lastMessageUuid: string | null = null;
   const hasResponseItemUser = hasCodexResponseItemUserMessages(entries);
 
   // Track function calls for pairing with outputs
@@ -136,9 +135,6 @@ function convertCodexEntries(entries: CodexSessionEntry[]): Message[] {
     if (entry.type === "response_item") {
       const msg = convertCodexResponseItem(entry, messageIndex++, pendingCalls);
       if (msg) {
-        // Set parentUuid to create linear chain for ordering/dedup
-        msg.parentUuid = lastMessageUuid;
-        lastMessageUuid = msg.uuid ?? null;
         messages.push(msg);
       }
     } else if (entry.type === "event_msg") {
@@ -147,9 +143,6 @@ function convertCodexEntries(entries: CodexSessionEntry[]): Message[] {
       if (entry.payload.type === "user_message" && !hasResponseItemUser) {
         const msg = convertCodexEventMsg(entry, messageIndex++);
         if (msg) {
-          // Set parentUuid to create linear chain for ordering/dedup
-          msg.parentUuid = lastMessageUuid;
-          lastMessageUuid = msg.uuid ?? null;
           messages.push(msg);
         }
       }

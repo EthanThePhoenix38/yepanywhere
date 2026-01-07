@@ -526,16 +526,8 @@ export class CodexOSSProvider implements AgentProvider {
 
       case "item.started":
       case "item.updated":
-        // For text-based items (agent_message, reasoning), skip intermediate
-        // updates to avoid flooding the client with per-token messages.
-        // Only emit on item.completed for these types.
-        if (
-          event.item.type === "agent_message" ||
-          event.item.type === "reasoning"
-        ) {
-          return [];
-        }
-        // For tool calls and other items, emit intermediate status updates
+        // For text-based items (agent_message, reasoning), and tool calls,
+        // emit intermediate status updates to support token-by-token streaming.
         return this.convertItemToSDKMessages(event.item, sessionId, false);
 
       case "item.completed":

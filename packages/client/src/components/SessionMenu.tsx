@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { api } from "../api/client";
+import { getProvider } from "../providers/registry";
 
 export interface SessionMenuProps {
   sessionId: string;
@@ -184,7 +185,7 @@ export function SessionMenu({
         </svg>
         Rename
       </button>
-      {onClone && provider === "claude" && (
+      {onClone && getProvider(provider).capabilities.supportsCloning && (
         <button type="button" onClick={handleClone} disabled={isCloning}>
           <svg
             width="14"
