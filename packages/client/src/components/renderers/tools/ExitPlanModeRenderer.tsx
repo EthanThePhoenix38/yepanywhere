@@ -92,10 +92,10 @@ export const exitPlanModeRenderer: ToolRenderer<
       return null;
     }
 
-    // Wrap in collapsible details element - collapsed by default
+    // Wrap in collapsible details element - expanded by default
     // Uses the same styling as ThinkingBlock for consistency
     return (
-      <details className="exitplan-collapsible collapsible">
+      <details className="exitplan-collapsible collapsible" open>
         <summary className="collapsible__summary">
           <span>{status === "pending" ? "Planning..." : "Plan"}</span>
           <span className="collapsible__icon">▸</span>
