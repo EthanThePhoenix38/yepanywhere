@@ -4,28 +4,27 @@
  * Gemini stores sessions at ~/.gemini/tmp/<projectHash>/chats/session-*.json
  * where projectHash is a SHA-256 hash of the working directory.
  *
- * Unlike Claude/Codex which store the cwd in the session file, Gemini only
- * stores the hash. We use two strategies to resolve the cwd:
- * 1. Hash known project paths from Claude/Codex to create a reverse mapping
- * 2. Look for file paths in tool calls to infer the project directory
- *
- * Sessions are grouped by their cwd (if known) or by projectHash (if unknown).
+ * We use GeminiProjectMap to resolve project hashes to their original CWDs.
  */
 
-import { createHash } from "node:crypto";
 import { readFile, readdir, stat } from "node:fs/promises";
 import { homedir } from "node:os";
-import { basename, dirname, join } from "node:path";
+import { basename, join } from "node:path";
 import {
   type GeminiSessionFile,
-  type UrlProjectId,
   parseGeminiSessionFile,
 } from "@yep-anywhere/shared";
 import type { Project } from "../supervisor/types.js";
+import {
+  GEMINI_DIR,
+  GEMINI_TMP_DIR,
+  geminiProjectMap,
+  hashProjectPath,
+} from "./gemini-project-map.js";
 import { encodeProjectId } from "./paths.js";
 
-export const GEMINI_DIR = join(homedir(), ".gemini");
-export const GEMINI_TMP_DIR = join(GEMINI_DIR, "tmp");
+// Re-export constants for compatibility
+export { GEMINI_DIR, GEMINI_TMP_DIR, hashProjectPath };
 
 interface GeminiSessionInfo {
   id: string;
@@ -39,18 +38,8 @@ export interface GeminiScannerOptions {
   sessionsDir?: string; // override for testing (~/.gemini/tmp)
 }
 
-/**
- * Compute SHA-256 hash of a path (how Gemini creates projectHash).
- */
-export function hashProjectPath(path: string): string {
-  return createHash("sha256").update(path).digest("hex");
-}
-
 export class GeminiSessionScanner {
   private sessionsDir: string;
-
-  // Cache of projectHash -> cwd for resolving hashes
-  private hashToCwd: Map<string, string> = new Map();
 
   constructor(options: GeminiScannerOptions = {}) {
     this.sessionsDir = options.sessionsDir ?? GEMINI_TMP_DIR;
@@ -60,18 +49,18 @@ export class GeminiSessionScanner {
    * Register known project paths for hash resolution.
    * Call this with paths from Claude/Codex projects to enable cwd lookup.
    */
-  registerKnownPaths(paths: string[]): void {
+  async registerKnownPaths(paths: string[]): Promise<void> {
     for (const path of paths) {
-      const hash = hashProjectPath(path);
-      this.hashToCwd.set(hash, path);
+      await geminiProjectMap.register(path);
     }
   }
 
   /**
    * Get the hash-to-cwd mapping for use by readers.
+   * Note: This is now async as it loads from disk.
    */
-  getHashToCwd(): Map<string, string> {
-    return this.hashToCwd;
+  async getHashToCwd(): Promise<Map<string, string>> {
+    return geminiProjectMap.getAll();
   }
 
   /**
@@ -80,6 +69,7 @@ export class GeminiSessionScanner {
    */
   async listProjects(): Promise<Project[]> {
     const sessions = await this.scanAllSessions();
+    await geminiProjectMap.load();
 
     // Group sessions by cwd (if known) or projectHash
     const projectMap = new Map<
@@ -93,7 +83,7 @@ export class GeminiSessionScanner {
     >();
 
     for (const session of sessions) {
-      const cwd = this.hashToCwd.get(session.projectHash) ?? null;
+      const cwd = await geminiProjectMap.get(session.projectHash);
       const key = cwd ?? session.projectHash;
 
       const existing = projectMap.get(key);
@@ -106,7 +96,7 @@ export class GeminiSessionScanner {
         projectMap.set(key, {
           sessions: [session],
           lastActivity: session.mtime,
-          cwd,
+          cwd: cwd ?? null,
           projectHash: session.projectHash,
         });
       }
@@ -152,6 +142,7 @@ export class GeminiSessionScanner {
     projectPath: string,
   ): Promise<GeminiSessionInfo[]> {
     const sessions = await this.scanAllSessions();
+    await geminiProjectMap.load();
 
     // Check if projectPath is a hash prefix (gemini:xxxxxxxx format)
     if (projectPath.startsWith("gemini:")) {
@@ -163,17 +154,13 @@ export class GeminiSessionScanner {
 
     // Otherwise, hash the path and look for matching sessions
     const targetHash = hashProjectPath(projectPath);
-    const matchingSessions = sessions
+
+    // Ensure we have this path registered
+    await geminiProjectMap.set(targetHash, projectPath);
+
+    return sessions
       .filter((s) => s.projectHash === targetHash)
       .sort((a, b) => b.mtime - a.mtime);
-
-    // Register the path mapping if we found sessions
-    // This allows the reader to filter sessions by project path later
-    if (matchingSessions.length > 0 && !this.hashToCwd.has(targetHash)) {
-      this.hashToCwd.set(targetHash, projectPath);
-    }
-
-    return matchingSessions;
   }
 
   /**
@@ -185,7 +172,6 @@ export class GeminiSessionScanner {
     try {
       await stat(this.sessionsDir);
     } catch {
-      // Sessions directory doesn't exist
       return [];
     }
 
@@ -227,7 +213,6 @@ export class GeminiSessionScanner {
     try {
       await stat(chatsDir);
     } catch {
-      // No chats directory
       return [];
     }
 
@@ -274,16 +259,9 @@ export class GeminiSessionScanner {
 
       if (!session) return null;
 
-      // Try to infer cwd from file paths in tool calls (if not already known)
-      if (!this.hashToCwd.has(projectHash)) {
-        const inferredCwd = this.inferCwdFromSession(session);
-        if (inferredCwd) {
-          // Verify the hash matches
-          if (hashProjectPath(inferredCwd) === projectHash) {
-            this.hashToCwd.set(projectHash, inferredCwd);
-          }
-        }
-      }
+      // Note: Inference from tool calls is no longer needed here as we use the
+      // explicit project map. We could revive it as a fallback if needed,
+      // but simpler is better.
 
       return {
         id: session.sessionId,
@@ -295,76 +273,6 @@ export class GeminiSessionScanner {
     } catch {
       return null;
     }
-  }
-
-  /**
-   * Try to infer the cwd from file paths referenced in tool calls.
-   * This is a heuristic - we look for common path prefixes in file operations.
-   */
-  private inferCwdFromSession(session: GeminiSessionFile): string | null {
-    const paths: string[] = [];
-
-    for (const msg of session.messages) {
-      if (msg.type === "gemini" && msg.toolCalls) {
-        for (const toolCall of msg.toolCalls) {
-          // Look for file path arguments in tool calls
-          const args = toolCall.args;
-          if (args && typeof args === "object") {
-            // Common file path argument names
-            for (const key of [
-              "file_path",
-              "path",
-              "filePath",
-              "file",
-              "filename",
-            ]) {
-              const value = args[key];
-              if (typeof value === "string" && value.startsWith("/")) {
-                paths.push(value);
-              }
-            }
-          }
-
-          // Also check tool results for file paths
-          if (toolCall.result) {
-            for (const result of toolCall.result) {
-              const output = result.functionResponse.response.output;
-              // Look for absolute paths in output
-              const matches = output.match(/\/[^\s:,]+/g);
-              if (matches) {
-                for (const match of matches) {
-                  if (match.includes("/home/") || match.includes("/Users/")) {
-                    paths.push(match);
-                  }
-                }
-              }
-            }
-          }
-        }
-      }
-    }
-
-    if (paths.length === 0) return null;
-
-    // Find common path prefix
-    // Start with the first path's directory
-    const firstPath = paths[0];
-    if (!firstPath) return null;
-    let commonPrefix = dirname(firstPath);
-
-    for (const path of paths.slice(1)) {
-      const pathDir = dirname(path);
-      while (commonPrefix && !pathDir.startsWith(commonPrefix)) {
-        commonPrefix = dirname(commonPrefix);
-      }
-    }
-
-    // Return the common prefix if it looks like a valid project directory
-    if (commonPrefix && commonPrefix !== "/" && commonPrefix.length > 1) {
-      return commonPrefix;
-    }
-
-    return null;
   }
 }
 

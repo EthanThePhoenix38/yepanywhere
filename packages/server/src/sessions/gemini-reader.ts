@@ -19,6 +19,7 @@ import {
   type GeminiUserMessage,
   SESSION_TITLE_MAX_LENGTH,
   type UrlProjectId,
+  type UnifiedSession,
   parseGeminiSessionFile,
 } from "@yep-anywhere/shared";
 import type {
@@ -28,7 +29,7 @@ import type {
   Session,
   SessionSummary,
 } from "../supervisor/types.js";
-import type { GetSessionOptions, ISessionReader } from "./types.js";
+import type { GetSessionOptions, ISessionReader, LoadedSession } from "./types.js";
 
 // Gemini model context window size (1M tokens for Gemini 2.0)
 const CONTEXT_WINDOW_SIZE = 1_000_000;
@@ -47,8 +48,9 @@ export interface GeminiSessionReaderOptions {
   /**
    * Optional map of projectHash -> cwd for filtering.
    * If not provided, all sessions will be listed.
+   * Can be a Map or a Promise that resolves to a Map.
    */
-  hashToCwd?: Map<string, string>;
+  hashToCwd?: Map<string, string> | Promise<Map<string, string>>;
 }
 
 interface GeminiSessionCacheEntry {
@@ -68,7 +70,7 @@ interface GeminiSessionCacheEntry {
 export class GeminiSessionReader implements ISessionReader {
   private sessionsDir: string;
   private projectPath?: string;
-  private hashToCwd?: Map<string, string>;
+  private hashToCwd?: Map<string, string> | Promise<Map<string, string>>;
 
   // Cache of session ID -> file info for quick lookups
   private sessionFileCache: Map<string, GeminiSessionCacheEntry> = new Map();
@@ -88,7 +90,15 @@ export class GeminiSessionReader implements ISessionReader {
     for (const session of sessions) {
       // Filter by project path if set
       if (this.projectPath) {
-        const cwd = this.hashToCwd?.get(session.projectHash);
+        // Resolve hashToCwd if needed
+        let map: Map<string, string> | undefined;
+        if (this.hashToCwd instanceof Promise) {
+          map = await this.hashToCwd;
+        } else {
+          map = this.hashToCwd;
+        }
+
+        const cwd = map?.get(session.projectHash);
         if (cwd !== this.projectPath) {
           continue;
         }
@@ -154,7 +164,7 @@ export class GeminiSessionReader implements ISessionReader {
     projectId: UrlProjectId,
     afterMessageId?: string,
     _options?: GetSessionOptions,
-  ): Promise<Session | null> {
+  ): Promise<LoadedSession | null> {
     const summary = await this.getSessionSummary(sessionId, projectId);
     if (!summary) return null;
 
@@ -165,23 +175,27 @@ export class GeminiSessionReader implements ISessionReader {
     const sessionFile = parseGeminiSessionFile(content);
     if (!sessionFile) return null;
 
-    // Convert messages to our format
-    const messages = this.convertMessagesToMessages(sessionFile.messages);
-
-    // Filter to only messages after the given ID (for incremental fetching)
+    // Filter messages for incremental fetching if needed
+    // For Gemini, messages have 'id' which we map to 'uuid'
+    // This is a bit tricky with raw session return, similar to Claude reader note.
+    // For now, we return the full session or slice the messages array if we can.
+    let messages = sessionFile.messages;
     if (afterMessageId) {
-      const afterIndex = messages.findIndex((m) => m.uuid === afterMessageId);
+      const afterIndex = messages.findIndex((m) => m.id === afterMessageId);
       if (afterIndex !== -1) {
-        return {
-          ...summary,
-          messages: messages.slice(afterIndex + 1),
-        };
+        messages = messages.slice(afterIndex + 1);
       }
     }
 
     return {
-      ...summary,
-      messages,
+      summary,
+      data: {
+        provider: "gemini",
+        session: {
+          ...sessionFile,
+          messages,
+        },
+      },
     };
   }
 
@@ -429,107 +443,5 @@ export class GeminiSessionReader implements ISessionReader {
       }
     }
     return undefined;
-  }
-
-  /**
-   * Convert Gemini session messages to Message format.
-   */
-  private convertMessagesToMessages(
-    sessionMessages: GeminiSessionMessage[],
-  ): Message[] {
-    const messages: Message[] = [];
-
-    for (const msg of sessionMessages) {
-      this.convertGeminiMessage(msg, messages);
-    }
-
-    return messages;
-  }
-
-  /**
-   * Convert a single Gemini message to our Message format.
-   * Appends converted messages to the output array.
-   */
-  private convertGeminiMessage(
-    msg: GeminiSessionMessage,
-    output: Message[],
-  ): void {
-    if (msg.type === "user") {
-      const userMsg = msg as GeminiUserMessage;
-      output.push({
-        uuid: userMsg.id,
-        type: "user",
-        message: {
-          role: "user",
-          content: userMsg.content,
-        },
-        timestamp: userMsg.timestamp,
-      });
-      return;
-    }
-
-    if (msg.type === "gemini") {
-      const assistantMsg = msg as GeminiAssistantMessage;
-      const content: ContentBlock[] = [];
-
-      // Add thinking blocks if present
-      if (assistantMsg.thoughts) {
-        for (const thought of assistantMsg.thoughts) {
-          content.push({
-            type: "thinking",
-            thinking: `${thought.subject}: ${thought.description}`,
-          });
-        }
-      }
-
-      // Add main content
-      if (assistantMsg.content) {
-        content.push({
-          type: "text",
-          text: assistantMsg.content,
-        });
-      }
-
-      // Add tool calls if present
-      if (assistantMsg.toolCalls) {
-        for (const toolCall of assistantMsg.toolCalls) {
-          content.push({
-            type: "tool_use",
-            id: toolCall.id,
-            name: toolCall.name,
-            input: toolCall.args,
-          });
-        }
-      }
-
-      output.push({
-        uuid: assistantMsg.id,
-        type: "assistant",
-        message: {
-          role: "assistant",
-          content,
-        },
-        timestamp: assistantMsg.timestamp,
-      });
-
-      // Add tool results as separate messages after the assistant message
-      if (assistantMsg.toolCalls) {
-        for (const toolCall of assistantMsg.toolCalls) {
-          if (toolCall.result && toolCall.result.length > 0) {
-            for (const result of toolCall.result) {
-              output.push({
-                uuid: `${assistantMsg.id}-result-${result.functionResponse.id}`,
-                type: "tool_result",
-                toolUseResult: {
-                  tool_use_id: result.functionResponse.id,
-                  content: result.functionResponse.response.output,
-                },
-                timestamp: toolCall.timestamp ?? assistantMsg.timestamp,
-              });
-            }
-          }
-        }
-      }
-    }
   }
 }

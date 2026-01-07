@@ -4,6 +4,8 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import type { UrlProjectId } from "@yep-anywhere/shared";
+import { normalizeSession } from "../../src/sessions/normalization.js";
 import { SessionReader } from "../../src/sessions/reader.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -45,7 +47,7 @@ describe("SessionReader", () => {
       });
       await writeFile(join(testDir, `${sessionId}.jsonl`), `${jsonl}\n`);
 
-      const summary = await reader.getSessionSummary(sessionId, "test-project");
+      const summary = await reader.getSessionSummary(sessionId, "test-project" as UrlProjectId);
       expect(summary?.title).toBe("What does this function do?");
     });
 
@@ -194,7 +196,7 @@ describe("SessionReader", () => {
       });
       await writeFile(join(testDir, `${sessionId}.jsonl`), `${jsonl}\n`);
 
-      const summary = await reader.getSessionSummary(sessionId, "test-project");
+      const summary = await reader.getSessionSummary(sessionId, "test-project" as UrlProjectId);
       expect(summary?.title).toBe("Help me refactor these files");
     });
   });
@@ -239,7 +241,8 @@ describe("SessionReader", () => {
       ].join("\n");
       await writeFile(join(testDir, `${sessionId}.jsonl`), `${jsonl}\n`);
 
-      const session = await reader.getSession(sessionId, "test-project");
+      const loadedSession = await reader.getSession(sessionId, "test-project" as UrlProjectId);
+      const session = loadedSession ? normalizeSession(loadedSession) : null;
 
       expect(session?.messages).toHaveLength(3); // a, d, e (not b, c)
       expect(session?.messages.map((m) => m.uuid)).toEqual(["a", "d", "e"]);
@@ -262,7 +265,10 @@ describe("SessionReader", () => {
       ].join("\n");
       await writeFile(join(testDir, `${sessionId}.jsonl`), `${jsonl}\n`);
 
-      const session = await reader.getSession(sessionId, "test-project");
+      const loadedSession = await reader.getSession(sessionId, "test-project" as UrlProjectId, undefined, {
+        includeOrphans: true,
+      });
+      const session = loadedSession ? normalizeSession(loadedSession) : null;
 
       expect(session?.messages).toHaveLength(1);
       expect(session?.messages[0]?.orphanedToolUseIds).toEqual(["tool-1"]);
@@ -298,7 +304,10 @@ describe("SessionReader", () => {
       ].join("\n");
       await writeFile(join(testDir, `${sessionId}.jsonl`), `${jsonl}\n`);
 
-      const session = await reader.getSession(sessionId, "test-project");
+      const loadedSession = await reader.getSession(sessionId, "test-project" as UrlProjectId, undefined, {
+        includeOrphans: true,
+      });
+      const session = loadedSession ? normalizeSession(loadedSession) : null;
 
       expect(session?.messages).toHaveLength(2);
       // First message has tool_use but it has a result, so no orphanedToolUseIds
@@ -337,7 +346,10 @@ describe("SessionReader", () => {
       ].join("\n");
       await writeFile(join(testDir, `${sessionId}.jsonl`), `${jsonl}\n`);
 
-      const session = await reader.getSession(sessionId, "test-project");
+      const loadedSession = await reader.getSession(sessionId, "test-project", undefined, {
+        includeOrphans: true,
+      });
+      const session = loadedSession ? normalizeSession(loadedSession) : null;
 
       expect(session?.messages).toHaveLength(2);
       // tool-2 is orphaned but tool-1 is not

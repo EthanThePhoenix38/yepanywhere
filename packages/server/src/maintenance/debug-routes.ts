@@ -12,6 +12,7 @@
 import type * as http from "node:http";
 import type { UrlProjectId } from "@yep-anywhere/shared";
 import type { SDKMessage } from "../sdk/types.js";
+import { normalizeSession } from "../sessions/normalization.js";
 import type { ClaudeSessionReader } from "../sessions/reader.js";
 import type { Process } from "../supervisor/Process.js";
 import type {
@@ -399,12 +400,13 @@ async function handleCompare(
     return;
   }
 
-  const session = await reader.getSession(
+  const loadedSession = await reader.getSession(
     sessionId,
     process.projectId,
     undefined,
     { includeOrphans: false },
   );
+  const session = loadedSession ? normalizeSession(loadedSession) : null;
   const jsonlMessages = session?.messages ?? [];
 
   // Compare

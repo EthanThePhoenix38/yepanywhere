@@ -29,6 +29,7 @@ import type { PermissionMode, SDKMessage, UserMessage } from "../sdk/types.js";
 import { CodexSessionReader } from "../sessions/codex-reader.js";
 import { cloneClaudeSession } from "../sessions/fork.js";
 import { GeminiSessionReader } from "../sessions/gemini-reader.js";
+import { normalizeSession } from "../sessions/normalization.js";
 import type { ISessionReader } from "../sessions/types.js";
 import type { ExternalSessionTracker } from "../supervisor/ExternalSessionTracker.js";
 import type { Process } from "../supervisor/Process.js";
@@ -470,7 +471,7 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
 
     // Always try to read from disk first (even for owned sessions)
     const reader = deps.readerFactory(project);
-    let session = await reader.getSession(
+    let loadedSession = await reader.getSession(
       sessionId,
       project.id,
       afterMessageId,
@@ -486,7 +487,7 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
     // For Claude projects, also check for Codex sessions if primary reader didn't find it
     // This handles mixed projects that have sessions from multiple providers
     if (
-      !session &&
+      !loadedSession &&
       project.provider === "claude" &&
       deps.codexScanner &&
       deps.codexSessionsDir
@@ -499,7 +500,7 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
           sessionsDir: deps.codexSessionsDir,
           projectPath: project.path,
         });
-        session = await codexReader.getSession(
+        loadedSession = await codexReader.getSession(
           sessionId,
           project.id,
           afterMessageId,
@@ -511,7 +512,7 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
     // For Claude/Codex projects, also check for Gemini sessions if still not found
     // This handles mixed projects that have sessions from multiple providers
     if (
-      !session &&
+      !loadedSession &&
       (project.provider === "claude" || project.provider === "codex") &&
       deps.geminiScanner &&
       deps.geminiSessionsDir
@@ -523,9 +524,9 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
         const geminiReader = new GeminiSessionReader({
           sessionsDir: deps.geminiSessionsDir,
           projectPath: project.path,
-          hashToCwd: deps.geminiScanner.getHashToCwd(),
+          hashToCwd: await deps.geminiScanner.getHashToCwd(),
         });
-        session = await geminiReader.getSession(
+        loadedSession = await geminiReader.getSession(
           sessionId,
           project.id,
           afterMessageId,
@@ -534,14 +535,16 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
       }
     }
 
+    const session = loadedSession ? normalizeSession(loadedSession) : null;
+
     // Determine the session status
     const status = process
       ? {
-          state: "owned" as const,
-          processId: process.id,
-          permissionMode: process.permissionMode,
-          modeVersion: process.modeVersion,
-        }
+        state: "owned" as const,
+        processId: process.id,
+        permissionMode: process.permissionMode,
+        modeVersion: process.modeVersion,
+      }
       : isExternal
         ? { state: "external" as const }
         : (session?.status ?? { state: "idle" as const });
@@ -994,8 +997,8 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
     // Normalize response to approve/deny
     const normalizedResponse =
       body.response === "approve" ||
-      body.response === "allow" ||
-      body.response === "approve_accept_edits"
+        body.response === "allow" ||
+        body.response === "approve_accept_edits"
         ? "approve"
         : "deny";
 

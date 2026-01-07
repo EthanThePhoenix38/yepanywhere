@@ -18,7 +18,7 @@ export function extractSessionIdFromFileEvent(
 
   if (event.provider === "codex") {
     const match = base.match(/([0-9a-fA-F-]{36})$/);
-    if (match) return match[1];
+    if (match) return match[1] ?? null;
   }
 
   return base;

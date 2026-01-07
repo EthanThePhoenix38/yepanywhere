@@ -135,6 +135,12 @@ export {
   SESSION_TITLE_MAX_LENGTH,
 } from "./session/index.js";
 
+export type {
+  UnifiedSession,
+  ClaudeSessionFile,
+  CodexSessionContent,
+} from "./session/index.js";
+
 // Tool result schemas (for runtime validation)
 export {
   TaskResultSchema,

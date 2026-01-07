@@ -5,7 +5,7 @@
  * but all readers implement this interface to provide a common API.
  */
 
-import type { UrlProjectId } from "@yep-anywhere/shared";
+import type { UrlProjectId, UnifiedSession } from "@yep-anywhere/shared";
 import type { Message, Session, SessionSummary } from "../supervisor/types.js";
 
 /**
@@ -14,6 +14,12 @@ import type { Message, Session, SessionSummary } from "../supervisor/types.js";
 export interface GetSessionOptions {
   /** Include orphaned tool use detection (default: true, only applicable for Claude) */
   includeOrphans?: boolean;
+}
+
+// Return type that includes both the computed summary and the raw provider data
+export interface LoadedSession {
+  summary: SessionSummary;
+  data: UnifiedSession;
 }
 
 /**
@@ -48,7 +54,7 @@ export interface ISessionReader {
     projectId: UrlProjectId,
     afterMessageId?: string,
     options?: GetSessionOptions,
-  ): Promise<Session | null>;
+  ): Promise<LoadedSession | null>;
 
   /**
    * Get session summary only if the file has changed since cached values.

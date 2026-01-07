@@ -4,6 +4,7 @@ import {
   type AgentStatus,
   SESSION_TITLE_MAX_LENGTH,
   type UrlProjectId,
+  type UnifiedSession,
   isIdeMetadata,
   stripIdeMetadata,
 } from "@yep-anywhere/shared";
@@ -14,7 +15,7 @@ import type {
   Session,
   SessionSummary,
 } from "../supervisor/types.js";
-import type { GetSessionOptions, ISessionReader } from "./types.js";
+import type { GetSessionOptions, ISessionReader, LoadedSession } from "./types.js";
 
 // Re-export interface types
 export type { GetSessionOptions, ISessionReader } from "./types.js";
@@ -201,8 +202,8 @@ export class ClaudeSessionReader implements ISessionReader {
     sessionId: string,
     projectId: UrlProjectId,
     afterMessageId?: string,
-    options?: GetSessionOptions,
-  ): Promise<Session | null> {
+    _options?: GetSessionOptions,
+  ): Promise<LoadedSession | null> {
     const summary = await this.getSessionSummary(sessionId, projectId);
     if (!summary) return null;
 
@@ -210,7 +211,6 @@ export class ClaudeSessionReader implements ISessionReader {
     const content = await readFile(filePath, "utf-8");
     const lines = content.trim().split("\n");
 
-    // Parse all lines first
     const rawMessages: RawSessionMessage[] = [];
     for (const line of lines) {
       try {
@@ -220,35 +220,25 @@ export class ClaudeSessionReader implements ISessionReader {
       }
     }
 
-    // Build DAG and get active branch (filters out dead branches)
-    const { activeBranch } = buildDag(rawMessages);
-
-    // Only calculate orphaned tools if includeOrphans is true (default)
-    // For external sessions, we don't know if tools were interrupted or still running
-    const includeOrphans = options?.includeOrphans ?? true;
-    const orphanedToolUses = includeOrphans
-      ? findOrphanedToolUses(activeBranch)
-      : new Set<string>();
-
-    // Convert to Message objects (only active branch)
-    const messages: Message[] = activeBranch.map((node, index) =>
-      this.convertMessage(node.raw, index, orphanedToolUses),
-    );
-
-    // Filter to only messages after the given ID (for incremental fetching)
+    // Filter messages for incremental fetching if needed
+    // Note: Raw messages might not have UUIDs if they are old format or haven't been normalized.
+    // But typically they do.
+    let finalMessages = rawMessages;
     if (afterMessageId) {
-      const afterIndex = messages.findIndex((m) => m.uuid === afterMessageId);
+      const afterIndex = rawMessages.findIndex((m) => m.uuid === afterMessageId);
       if (afterIndex !== -1) {
-        return {
-          ...summary,
-          messages: messages.slice(afterIndex + 1),
-        };
+        finalMessages = rawMessages.slice(afterIndex + 1);
       }
     }
 
     return {
-      ...summary,
-      messages,
+      summary,
+      data: {
+        provider: "claude",
+        session: {
+          messages: finalMessages,
+        },
+      },
     };
   }
 
@@ -416,10 +406,10 @@ export class ClaudeSessionReader implements ISessionReader {
       if (msg && msg.type === "assistant" && msg.message) {
         const usage = msg.message.usage as
           | {
-              input_tokens?: number;
-              cache_read_input_tokens?: number;
-              cache_creation_input_tokens?: number;
-            }
+            input_tokens?: number;
+            cache_read_input_tokens?: number;
+            cache_creation_input_tokens?: number;
+          }
           | undefined;
 
         if (usage) {

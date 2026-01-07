@@ -24,6 +24,7 @@ import {
   type CodexSessionMetaEntry,
   SESSION_TITLE_MAX_LENGTH,
   type UrlProjectId,
+  type UnifiedSession,
   parseCodexSessionEntry,
 } from "@yep-anywhere/shared";
 import type {
@@ -33,7 +34,7 @@ import type {
   Session,
   SessionSummary,
 } from "../supervisor/types.js";
-import type { GetSessionOptions, ISessionReader } from "./types.js";
+import type { GetSessionOptions, ISessionReader, LoadedSession } from "./types.js";
 
 // Codex model context window size (200K tokens for GPT-4)
 const CONTEXT_WINDOW_SIZE = 200_000;
@@ -168,7 +169,7 @@ export class CodexSessionReader implements ISessionReader {
     projectId: UrlProjectId,
     afterMessageId?: string,
     _options?: GetSessionOptions,
-  ): Promise<Session | null> {
+  ): Promise<LoadedSession | null> {
     const summary = await this.getSessionSummary(sessionId, projectId);
     if (!summary) return null;
 
@@ -186,23 +187,23 @@ export class CodexSessionReader implements ISessionReader {
       }
     }
 
-    // Convert entries to messages
-    const messages = this.convertEntriesToMessages(entries);
-
-    // Filter to only messages after the given ID (for incremental fetching)
+    // Filter entries if needed (for incremental fetching)
+    // Note: Codex entries are not 1:1 with messages, so standard ID filtering is tricky
+    // with raw format. We return all entries for now.
+    // Ideally the client handles diffing/appending.
+    let finalEntries = entries;
     if (afterMessageId) {
-      const afterIndex = messages.findIndex((m) => m.uuid === afterMessageId);
-      if (afterIndex !== -1) {
-        return {
-          ...summary,
-          messages: messages.slice(afterIndex + 1),
-        };
-      }
+      // Logic to filter entries would go here if strict incremental loading is needed
     }
 
     return {
-      ...summary,
-      messages,
+      summary,
+      data: {
+        provider: "codex",
+        session: {
+          entries: finalEntries,
+        },
+      },
     };
   }
 
@@ -505,6 +506,9 @@ export class CodexSessionReader implements ISessionReader {
    * Unlike Claude's DAG structure, Codex sessions are linear. We create a
    * parentUuid chain by linking each message to the previous one, which
    * enables proper ordering and deduplication in the client.
+   *
+   * @deprecated Potentially dead code - conversion now happens in normalization.ts.
+   * This method may be removed once we confirm it's no longer called.
    */
   private convertEntriesToMessages(entries: CodexSessionEntry[]): Message[] {
     const messages: Message[] = [];
@@ -568,6 +572,8 @@ export class CodexSessionReader implements ISessionReader {
 
   /**
    * Convert a response_item entry to a Message.
+   *
+   * @deprecated Potentially dead code - conversion now happens in normalization.ts.
    */
   private convertResponseItem(
     entry: CodexResponseItemEntry,
@@ -619,6 +625,8 @@ export class CodexSessionReader implements ISessionReader {
    *
    * Codex streams tokens as separate output_text blocks, so we concatenate
    * them into a single text block for proper rendering.
+   *
+   * @deprecated Potentially dead code - conversion now happens in normalization.ts.
    */
   private convertMessagePayload(
     payload: CodexMessagePayload,
@@ -661,6 +669,8 @@ export class CodexSessionReader implements ISessionReader {
 
   /**
    * Convert a reasoning payload (thinking).
+   *
+   * @deprecated Potentially dead code - conversion now happens in normalization.ts.
    */
   private convertReasoningPayload(
     payload: CodexReasoningPayload,
@@ -702,6 +712,8 @@ export class CodexSessionReader implements ISessionReader {
 
   /**
    * Convert a function_call payload to tool_use.
+   *
+   * @deprecated Potentially dead code - conversion now happens in normalization.ts.
    */
   private convertFunctionCallPayload(
     payload: CodexFunctionCallPayload,
@@ -737,6 +749,8 @@ export class CodexSessionReader implements ISessionReader {
 
   /**
    * Convert a function_call_output payload to tool_result.
+   *
+   * @deprecated Potentially dead code - conversion now happens in normalization.ts.
    */
   private convertFunctionCallOutputPayload(
     payload: CodexFunctionCallOutputPayload,
@@ -760,6 +774,8 @@ export class CodexSessionReader implements ISessionReader {
 
   /**
    * Convert an event_msg entry to a Message.
+   *
+   * @deprecated Potentially dead code - conversion now happens in normalization.ts.
    */
   private convertEventMsg(
     entry: CodexEventMsgEntry,

@@ -1,0 +1,450 @@
+
+import type {
+    UnifiedSession,
+    CodexSessionEntry,
+    CodexResponseItemEntry,
+    CodexEventMsgEntry,
+    CodexMessagePayload,
+    CodexReasoningPayload,
+    CodexFunctionCallPayload,
+    CodexFunctionCallOutputPayload,
+    GeminiSessionMessage,
+    GeminiUserMessage,
+    GeminiAssistantMessage,
+} from "@yep-anywhere/shared";
+import type { Session, Message, ContentBlock } from "../supervisor/types.js";
+import type { LoadedSession } from "./types.js";
+import { buildDag, findOrphanedToolUses, type RawSessionMessage } from "./dag.js";
+
+/**
+ * Normalize a UnifiedSession into the generic Session format expected by the frontend.
+ */
+export function normalizeSession(loaded: LoadedSession): Session {
+    const { summary, data } = loaded;
+
+    switch (data.provider) {
+        case "claude": {
+            // Claude sessions are stored as raw messages in the session file.
+            // We need to build the DAG to find the active branch.
+            const rawMessages = data.session.messages as RawSessionMessage[];
+
+            // Build DAG and get active branch (filters out dead branches)
+            const { activeBranch } = buildDag(rawMessages);
+
+            // Calculate orphaned tools (default behavior was includeOrphans=true)
+            // We can't access "options" here easily unless we pass it, but standard normalization usually wants them.
+            const orphanedToolUses = findOrphanedToolUses(activeBranch);
+
+            // Convert to Message objects (only active branch)
+            const messages: Message[] = activeBranch.map((node, index) =>
+                convertClaudeMessage(node.raw, index, orphanedToolUses)
+            );
+
+            return {
+                ...summary,
+                messages,
+            };
+        }
+        case "codex":
+            return {
+                ...summary,
+                messages: convertCodexEntries(data.session.entries),
+            };
+        case "gemini":
+            return {
+                ...summary,
+                messages: convertGeminiMessages(data.session.messages),
+            };
+    }
+}
+
+// --- Claude Conversion Logic ---
+
+function convertClaudeMessage(
+    raw: RawSessionMessage,
+    _index: number,
+    orphanedToolUses: Set<string>,
+): Message {
+    // Normalize content blocks - pass through all fields
+    let content: string | ContentBlock[] | undefined;
+    if (typeof raw.message?.content === "string") {
+        content = raw.message.content;
+    } else if (Array.isArray(raw.message?.content)) {
+        // Pass through all fields from each content block
+        content = raw.message.content.map((block: any) => ({ ...block }));
+    }
+
+    // Build message by spreading all raw fields, then override with normalized values
+    const message: Message = {
+        ...raw,
+        // Include normalized content if message had content
+        ...(raw.message && {
+            message: {
+                ...raw.message,
+                ...(content !== undefined && { content }),
+            },
+        }),
+        // Ensure type is set
+        type: raw.type,
+    };
+
+    // Identify orphaned tool_use IDs in this message's content
+    if (Array.isArray(content)) {
+        const orphanedIds = content
+            .filter(
+                (b): b is ContentBlock & { id: string } =>
+                    b.type === "tool_use" &&
+                    typeof b.id === "string" &&
+                    orphanedToolUses.has(b.id),
+            )
+            .map((b) => b.id);
+
+        if (orphanedIds.length > 0) {
+            message.orphanedToolUseIds = orphanedIds;
+        }
+    }
+
+    return message;
+}
+
+// --- Codex Conversion Logic ---
+
+function convertCodexEntries(entries: CodexSessionEntry[]): Message[] {
+    const messages: Message[] = [];
+    let messageIndex = 0;
+    let lastMessageUuid: string | null = null;
+    const hasResponseItemUser = hasCodexResponseItemUserMessages(entries);
+
+    // Track function calls for pairing with outputs
+    const pendingCalls = new Map<
+        string,
+        { name: string; arguments: string; timestamp: string }
+    >();
+
+    for (const entry of entries) {
+        if (entry.type === "response_item") {
+            const msg = convertCodexResponseItem(
+                entry,
+                messageIndex++,
+                pendingCalls,
+            );
+            if (msg) {
+                // Set parentUuid to create linear chain for ordering/dedup
+                msg.parentUuid = lastMessageUuid;
+                lastMessageUuid = msg.uuid ?? null;
+                messages.push(msg);
+            }
+        } else if (entry.type === "event_msg") {
+            // Only process user_message events - agent_message events are
+            // duplicates of the response_item data (streaming tokens)
+            if (
+                entry.payload.type === "user_message" &&
+                !hasResponseItemUser
+            ) {
+                const msg = convertCodexEventMsg(entry, messageIndex++);
+                if (msg) {
+                    // Set parentUuid to create linear chain for ordering/dedup
+                    msg.parentUuid = lastMessageUuid;
+                    lastMessageUuid = msg.uuid ?? null;
+                    messages.push(msg);
+                }
+            }
+        }
+    }
+
+    return messages;
+}
+
+function hasCodexResponseItemUserMessages(entries: CodexSessionEntry[]): boolean {
+    return entries.some(
+        (entry) =>
+            entry.type === "response_item" &&
+            entry.payload.type === "message" &&
+            entry.payload.role === "user",
+    );
+}
+
+function convertCodexResponseItem(
+    entry: CodexResponseItemEntry,
+    index: number,
+    pendingCalls: Map<string, any>,
+): Message | null {
+    const payload = entry.payload;
+    const uuid = `codex-${index}-${entry.timestamp}`;
+
+    switch (payload.type) {
+        case "message":
+            return convertCodexMessagePayload(payload, uuid, entry.timestamp);
+
+        case "reasoning":
+            return convertCodexReasoningPayload(payload, uuid, entry.timestamp);
+
+        case "function_call":
+            pendingCalls.set(payload.call_id, {
+                name: payload.name,
+                arguments: payload.arguments,
+                timestamp: entry.timestamp,
+            });
+            return convertCodexFunctionCallPayload(payload, uuid, entry.timestamp);
+
+        case "function_call_output":
+            return convertCodexFunctionCallOutputPayload(
+                payload,
+                uuid,
+                entry.timestamp,
+            );
+
+        case "ghost_snapshot":
+            return null;
+
+        default:
+            return null;
+    }
+}
+
+function convertCodexMessagePayload(
+    payload: CodexMessagePayload,
+    uuid: string,
+    timestamp: string,
+): Message {
+    const fullText = payload.content.map((c: any) => c.text).join("");
+
+    if (!fullText.trim()) {
+        return {
+            uuid,
+            type: payload.role,
+            message: {
+                role: payload.role,
+                content: [],
+            },
+            timestamp,
+        };
+    }
+
+    const content: ContentBlock[] = [
+        {
+            type: "text",
+            text: fullText,
+        },
+    ];
+
+    return {
+        uuid,
+        type: payload.role,
+        message: {
+            role: payload.role,
+            content,
+        },
+        timestamp,
+    };
+}
+
+function convertCodexReasoningPayload(
+    payload: CodexReasoningPayload,
+    uuid: string,
+    timestamp: string,
+): Message {
+    const summaryText = payload.summary
+        ?.map((s) => s.text)
+        .join("\n")
+        .trim();
+
+    const content: ContentBlock[] = [];
+
+    if (summaryText) {
+        content.push({
+            type: "thinking",
+            thinking: summaryText,
+        });
+    }
+
+    if (payload.encrypted_content) {
+        content.push({
+            type: "text",
+            text: "[Encrypted reasoning content]",
+        });
+    }
+
+    return {
+        uuid,
+        type: "assistant",
+        message: {
+            role: "assistant",
+            content,
+        },
+        timestamp,
+    };
+}
+
+function convertCodexFunctionCallPayload(
+    payload: CodexFunctionCallPayload,
+    uuid: string,
+    timestamp: string,
+): Message {
+    let input: unknown;
+    try {
+        input = JSON.parse(payload.arguments);
+    } catch {
+        input = { raw: payload.arguments };
+    }
+
+    const content: ContentBlock[] = [
+        {
+            type: "tool_use",
+            id: payload.call_id,
+            name: payload.name,
+            input,
+        },
+    ];
+
+    return {
+        uuid,
+        type: "assistant",
+        message: {
+            role: "assistant",
+            content,
+        },
+        timestamp,
+    };
+}
+
+function convertCodexFunctionCallOutputPayload(
+    payload: CodexFunctionCallOutputPayload,
+    uuid: string,
+    timestamp: string,
+): Message {
+    return {
+        uuid,
+        type: "tool_result",
+        toolUseResult: {
+            tool_use_id: payload.call_id,
+            content: payload.output,
+        },
+        timestamp,
+    };
+}
+
+function convertCodexEventMsg(
+    entry: CodexEventMsgEntry,
+    index: number,
+): Message | null {
+    const payload = entry.payload;
+    const uuid = `codex-event-${index}-${entry.timestamp}`;
+
+    switch (payload.type) {
+        case "user_message":
+            return {
+                uuid,
+                type: "user",
+                message: {
+                    role: "user",
+                    content: payload.message,
+                },
+                timestamp: entry.timestamp,
+            };
+
+        case "agent_message":
+            return {
+                uuid,
+                type: "assistant",
+                message: {
+                    role: "assistant",
+                    content: [{ type: "text", text: payload.message }],
+                },
+                timestamp: entry.timestamp,
+            };
+
+        case "agent_reasoning":
+            return {
+                uuid,
+                type: "assistant",
+                message: {
+                    role: "assistant",
+                    content: [{ type: "thinking", thinking: payload.text }],
+                },
+                timestamp: entry.timestamp,
+            };
+
+        default:
+            return null;
+    }
+}
+
+// --- Gemini Conversion Logic ---
+
+function convertGeminiMessages(sessionMessages: GeminiSessionMessage[]): Message[] {
+    const messages: Message[] = [];
+    for (const msg of sessionMessages) {
+        if (msg.type === "user") {
+            const userMsg = msg as GeminiUserMessage;
+            messages.push({
+                uuid: userMsg.id,
+                type: "user",
+                message: {
+                    role: "user",
+                    content: userMsg.content,
+                },
+                timestamp: userMsg.timestamp,
+            });
+        } else if (msg.type === "gemini") {
+            const assistantMsg = msg as GeminiAssistantMessage;
+            const content: ContentBlock[] = [];
+
+            if (assistantMsg.thoughts) {
+                for (const thought of assistantMsg.thoughts) {
+                    content.push({
+                        type: "thinking",
+                        thinking: `${thought.subject}: ${thought.description}`,
+                    });
+                }
+            }
+
+            if (assistantMsg.content) {
+                content.push({
+                    type: "text",
+                    text: assistantMsg.content,
+                });
+            }
+
+            if (assistantMsg.toolCalls) {
+                for (const toolCall of assistantMsg.toolCalls) {
+                    content.push({
+                        type: "tool_use",
+                        id: toolCall.id,
+                        name: toolCall.name,
+                        input: toolCall.args,
+                    });
+                }
+            }
+
+            messages.push({
+                uuid: assistantMsg.id,
+                type: "assistant",
+                message: {
+                    role: "assistant",
+                    content,
+                },
+                timestamp: assistantMsg.timestamp,
+            });
+
+            if (assistantMsg.toolCalls) {
+                for (const toolCall of assistantMsg.toolCalls) {
+                    if (toolCall.result && toolCall.result.length > 0) {
+                        for (const result of toolCall.result) {
+                            messages.push({
+                                uuid: `${assistantMsg.id}-result-${result.functionResponse.id}`,
+                                type: "tool_result",
+                                toolUseResult: {
+                                    tool_use_id: result.functionResponse.id,
+                                    content: result.functionResponse.response.output,
+                                },
+                                timestamp: toolCall.timestamp ?? assistantMsg.timestamp,
+                            });
+                        }
+                    }
+                }
+            }
+        }
+    }
+    return messages;
+}
