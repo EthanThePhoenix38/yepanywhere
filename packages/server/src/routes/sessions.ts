@@ -113,19 +113,22 @@ function sdkMessagesToClientMessages(sdkMessages: SDKMessage[]): Message[] {
       msg.message?.content
     ) {
       const rawContent = msg.message.content;
-      // User messages: string content works with preprocessMessages
-      // Assistant messages: need ContentBlock[] format for preprocessMessages to render
+      // Both user and assistant messages can have string or array content.
+      // User messages with tool_result blocks have array content that must be preserved.
+      // Assistant messages need ContentBlock[] format for preprocessMessages to render.
       let content: string | ContentBlock[];
-      if (msg.type === "user") {
+      if (typeof rawContent === "string") {
+        // String content: keep as-is for user messages, wrap in text block for assistant
         content =
-          typeof rawContent === "string"
+          msg.type === "user"
             ? rawContent
-            : JSON.stringify(rawContent);
+            : [{ type: "text" as const, text: rawContent }];
+      } else if (Array.isArray(rawContent)) {
+        // Array content: pass through as ContentBlock[] for both user and assistant
+        content = rawContent as ContentBlock[];
       } else {
-        content =
-          typeof rawContent === "string"
-            ? [{ type: "text" as const, text: rawContent }]
-            : (rawContent as ContentBlock[]);
+        // Unknown content type - skip this message
+        continue;
       }
 
       messages.push({
@@ -667,6 +670,8 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
             isStarred: metadata?.isStarred,
             lastSeenAt: lastSeenEntry?.timestamp,
             hasUnread,
+            provider: process.provider,
+            // Model is unknown for new sessions until first message is written to disk
           },
           messages: processMessages,
           status,

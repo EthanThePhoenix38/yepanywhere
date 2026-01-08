@@ -1,3 +1,4 @@
+import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import type { Level as LogLevel } from "pino";
@@ -125,11 +126,18 @@ export function loadConfig(): Config {
       process.env.VITE_PORT,
       parseIntOrDefault(process.env.PORT, 3400) + 2,
     ),
-    // In production, serve from ../client/dist relative to server package
-    // This assumes standard monorepo layout
+    // Client dist path: Check bundled location first (npm package), then monorepo (dev)
     clientDistPath:
       process.env.CLIENT_DIST_PATH ??
-      path.resolve(import.meta.dirname, "../../client/dist"),
+      (() => {
+        // When published to npm, client assets are bundled into ./client-dist
+        const bundledPath = path.resolve(import.meta.dirname, "../client-dist");
+        if (fs.existsSync(bundledPath)) {
+          return bundledPath;
+        }
+        // In development (monorepo), use ../client/dist
+        return path.resolve(import.meta.dirname, "../../client/dist");
+      })(),
     // Stable (emergency) UI build with /_stable/ base path
     stableDistPath:
       process.env.STABLE_DIST_PATH ??

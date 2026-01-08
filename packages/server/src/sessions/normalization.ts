@@ -10,6 +10,8 @@ import type {
   GeminiAssistantMessage,
   GeminiSessionMessage,
   GeminiUserMessage,
+  OpenCodeSessionEntry,
+  OpenCodeStoredPart,
   UnifiedSession,
 } from "@yep-anywhere/shared";
 import { getMessageContent, isConversationEntry } from "@yep-anywhere/shared";
@@ -62,6 +64,11 @@ export function normalizeSession(loaded: LoadedSession): Session {
       return {
         ...summary,
         messages: convertGeminiMessages(data.session.messages),
+      };
+    case "opencode":
+      return {
+        ...summary,
+        messages: convertOpenCodeEntries(data.session.messages),
       };
   }
 }
@@ -448,4 +455,101 @@ function convertGeminiMessages(
     }
   }
   return messages;
+}
+
+// --- OpenCode Conversion Logic ---
+
+function convertOpenCodeEntries(entries: OpenCodeSessionEntry[]): Message[] {
+  const messages: Message[] = [];
+
+  for (const entry of entries) {
+    const { message, parts } = entry;
+    const uuid = message.id;
+    const timestamp = message.time?.created
+      ? new Date(message.time.created).toISOString()
+      : undefined;
+
+    const content = convertOpenCodeParts(parts);
+
+    messages.push({
+      uuid,
+      type: message.role,
+      message: {
+        role: message.role,
+        content,
+        model: message.modelID,
+        usage: message.tokens
+          ? {
+              input_tokens: message.tokens.input,
+              output_tokens: message.tokens.output,
+              cache_read_input_tokens: message.tokens.cache?.read,
+            }
+          : undefined,
+      },
+      timestamp,
+      // Include OpenCode-specific fields
+      ...(message.parentID && { parentId: message.parentID }),
+      ...(message.mode && { mode: message.mode }),
+      ...(message.agent && { agent: message.agent }),
+      ...(message.finish && { finish: message.finish }),
+    });
+  }
+
+  return messages;
+}
+
+function convertOpenCodeParts(parts: OpenCodeStoredPart[]): ContentBlock[] {
+  const blocks: ContentBlock[] = [];
+
+  for (const part of parts) {
+    switch (part.type) {
+      case "text":
+        if (part.text) {
+          blocks.push({
+            type: "text",
+            text: part.text,
+          });
+        }
+        break;
+
+      case "tool":
+        if (part.tool && part.callID) {
+          // Tool use block
+          blocks.push({
+            type: "tool_use",
+            id: part.callID,
+            name: part.tool,
+            input: part.state?.input ?? {},
+          });
+
+          // If tool has completed, add tool result block
+          if (part.state?.status === "completed") {
+            const resultContent = part.state.error
+              ? part.state.error
+              : typeof part.state.output === "string"
+                ? part.state.output
+                : JSON.stringify(part.state.output ?? "");
+
+            blocks.push({
+              type: "tool_result",
+              tool_use_id: part.callID,
+              content: resultContent,
+              is_error: !!part.state.error,
+            });
+          }
+        }
+        break;
+
+      // Skip step-start and step-finish (metadata, not content)
+      case "step-start":
+      case "step-finish":
+        break;
+
+      default:
+        // Unknown part type - skip
+        break;
+    }
+  }
+
+  return blocks;
 }

@@ -224,8 +224,9 @@ export type {
 } from "./gemini-schema/session.js";
 export { parseGeminiSessionFile } from "./gemini-schema/session.js";
 
-// OpenCode SDK schema types (for opencode serve SSE events)
+// OpenCode SDK schema types (for opencode serve SSE events and session storage)
 export type {
+  // SSE event types
   OpenCodeSessionStatus,
   OpenCodeTokens,
   OpenCodeTime,
@@ -240,5 +241,12 @@ export type {
   OpenCodeMessageUpdatedEvent,
   OpenCodeMessagePartUpdatedEvent,
   OpenCodeSSEEvent,
+  // Session storage types
+  OpenCodeProject,
+  OpenCodeSession,
+  OpenCodeMessage,
+  OpenCodeStoredPart,
+  OpenCodeSessionEntry,
+  OpenCodeSessionContent,
 } from "./opencode-schema/types.js";
 export { parseOpenCodeSSEEvent } from "./opencode-schema/events.js";

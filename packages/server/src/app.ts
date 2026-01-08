@@ -22,6 +22,7 @@ import { PushNotifier, type PushService } from "./push/index.js";
 import { createPushRoutes } from "./push/routes.js";
 import type { RecentsService } from "./recents/index.js";
 import { createActivityRoutes } from "./routes/activity.js";
+import { createBeadsRoutes } from "./routes/beads.js";
 import { createDebugStreamingRoutes } from "./routes/debug-streaming.js";
 import { createDevRoutes } from "./routes/dev.js";
 import { createFilesRoutes } from "./routes/files.js";
@@ -42,6 +43,7 @@ import type {
 } from "./sdk/types.js";
 import { CodexSessionReader } from "./sessions/codex-reader.js";
 import { GeminiSessionReader } from "./sessions/gemini-reader.js";
+import { OpenCodeSessionReader } from "./sessions/opencode-reader.js";
 import { ClaudeSessionReader } from "./sessions/reader.js";
 import type { ISessionReader } from "./sessions/types.js";
 import { ExternalSessionTracker } from "./supervisor/ExternalSessionTracker.js";
@@ -162,10 +164,9 @@ export function createApp(options: AppOptions): AppResult {
       case "claude":
         return new ClaudeSessionReader({ sessionDir: project.sessionDir });
       case "opencode":
-        // OpenCode uses its own session storage managed by the server
-        // For now, return Claude reader as a fallback (sessions won't be visible)
-        // TODO: Implement OpenCodeSessionReader when session file format is understood
-        return new ClaudeSessionReader({ sessionDir: project.sessionDir });
+        return new OpenCodeSessionReader({
+          projectPath: project.path,
+        });
     }
   };
 
@@ -274,6 +275,9 @@ export function createApp(options: AppOptions): AppResult {
       geminiSessionsDir: GEMINI_TMP_DIR,
     }),
   );
+
+  // Beads task tracker routes (project-scoped) - must be before files routes
+  app.route("/api/projects", createBeadsRoutes({ scanner }));
 
   // Files routes (file browser)
   app.route("/api/projects", createFilesRoutes({ scanner }));
