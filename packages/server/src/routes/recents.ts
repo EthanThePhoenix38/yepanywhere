@@ -31,6 +31,10 @@ export function createRecentsRoutes(deps: RecentsDeps): Hono {
       Math.min(limit, 100),
     );
 
+    // Load all projects once and build a lookup map
+    const allProjects = await deps.scanner.listProjects();
+    const projectMap = new Map(allProjects.map((p) => [p.id, p]));
+
     // Enrich each entry with session data
     const enriched: EnrichedRecentEntry[] = [];
 
@@ -38,7 +42,7 @@ export function createRecentsRoutes(deps: RecentsDeps): Hono {
       // Cast to UrlProjectId - the recents service stores strings but they are valid UrlProjectIds
       const projectId = entry.projectId as UrlProjectId;
 
-      const project = await deps.scanner.getProject(entry.projectId);
+      const project = projectMap.get(projectId);
       if (!project) {
         // Project no longer exists - skip this entry
         continue;
@@ -50,7 +54,6 @@ export function createRecentsRoutes(deps: RecentsDeps): Hono {
 
       // Try to get session data from cache first
       let title: string | null = null;
-      let messageCount = 0;
       let provider: ProviderName = project.provider;
 
       if (deps.sessionIndexService) {
@@ -65,7 +68,6 @@ export function createRecentsRoutes(deps: RecentsDeps): Hono {
           continue;
         }
         title = sessionTitle;
-        // Note: messageCount not available from getSessionTitle, would need full summary
       } else {
         // Fallback: get full summary
         const summary = await reader.getSessionSummary(
@@ -77,7 +79,6 @@ export function createRecentsRoutes(deps: RecentsDeps): Hono {
           continue;
         }
         title = summary.title;
-        messageCount = summary.messageCount;
         provider = summary.provider;
       }
 
@@ -86,7 +87,6 @@ export function createRecentsRoutes(deps: RecentsDeps): Hono {
         projectId: entry.projectId,
         visitedAt: entry.visitedAt,
         title,
-        messageCount,
         projectName,
         provider,
       });

@@ -78,6 +78,8 @@ function buildIssueUrl(
 /**
  * Small warning badge that appears on tool results that fail schema validation.
  * Clicking opens a modal with detailed error information.
+ * Uses a span with role="button" to avoid nested button issues when rendered
+ * inside clickable containers.
  */
 export function SchemaWarning({ toolName, errors }: SchemaWarningProps) {
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -89,22 +91,33 @@ export function SchemaWarning({ toolName, errors }: SchemaWarningProps) {
     setIsModalOpen(true);
   }, []);
 
+  const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
+    if (e.key === "Enter" || e.key === " ") {
+      e.preventDefault();
+      e.stopPropagation();
+      setIsModalOpen(true);
+    }
+  }, []);
+
   const handleClose = useCallback(() => {
     setIsModalOpen(false);
   }, []);
 
   return (
     <>
-      <button
-        type="button"
+      {/* biome-ignore lint/a11y/useSemanticElements: span+role avoids nested button issues in clickable containers */}
+      <span
+        role="button"
+        tabIndex={0}
         className="schema-warning"
         onClick={handleClick}
+        onKeyDown={handleKeyDown}
         title={`Schema warning for ${toolName} - click for details`}
       >
         <span className="schema-warning-icon" aria-hidden="true">
           !
         </span>
-      </button>
+      </span>
       {isModalOpen && (
         <Modal
           title={

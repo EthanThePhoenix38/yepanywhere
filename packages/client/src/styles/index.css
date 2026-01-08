@@ -6333,8 +6333,8 @@ a.sidebar-nav-item {
   position: absolute;
   top: calc(100% + var(--space-1));
   left: 0;
-  min-width: 240px;
-  max-width: 320px;
+  min-width: 480px;
+  max-width: 800px;
   background: var(--bg-surface);
   border: 1px solid var(--border-color);
   border-radius: var(--radius-md);

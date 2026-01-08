@@ -203,7 +203,6 @@ export interface EnrichedRecentEntry {
   visitedAt: string;
   // Enriched fields from session/project data
   title: string | null;
-  messageCount: number;
   projectName: string;
   provider: ProviderName;
 }
