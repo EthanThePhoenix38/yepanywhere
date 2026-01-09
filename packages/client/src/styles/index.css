@@ -3476,6 +3476,7 @@ a.sidebar-nav-item {
   cursor: pointer;
   transition: background 0.15s;
   white-space: nowrap;
+  text-decoration: none;
 }
 
 .settings-button:hover {
@@ -3592,7 +3593,8 @@ a.sidebar-nav-item {
 }
 
 .settings-status-detected {
-  background: var(--success-color, var(--app-yep-green));
+  background: var(--bg-hover);
+  color: var(--text-secondary);
 }
 
 .settings-status-not-detected {

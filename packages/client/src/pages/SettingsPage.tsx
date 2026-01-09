@@ -683,55 +683,55 @@ export function SettingsPage() {
               </div>
             </section>
 
-            <section className="settings-section">
-              <h2>Development</h2>
+            {isManualReloadMode && (
+              <section className="settings-section">
+                <h2>Development</h2>
 
-              <div className="settings-group">
-                <div className="settings-item">
-                  <div className="settings-item-info">
-                    <strong>Schema Validation</strong>
-                    <p>
-                      Validate tool results against expected schemas. Shows
-                      toast notifications and logs errors to console.
-                    </p>
-                  </div>
-                  <label className="toggle-switch">
-                    <input
-                      type="checkbox"
-                      checked={validationSettings.enabled}
-                      onChange={(e) => setValidationEnabled(e.target.checked)}
-                    />
-                    <span className="toggle-slider" />
-                  </label>
-                </div>
-                {ignoredTools.length > 0 && (
+                <div className="settings-group">
                   <div className="settings-item">
                     <div className="settings-item-info">
-                      <strong>Ignored Tools</strong>
+                      <strong>Schema Validation</strong>
                       <p>
-                        Tools with validation errors you chose to ignore. They
-                        will not show toast notifications.
+                        Validate tool results against expected schemas. Shows
+                        toast notifications and logs errors to console.
                       </p>
-                      <div className="ignored-tools-list">
-                        {ignoredTools.map((tool) => (
-                          <span key={tool} className="ignored-tool-badge">
-                            {tool}
-                          </span>
-                        ))}
-                      </div>
                     </div>
-                    <button
-                      type="button"
-                      className="settings-button settings-button-secondary"
-                      onClick={clearIgnoredTools}
-                    >
-                      Clear Ignored
-                    </button>
+                    <label className="toggle-switch">
+                      <input
+                        type="checkbox"
+                        checked={validationSettings.enabled}
+                        onChange={(e) => setValidationEnabled(e.target.checked)}
+                      />
+                      <span className="toggle-slider" />
+                    </label>
                   </div>
-                )}
-              </div>
+                  {ignoredTools.length > 0 && (
+                    <div className="settings-item">
+                      <div className="settings-item-info">
+                        <strong>Ignored Tools</strong>
+                        <p>
+                          Tools with validation errors you chose to ignore. They
+                          will not show toast notifications.
+                        </p>
+                        <div className="ignored-tools-list">
+                          {ignoredTools.map((tool) => (
+                            <span key={tool} className="ignored-tool-badge">
+                              {tool}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        className="settings-button settings-button-secondary"
+                        onClick={clearIgnoredTools}
+                      >
+                        Clear Ignored
+                      </button>
+                    </div>
+                  )}
+                </div>
 
-              {isManualReloadMode ? (
                 <div className="settings-group">
                   <div className="settings-item">
                     <div className="settings-item-info">
@@ -789,12 +789,30 @@ export function SettingsPage() {
                     </button>
                   </div>
                 </div>
-              ) : (
-                <p className="settings-info">
-                  Manual reload mode is not enabled. The server automatically
-                  restarts when code changes.
-                </p>
-              )}
+              </section>
+            )}
+
+            <section className="settings-section">
+              <h2>About</h2>
+              <div className="settings-group">
+                <div className="settings-item">
+                  <div className="settings-item-info">
+                    <strong>Report a Bug</strong>
+                    <p>
+                      Found an issue? Report it on GitHub to help improve Yep
+                      Anywhere.
+                    </p>
+                  </div>
+                  <a
+                    href="https://github.com/kzahel/yepanywhere/issues"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="settings-button"
+                  >
+                    Report Bug
+                  </a>
+                </div>
+              </div>
             </section>
           </div>
         </main>

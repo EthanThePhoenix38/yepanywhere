@@ -26,7 +26,7 @@ const SHARED_DIST = path.join(ROOT_DIR, "packages/shared/dist");
 const STAGING_DIR = path.join(ROOT_DIR, "dist/npm-package");
 
 // Version for npm package - set via NPM_VERSION env var (from git tag in CI) or fallback
-const NPM_VERSION = process.env.NPM_VERSION || "0.1.3";
+const NPM_VERSION = process.env.NPM_VERSION || "0.1.4";
 
 interface StepResult {
   step: string;
@@ -241,11 +241,11 @@ step("Generate package.json for npm", () => {
     ),
     repository: {
       type: "git",
-      url: "git+https://github.com/kgraehl/yepanywhere.git",
+      url: "git+https://github.com/kzahel/yepanywhere.git",
     },
-    homepage: "https://github.com/kgraehl/yepanywhere#readme",
+    homepage: "https://github.com/kzahel/yepanywhere#readme",
     bugs: {
-      url: "https://github.com/kgraehl/yepanywhere/issues",
+      url: "https://github.com/kzahel/yepanywhere/issues",
     },
     keywords: ["claude", "ai", "agent", "supervisor", "mobile"],
     license: "MIT",

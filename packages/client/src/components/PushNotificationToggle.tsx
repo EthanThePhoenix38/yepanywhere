@@ -26,14 +26,23 @@ export function PushNotificationToggle() {
     }
   };
 
-  // Not supported - show message
+  // Not supported - show message with reason and help link
   if (!isSupported) {
     return (
       <div className="settings-item">
         <div className="settings-item-info">
           <strong>Push Notifications</strong>
           <p className="settings-muted">
-            Push notifications are not supported in this browser.
+            {error || "Push notifications are not supported in this browser."}
+          </p>
+          <p className="settings-muted">
+            <a
+              href="https://github.com/kzahel/yepanywhere/blob/main/docs/push-notifications.md"
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              Troubleshooting guide
+            </a>
           </p>
         </div>
       </div>
