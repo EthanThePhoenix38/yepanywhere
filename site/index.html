@@ -159,6 +159,35 @@
       border-color: var(--text-secondary);
     }
 
+    /* Value Props */
+    .value-props {
+      padding: 60px 0;
+      border-top: 1px solid var(--border);
+    }
+
+    .value-prop-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 32px;
+    }
+
+    .value-prop {
+      text-align: center;
+    }
+
+    .value-prop h3 {
+      font-size: 20px;
+      font-weight: 600;
+      margin-bottom: 12px;
+      color: var(--text-primary);
+    }
+
+    .value-prop p {
+      color: var(--text-secondary);
+      font-size: 15px;
+      line-height: 1.7;
+    }
+
     /* Screenshots */
     .screenshots {
       padding: 60px 0;
@@ -401,6 +430,25 @@
       </div>
     </section>
 
+    <section class="value-props">
+      <div class="container">
+        <div class="value-prop-grid">
+          <div class="value-prop">
+            <h3>Seamless handoff</h3>
+            <p>Work at your desk, walk away, continue exactly where you left off. No friction. Your agent keeps running on your dev machine while you supervise from the couch, the coffee shop, or the school pickup line.</p>
+          </div>
+          <div class="value-prop">
+            <h3>Your desk follows you</h3>
+            <p>Push notifications when approval is needed. Respond from your lock screen. Glance at progress between meetings. The server does the heavy lifting — your phone is just a window.</p>
+          </div>
+          <div class="value-prop">
+            <h3>Multi-session sanity</h3>
+            <p>Stop cycling through terminal tabs. See all your projects at once. Star the important ones, archive the finished ones. Context-switch without losing context.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
     <section id="screenshots" class="screenshots">
       <div class="container">
         <h2>Screenshots</h2>
@@ -426,9 +474,14 @@
             <p>Multi-session dashboard</p>
           </div>
           <div class="screenshot-item">
-            <img src="screenshots/response.png" alt="Agent response with markdown">
-            <p>Rich markdown output</p>
+            <img src="screenshots/mobile-diff.png" alt="Mobile diff view with todo list">
+            <p>Diffs and todo tracking</p>
           </div>
+        </div>
+        <h3 style="text-align: center; margin-top: 48px; margin-bottom: 24px; color: var(--text-primary);">Works great on desktop too!</h3>
+        <div style="display: flex; gap: 24px; justify-content: center; flex-wrap: wrap;">
+          <img src="screenshots/desktop.png" alt="Desktop view" style="max-width: 100%; width: 400px; border-radius: 16px; border: 1px solid var(--border); box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);">
+          <img src="screenshots/desktop-diff.png" alt="Desktop diff view" style="max-width: 100%; width: 400px; border-radius: 16px; border: 1px solid var(--border); box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);">
         </div>
       </div>
     </section>
