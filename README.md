@@ -20,6 +20,8 @@ A polished web interface for managing Claude and Codex agents. Works great on mo
 
 **Your desk follows you.** Push notifications when approval is needed. Respond from your lock screen. Glance at progress between meetings. The server does the heavy lifting — your phone is just a window.
 
+**Share files from anywhere.** Upload images, screenshots, documents, and code files directly from your phone. Snap a photo of a whiteboard sketch, share an error screenshot, or attach design mockups — your agent sees exactly what you see.
+
 **Multi-session sanity.** Stop cycling through terminal tabs. See all your projects at once. Star the important ones, archive the finished ones. Context-switch without losing context.
 
 ## What is this?
@@ -28,7 +30,7 @@ If you use Claude Code from the terminal, this gives you a better interface. Aut
 
 - **Interop first** — View sessions running in Claude CLI, VS Code, or other tools in real time, or resume them later from your phone. No new database — just a tiny JSON cache and optional metadata for starring/archiving
 - **Multi-session dashboard** — See all your agents at a glance, easy multitasking
-- **Mobile-friendly** — Approve requests, upload files, share screenshots from your phone
+- **Mobile-friendly** — Approve requests, upload files, share screenshots and photos directly from your phone's camera roll
 - **Push notifications** — Get notified when approval is needed (VAPID, no third-party server)
 - **Voice input** — Talk to your agents via browser speech API (great for Linux where SuperWhisper isn't available)
 - **Real-time streaming** — Watch agents work with sub-agent visibility
@@ -100,7 +102,7 @@ See [DEVELOPMENT.md](DEVELOPMENT.md) for build instructions, configuration optio
 ## Why not just use the terminal?
 
 - Fixed-width fonts are hard to read for long text
-- No file upload, screenshots, or image sharing
+- **No file uploads** — can't share screenshots, photos, PDFs, or other files with your agent
 - No voice input
 - No multi-session overview
 - This gives you Claude.ai polish, but self-hosted and editing your code
