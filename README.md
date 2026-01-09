@@ -32,7 +32,16 @@ No database, no cloud, no accounts, no hidden gimmicks. 100% open source. Piggyb
 
 ## Screenshots
 
-Coming soon.
+<p align="center">
+  <img src="site/screenshots/session-view.png" width="250" alt="Session view">
+  <img src="site/screenshots/conversation.png" width="250" alt="Conversation">
+  <img src="site/screenshots/approval.png" width="250" alt="Approval flow">
+</p>
+<p align="center">
+  <img src="site/screenshots/navigation.png" width="250" alt="Navigation">
+  <img src="site/screenshots/new-session.png" width="250" alt="New session">
+  <img src="site/screenshots/response.png" width="250" alt="Response">
+</p>
 
 ## Getting Started
 
