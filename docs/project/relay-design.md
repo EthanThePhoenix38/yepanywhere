@@ -241,8 +241,110 @@ Setting to show full details (less private) or generic (more private).
 ## Implementation Phases
 
 ### Phase 1: Protocol Types
-- [ ] Relay message types (shared package)
-- [ ] Request/response, subscribe/event, upload messages
+
+Define all message types in `packages/shared/src/relay.ts`:
+
+**Request/Response (HTTP-like)**
+```typescript
+type RelayRequest = {
+  type: "request";
+  id: string;              // UUID for matching response
+  method: "GET" | "POST" | "PUT" | "DELETE" | "PATCH";
+  path: string;            // e.g., "/api/sessions"
+  headers?: Record<string, string>;
+  body?: unknown;
+};
+
+type RelayResponse = {
+  type: "response";
+  id: string;              // matches request.id
+  status: number;          // HTTP status code
+  headers?: Record<string, string>;
+  body?: unknown;
+};
+```
+
+**Event Subscriptions (SSE replacement)**
+```typescript
+type RelaySubscribe = {
+  type: "subscribe";
+  subscriptionId: string;  // client-generated, for unsubscribe
+  channel: "session" | "activity";
+  sessionId?: string;      // required for channel: "session"
+  lastEventId?: string;    // for resumption
+};
+
+type RelayUnsubscribe = {
+  type: "unsubscribe";
+  subscriptionId: string;
+};
+
+type RelayEvent = {
+  type: "event";
+  subscriptionId: string;
+  eventType: string;       // "message", "status", "stream_event", etc.
+  eventId?: string;        // for resumption
+  data: unknown;
+};
+```
+
+**File Upload**
+```typescript
+type RelayUploadStart = {
+  type: "upload_start";
+  uploadId: string;
+  projectId: string;
+  sessionId: string;
+  filename: string;
+  size: number;
+  mimeType: string;
+};
+
+type RelayUploadChunk = {
+  type: "upload_chunk";
+  uploadId: string;
+  offset: number;
+  data: string;            // base64 encoded
+};
+
+type RelayUploadEnd = {
+  type: "upload_end";
+  uploadId: string;
+};
+
+type RelayUploadProgress = {
+  type: "upload_progress";
+  uploadId: string;
+  bytesReceived: number;
+};
+
+type RelayUploadComplete = {
+  type: "upload_complete";
+  uploadId: string;
+  file: UploadedFile;
+};
+
+type RelayUploadError = {
+  type: "upload_error";
+  uploadId: string;
+  error: string;
+};
+```
+
+**Union types**
+```typescript
+// Messages from phone/browser → yepanywhere
+type RemoteClientMessage = RelayRequest | RelaySubscribe | RelayUnsubscribe
+                         | RelayUploadStart | RelayUploadChunk | RelayUploadEnd;
+
+// Messages from yepanywhere → phone/browser
+type YepMessage = RelayResponse | RelayEvent
+                | RelayUploadProgress | RelayUploadComplete | RelayUploadError;
+```
+
+Tasks:
+- [ ] Define all types above in shared package
+- [ ] Export from shared/index.ts
 
 ### Phase 2a: Connection Interface + DirectConnection
 - [ ] Define Connection interface
