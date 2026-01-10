@@ -956,7 +956,11 @@ function SessionPageContent({
                 onAttach={handleAttach}
                 onRemoveAttachment={handleRemoveAttachment}
                 uploadProgress={uploadProgress}
-                slashCommands={supportsSlashCommands && status.state === "owned" ? allSlashCommands : []}
+                slashCommands={
+                  supportsSlashCommands && status.state === "owned"
+                    ? allSlashCommands
+                    : []
+                }
               />
             )}
           </div>

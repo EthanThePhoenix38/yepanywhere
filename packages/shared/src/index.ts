@@ -253,3 +253,23 @@ export type {
   OpenCodeSessionContent,
 } from "./opencode-schema/types.js";
 export { parseOpenCodeSSEEvent } from "./opencode-schema/events.js";
+
+// Relay protocol types (for remote access via WebSocket)
+export type {
+  RelayHttpMethod,
+  RelayRequest,
+  RelayResponse,
+  RelaySubscriptionChannel,
+  RelaySubscribe,
+  RelayUnsubscribe,
+  RelayEvent,
+  RelayUploadStart,
+  RelayUploadChunk,
+  RelayUploadEnd,
+  RelayUploadProgress,
+  RelayUploadComplete,
+  RelayUploadError,
+  RemoteClientMessage,
+  YepMessage,
+  RelayMessage,
+} from "./relay.js";

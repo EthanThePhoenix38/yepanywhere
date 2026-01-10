@@ -1,0 +1,7 @@
+pnpm biome check --write --staged
+
+# Beads sync (if bd is available)
+if command -v bd >/dev/null 2>&1 && [ -d .beads ]; then
+    bd sync --flush-only || exit 1
+    git add .beads/issues.jsonl 2>/dev/null || true
+fi

@@ -20,10 +20,12 @@
     "test:e2e:sdk:local": "pnpm --filter server test:e2e:local",
     "test:e2e:sdk:local:quality": "pnpm --filter server test:e2e:local:quality",
     "lint": "biome check .",
-    "format": "biome format --write ."
+    "format": "biome format --write .",
+    "prepare": "husky"
   },
   "devDependencies": {
     "@biomejs/biome": "^1.9.4",
+    "husky": "^9.1.7",
     "tsx": "^4.19.2",
     "typescript": "^5.7.2"
   },
