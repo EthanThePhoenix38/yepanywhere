@@ -40,10 +40,9 @@ function formatRelativeTime(timestamp: string): string {
   });
 }
 
-/** Get display title with truncation */
+/** Get display title */
 function getDisplayTitle(session: GlobalSessionItem): string {
-  const title = session.customTitle || session.title || "Untitled";
-  return title.length > 30 ? `${title.slice(0, 30)}...` : title;
+  return session.customTitle || session.title || "Untitled";
 }
 
 /** Compact status indicator */
@@ -134,7 +133,7 @@ export function RecentSessionsDropdown({
         position: "fixed",
         top: triggerRect.bottom + 4,
         left: Math.max(8, triggerRect.left - 100), // Offset left to align better
-        maxWidth: "calc(100vw - 16px)",
+        width: "min(830px, calc(100vw - 32px))",
       }
     : {};
 
@@ -171,7 +170,9 @@ export function RecentSessionsDropdown({
                       <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
                     </svg>
                   )}
-                  {getDisplayTitle(session)}
+                  <span className="recent-session-title-text">
+                    {getDisplayTitle(session)}
+                  </span>
                 </span>
                 <span className="recent-session-project">
                   {session.projectName}

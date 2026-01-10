@@ -521,17 +521,27 @@ export function createFilesRoutes(deps: FilesDeps): Hono {
       );
     }
 
+    // Get project first - needed for path resolution
+    const project = await deps.scanner.getProject(projectId);
+    if (!project) {
+      return c.json({ error: "Project not found" }, 404);
+    }
+
+    // Convert absolute path to relative if it's within project root
+    let relativePath = filePath;
+    const projectRoot = resolve(project.path);
+    if (filePath.startsWith(`${projectRoot}/`)) {
+      relativePath = filePath.slice(projectRoot.length + 1);
+    } else if (filePath.startsWith("/")) {
+      // Absolute path outside project - reject
+      return c.json({ error: "Invalid file path" }, 400);
+    }
+
     // Get full file content
     let fullContent = originalFile;
     if (!fullContent) {
-      // Get project
-      const project = await deps.scanner.getProject(projectId);
-      if (!project) {
-        return c.json({ error: "Project not found" }, 404);
-      }
-
       // Resolve and validate file path
-      const resolvedPath = resolveFilePath(project.path, filePath);
+      const resolvedPath = resolveFilePath(project.path, relativePath);
       if (!resolvedPath) {
         return c.json({ error: "Invalid file path" }, 400);
       }
