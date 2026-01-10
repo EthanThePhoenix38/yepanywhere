@@ -407,8 +407,8 @@ describe("MAX_LINES constant", () => {
     expect(MAX_LINES).toBeLessThanOrEqual(10000);
   });
 
-  it("is exactly 2000", () => {
+  it("is exactly 10000", () => {
     // Document the actual value for regression detection
-    expect(MAX_LINES).toBe(2000);
+    expect(MAX_LINES).toBe(10000);
   });
 });

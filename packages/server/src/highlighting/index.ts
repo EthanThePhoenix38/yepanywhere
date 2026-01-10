@@ -14,7 +14,7 @@ import {
 import { createCssVariablesTheme } from "shiki/core";
 
 /** Maximum lines to highlight (avoid blocking on huge files) */
-const MAX_LINES = 2000;
+const MAX_LINES = 10000;
 
 /** Languages to pre-load on startup */
 const PRELOADED_LANGUAGES: BundledLanguage[] = [
