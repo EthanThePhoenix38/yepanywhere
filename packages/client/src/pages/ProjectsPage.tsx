@@ -1,13 +1,15 @@
-import { useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { useMemo, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { api } from "../api/client";
 import { PageHeader } from "../components/PageHeader";
-import { ActiveCountBadge } from "../components/StatusBadge";
+import { ProjectCard } from "../components/ProjectCard";
+import { useInboxContext } from "../contexts/InboxContext";
 import { useProjects } from "../hooks/useProjects";
 import { useNavigationLayout } from "../layouts";
 
 export function ProjectsPage() {
   const { projects, loading, error, refetch } = useProjects();
+  const { needsAttention } = useInboxContext();
   const [showAddForm, setShowAddForm] = useState(false);
   const [newProjectPath, setNewProjectPath] = useState("");
   const [addError, setAddError] = useState<string | null>(null);
@@ -16,6 +18,33 @@ export function ProjectsPage() {
 
   const { openSidebar, isWideScreen, toggleSidebar, isSidebarCollapsed } =
     useNavigationLayout();
+
+  // Count needs-attention items per project (client-side filter - free)
+  const attentionByProject = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const item of needsAttention) {
+      const current = counts.get(item.projectId) ?? 0;
+      counts.set(item.projectId, current + 1);
+    }
+    return counts;
+  }, [needsAttention]);
+
+  // Sort projects: those needing attention first, then by recency
+  const sortedProjects = useMemo(() => {
+    return [...projects].sort((a, b) => {
+      const aNeeds = attentionByProject.get(a.id) ?? 0;
+      const bNeeds = attentionByProject.get(b.id) ?? 0;
+
+      // Projects needing attention come first
+      if (aNeeds > 0 && bNeeds === 0) return -1;
+      if (bNeeds > 0 && aNeeds === 0) return 1;
+
+      // Then sort by last activity (most recent first)
+      const aTime = a.lastActivity ? new Date(a.lastActivity).getTime() : 0;
+      const bTime = b.lastActivity ? new Date(b.lastActivity).getTime() : 0;
+      return bTime - aTime;
+    });
+  }, [projects, attentionByProject]);
 
   const handleAddProject = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -41,6 +70,8 @@ export function ProjectsPage() {
   if (loading) return <div className="loading">Loading projects...</div>;
   if (error) return <div className="error">Error: {error.message}</div>;
 
+  const isEmpty = projects.length === 0;
+
   return (
     <div
       className={isWideScreen ? "main-content-wrapper" : "main-content-mobile"}
@@ -62,22 +93,30 @@ export function ProjectsPage() {
 
         <main className="page-scroll-container">
           <div className="page-content-inner">
-            {/* Add Project Button/Form */}
-            <div className="add-project-section">
+            {/* Toolbar with Add Project button */}
+            <div className="inbox-toolbar">
               {!showAddForm ? (
-                <>
-                  <button
-                    type="button"
-                    className="add-project-button"
-                    onClick={() => setShowAddForm(true)}
+                <button
+                  type="button"
+                  className="inbox-refresh-button"
+                  onClick={() => setShowAddForm(true)}
+                >
+                  <svg
+                    width="16"
+                    height="16"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    aria-hidden="true"
                   >
-                    + Add Project
-                  </button>
-                  <p className="add-project-hint">
-                    or just launch Claude in a folder and it will automatically
-                    appear here
-                  </p>
-                </>
+                    <line x1="12" y1="5" x2="12" y2="19" />
+                    <line x1="5" y1="12" x2="19" y2="12" />
+                  </svg>
+                  Add Project
+                </button>
               ) : (
                 <form onSubmit={handleAddProject} className="add-project-form">
                   <input
@@ -113,27 +152,37 @@ export function ProjectsPage() {
               )}
             </div>
 
-            {projects.length === 0 ? (
-              <p>No projects found. Add a project above to get started.</p>
+            {isEmpty ? (
+              <div className="inbox-empty">
+                <svg
+                  width="48"
+                  height="48"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="1.5"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  aria-hidden="true"
+                >
+                  <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
+                </svg>
+                <h3>No projects yet</h3>
+                <p>
+                  Add a project above, or launch Claude in a folder and it will
+                  automatically appear here.
+                </p>
+              </div>
             ) : (
-              <ul className="project-list">
-                {projects.map((project) => (
-                  <li key={project.id}>
-                    <Link to={`/sessions?project=${project.id}`}>
-                      <strong>{project.name}</strong>
-                      <span className="meta">
-                        {project.sessionCount} sessions
-                        <ActiveCountBadge
-                          variant="owned"
-                          count={project.activeOwnedCount}
-                        />
-                        <ActiveCountBadge
-                          variant="external"
-                          count={project.activeExternalCount}
-                        />
-                      </span>
-                    </Link>
-                  </li>
+              <ul className="project-list-cards">
+                {sortedProjects.map((project) => (
+                  <ProjectCard
+                    key={project.id}
+                    project={project}
+                    needsAttentionCount={
+                      attentionByProject.get(project.id) ?? 0
+                    }
+                  />
                 ))}
               </ul>
             )}

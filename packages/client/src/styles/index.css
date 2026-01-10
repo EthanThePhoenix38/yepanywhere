@@ -521,6 +521,8 @@ h2 {
   background: var(--bg-secondary);
   border: 1px solid var(--border-input);
   border-radius: 8px;
+  width: 100%;
+  box-sizing: border-box;
 }
 
 .add-project-form input {
@@ -604,6 +606,116 @@ h2 {
 .project-list a:hover,
 .session-list a:hover {
   background: var(--bg-hover);
+}
+
+/* Project cards (new style matching SessionListItem cards) */
+.project-list-cards {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.project-card {
+  position: relative;
+}
+
+.project-card__link {
+  display: block;
+  padding: 1rem;
+  background: var(--bg-secondary);
+  border-radius: 8px;
+  text-decoration: none;
+  color: inherit;
+}
+
+.project-card__link:hover {
+  background: var(--bg-hover);
+}
+
+.project-card__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+
+.project-card__name {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-weight: 600;
+  font-size: var(--font-size-base);
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.project-card__attention-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 20px;
+  height: 20px;
+  padding: 0 6px;
+  background: var(--color-error, #ef4444);
+  color: white;
+  font-size: 11px;
+  font-weight: 600;
+  border-radius: 10px;
+  flex-shrink: 0;
+}
+
+.project-card__new-session {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  background: transparent;
+  border: 1px solid var(--border-input);
+  border-radius: 6px;
+  color: var(--text-muted);
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: all 0.15s ease;
+}
+
+.project-card__new-session:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+  border-color: var(--text-muted);
+}
+
+.project-card__meta {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: var(--font-size-sm);
+  color: var(--text-muted);
+  margin-top: var(--space-1);
+  flex-wrap: wrap;
+}
+
+.project-card__path {
+  max-width: 200px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.project-card__separator {
+  color: var(--text-muted);
+  opacity: 0.5;
+}
+
+.project-card__sessions,
+.project-card__time {
+  white-space: nowrap;
 }
 
 .meta {
@@ -5219,6 +5331,11 @@ a.sidebar-nav-item {
   justify-content: flex-end;
   gap: var(--space-2);
   margin-bottom: var(--space-4);
+}
+
+/* When toolbar contains the add-project form, let it take full width */
+.inbox-toolbar .add-project-form {
+  flex: 1;
 }
 
 .inbox-refresh-button {
