@@ -69,6 +69,8 @@ interface Props {
   supportsPermissionMode?: boolean;
   /** Whether the provider supports thinking toggle (default: true) */
   supportsThinkingToggle?: boolean;
+  /** Available slash commands (without "/" prefix) */
+  slashCommands?: string[];
 }
 
 export function MessageInput({
@@ -95,6 +97,7 @@ export function MessageInput({
   uploadProgress = [],
   supportsPermissionMode = true,
   supportsThinkingToggle = true,
+  slashCommands = [],
 }: Props) {
   const [text, setText, controls] = useDraftPersistence(draftKey);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -242,6 +245,23 @@ export function MessageInput({
     setInterimTranscript(transcript);
   }, []);
 
+  // Handle slash command selection - insert command into text
+  const handleSlashCommand = useCallback(
+    (command: string) => {
+      // If text is empty or ends with whitespace, just append the command
+      // Otherwise, add a space before it
+      const trimmed = text.trimEnd();
+      if (trimmed) {
+        setText(`${trimmed} ${command} `);
+      } else {
+        setText(`${command} `);
+      }
+      // Focus the textarea so user can continue typing
+      textareaRef.current?.focus();
+    },
+    [text, setText],
+  );
+
   return (
     <div className="message-input-wrapper">
       {/* Floating toggle button - only show when user can control collapse (not externally collapsed) */}
@@ -356,6 +376,8 @@ export function MessageInput({
             onInterimTranscript={handleInterimTranscript}
             onListeningStart={() => textareaRef.current?.focus()}
             voiceDisabled={disabled}
+            slashCommands={slashCommands}
+            onSelectSlashCommand={handleSlashCommand}
             contextUsage={contextUsage}
             isRunning={isRunning}
             isThinking={isThinking}

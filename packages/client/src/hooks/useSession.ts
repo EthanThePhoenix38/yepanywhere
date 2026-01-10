@@ -87,6 +87,9 @@ export function useSession(
   const [localMode, setLocalMode] = useState<PermissionMode>("default");
   const [serverMode, setServerMode] = useState<PermissionMode>("default");
   const [modeVersion, setModeVersion] = useState<number>(0);
+
+  // Slash commands available for this session (from init message)
+  const [slashCommands, setSlashCommands] = useState<string[]>([]);
   const lastKnownModeVersionRef = useRef<number>(0);
 
   // Mode is pending when local differs from server-confirmed
@@ -558,6 +561,15 @@ export function useSession(
         // Remove eventType from the message (it's SSE envelope, not message data)
         (incoming as { eventType?: string }).eventType = undefined;
 
+        // Extract slash_commands from init messages
+        if (
+          msgType === "system" &&
+          sdkMessage.subtype === "init" &&
+          Array.isArray(sdkMessage.slash_commands)
+        ) {
+          setSlashCommands(sdkMessage.slash_commands as string[]);
+        }
+
         // Handle tempId for pending message resolution
         // When server echoes back tempId, remove from pending queue
         const tempId = sdkMessage.tempId as string | undefined;
@@ -806,5 +818,6 @@ export function useSession(
     pendingMessages, // Messages waiting for server confirmation
     addPendingMessage, // Add to pending queue, returns tempId
     removePendingMessage, // Remove from pending by tempId
+    slashCommands, // Available slash commands from init message
   };
 }

@@ -4,6 +4,7 @@ import { useModelSettings } from "../hooks/useModelSettings";
 import type { ContextUsage, PermissionMode } from "../types";
 import { ContextUsageIndicator } from "./ContextUsageIndicator";
 import { ModeSelector } from "./ModeSelector";
+import { SlashCommandButton } from "./SlashCommandButton";
 import { VoiceInputButton, type VoiceInputButtonRef } from "./VoiceInputButton";
 
 export interface MessageInputToolbarProps {
@@ -29,6 +30,10 @@ export interface MessageInputToolbarProps {
   onInterimTranscript?: (transcript: string) => void;
   onListeningStart?: () => void;
   voiceDisabled?: boolean;
+
+  // Slash commands
+  slashCommands?: string[];
+  onSelectSlashCommand?: (command: string) => void;
 
   // Context usage
   contextUsage?: ContextUsage;
@@ -64,6 +69,8 @@ export function MessageInputToolbar({
   onInterimTranscript,
   onListeningStart,
   voiceDisabled,
+  slashCommands = [],
+  onSelectSlashCommand,
   contextUsage,
   isRunning,
   isThinking,
@@ -147,6 +154,13 @@ export function MessageInputToolbar({
             onTranscript={onVoiceTranscript}
             onInterimTranscript={onInterimTranscript}
             onListeningStart={onListeningStart}
+            disabled={voiceDisabled}
+          />
+        )}
+        {onSelectSlashCommand && (
+          <SlashCommandButton
+            commands={slashCommands}
+            onSelectCommand={onSelectSlashCommand}
             disabled={voiceDisabled}
           />
         )}

@@ -592,7 +592,9 @@ export class Process {
     input: unknown,
     options: { signal: AbortSignal },
   ): Promise<ToolApprovalResult> {
-    console.log(`[handleToolApproval] toolName=${toolName}, permissionMode=${this._permissionMode}`);
+    console.log(
+      `[handleToolApproval] toolName=${toolName}, permissionMode=${this._permissionMode}`,
+    );
 
     // Check if aborted
     if (options.signal.aborted) {

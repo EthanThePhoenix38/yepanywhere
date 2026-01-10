@@ -124,6 +124,7 @@ function SessionPageContent({
     pendingMessages,
     addPendingMessage,
     removePendingMessage,
+    slashCommands,
   } = useSession(
     projectId,
     sessionId,
@@ -917,6 +918,7 @@ function SessionPageContent({
                 onAttach={handleAttach}
                 onRemoveAttachment={handleRemoveAttachment}
                 uploadProgress={uploadProgress}
+                slashCommands={slashCommands}
               />
             )}
           </div>

@@ -11,7 +11,10 @@
 // Entry types (JSONL line types)
 export type { AssistantEntry } from "./entry/AssistantEntrySchema.js";
 export type { UserEntry } from "./entry/UserEntrySchema.js";
-export type { SystemEntry } from "./entry/SystemEntrySchema.js";
+export type {
+  SystemEntry,
+  InitSystemEntry,
+} from "./entry/SystemEntrySchema.js";
 export type { SummaryEntry } from "./entry/SummaryEntrySchema.js";
 export type { FileHistorySnapshotEntry } from "./entry/FileHistorySnapshotEntrySchema.js";
 export type { QueueOperationEntry } from "./entry/QueueOperationEntrySchema.js";

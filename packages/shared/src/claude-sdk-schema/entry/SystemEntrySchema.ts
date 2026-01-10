@@ -25,9 +25,27 @@ const CompactBoundarySystemEntrySchema = BaseEntrySchema.extend({
     .optional(),
 });
 
+// Init system entry (session initialization with available commands/agents)
+const InitSystemEntrySchema = BaseEntrySchema.extend({
+  type: z.literal("system"),
+  subtype: z.literal("init"),
+  session_id: z.string(),
+  slash_commands: z.array(z.string()).optional(),
+  agents: z.array(z.string()).optional(),
+  skills: z.array(z.string()).optional(),
+  plugins: z.array(z.string()).optional(),
+  claude_code_version: z.string().optional(),
+  apiKeySource: z.string().optional(),
+  output_style: z.string().optional(),
+});
+
 export const SystemEntrySchema = z.union([
   RegularSystemEntrySchema,
   CompactBoundarySystemEntrySchema,
+  InitSystemEntrySchema,
 ]);
 
 export type SystemEntry = z.infer<typeof SystemEntrySchema>;
+
+// Export InitSystemEntry type for consumers that need slash_commands
+export type InitSystemEntry = z.infer<typeof InitSystemEntrySchema>;
