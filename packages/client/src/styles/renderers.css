@@ -529,11 +529,6 @@ details[open] .collapsible__icon {
   gap: 0.5rem;
 }
 
-.bash-description {
-  color: var(--text-muted);
-  font-size: var(--font-size-lg);
-}
-
 .bash-result {
   display: flex;
   flex-direction: column;
@@ -781,10 +776,6 @@ details[open] .collapsible__icon {
   text-decoration: none;
 }
 
-.read-error-inline {
-  color: var(--vscode-errorForeground, #f48771);
-}
-
 /* Non-expandable tool row header */
 .tool-row-header.non-expandable {
   cursor: default;
@@ -874,17 +865,6 @@ details[open] .collapsible__icon {
 /* ==========================================================================
    Edit Tool
    ========================================================================== */
-
-.edit-tool-use {
-  display: flex;
-  align-items: center;
-  gap: 0.75rem;
-}
-
-.edit-action {
-  color: var(--text-muted);
-  font-size: var(--font-size-lg);
-}
 
 .edit-result {
   display: flex;
@@ -990,13 +970,6 @@ details[open] .collapsible__icon {
   margin-top: 0;
 }
 
-.diff-hunk-header {
-  color: var(--link-color);
-  padding: 0.25rem 0.5rem;
-  background: var(--bg-secondary);
-  font-size: var(--font-size-sm);
-}
-
 .diff-content {
   margin: 0;
   padding: 0;
@@ -1070,39 +1043,9 @@ details[open] .collapsible__icon {
   background: var(--bg-diff-inserted, rgba(63, 185, 80, 0.15)) !important;
 }
 
-.highlighted-diff .line-hunk {
-  display: none;
-}
-
-.highlighted-diff .line-context {
-  background: transparent;
-}
-
-.highlighted-diff .diff-prefix {
-  user-select: none;
-  opacity: 0.5;
-  margin-right: 0.5ch;
-}
-
 /* Word-level diff highlighting - subtle emphasis within lines */
-.diff-word-removed {
-  background: rgba(248, 81, 73, 0.12);
-  border-radius: 2px;
-}
-
-.diff-word-added {
-  background: rgba(63, 185, 80, 0.12);
-  border-radius: 2px;
-}
 
 /* When nested inside already-highlighted lines, slightly more prominent */
-.line-deleted .diff-word-removed {
-  background: rgba(248, 81, 73, 0.18);
-}
-
-.line-inserted .diff-word-added {
-  background: rgba(63, 185, 80, 0.18);
-}
 
 /* Diff view container with truncation */
 .diff-view-container {
@@ -2933,97 +2876,6 @@ pre.code-highlighter-plain code {
   white-space: pre;
 }
 
-/* Markdown display */
-.file-viewer-markdown {
-  padding: 1rem;
-  line-height: 1.6;
-  color: var(--text-primary);
-}
-
-.file-viewer-markdown h1,
-.file-viewer-markdown h2,
-.file-viewer-markdown h3,
-.file-viewer-markdown h4,
-.file-viewer-markdown h5,
-.file-viewer-markdown h6 {
-  margin-top: 1.5rem;
-  margin-bottom: 0.5rem;
-  font-weight: 600;
-}
-
-.file-viewer-markdown h1:first-child,
-.file-viewer-markdown h2:first-child,
-.file-viewer-markdown h3:first-child {
-  margin-top: 0;
-}
-
-.file-viewer-markdown p {
-  margin: 0.75rem 0;
-}
-
-.file-viewer-markdown ul,
-.file-viewer-markdown ol {
-  margin: 0.75rem 0;
-  padding-left: 1.5rem;
-}
-
-.file-viewer-markdown li {
-  margin: 0.25rem 0;
-}
-
-.file-viewer-markdown code {
-  background: var(--bg-code);
-  padding: 0.125rem 0.25rem;
-  border-radius: 3px;
-  font-size: 0.9em;
-}
-
-.file-viewer-markdown pre {
-  background: var(--bg-code);
-  padding: 0.75rem;
-  border-radius: 6px;
-  overflow-x: auto;
-  margin: 0.75rem 0;
-}
-
-.file-viewer-markdown pre code {
-  background: none;
-  padding: 0;
-}
-
-.file-viewer-markdown blockquote {
-  border-left: 3px solid var(--border-color);
-  padding-left: 1rem;
-  margin: 0.75rem 0;
-  color: var(--text-muted);
-}
-
-.file-viewer-markdown a {
-  color: var(--link-color);
-  text-decoration: none;
-}
-
-.file-viewer-markdown a:hover {
-  text-decoration: underline;
-}
-
-.file-viewer-markdown table {
-  border-collapse: collapse;
-  margin: 0.75rem 0;
-  width: 100%;
-}
-
-.file-viewer-markdown th,
-.file-viewer-markdown td {
-  border: 1px solid var(--border-color);
-  padding: 0.5rem;
-  text-align: left;
-}
-
-.file-viewer-markdown th {
-  background: var(--bg-secondary);
-}
-
 /* Image display */
 .file-viewer-image {
   display: flex;
@@ -3090,8 +2942,7 @@ pre.code-highlighter-plain code {
   padding: 0;
 }
 
-.file-viewer-fullscreen .file-viewer-code,
-.file-viewer-fullscreen .file-viewer-markdown {
+.file-viewer-fullscreen .file-viewer-code {
   padding: 0.5rem;
 }
 

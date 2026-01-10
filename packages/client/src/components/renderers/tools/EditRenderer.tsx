@@ -235,12 +235,14 @@ function DiffModalContent({
   const { projectPath } = useSessionMetadata();
   const [showFullContext, setShowFullContext] = useState(false);
   const contentRef = useRef<HTMLDivElement>(null);
-  // Don't pass originalFile - it may be truncated from JSONL.
-  // Let the server read the full file from disk.
+  // Pass originalFile as fallback for edits where the file has been heavily modified
+  // since the edit was made (neither oldString nor newString can be found).
+  // It may be truncated, but it's better than failing.
   const { loading, error, result, fetchExpandedDiff } = useExpandedDiff({
     filePath,
     oldString,
     newString,
+    originalFile,
   });
 
   const handleToggle = useCallback(async () => {

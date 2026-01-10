@@ -537,30 +537,51 @@ export function createFilesRoutes(deps: FilesDeps): Hono {
       return c.json({ error: "Invalid file path" }, 400);
     }
 
-    // Get full file content
-    let fullContent = originalFile;
-    if (!fullContent) {
-      // Resolve and validate file path
-      const resolvedPath = resolveFilePath(project.path, relativePath);
-      if (!resolvedPath) {
-        return c.json({ error: "Invalid file path" }, 400);
-      }
-
-      // Read file content
-      try {
-        fullContent = await readFile(resolvedPath, "utf-8");
-      } catch {
-        return c.json({ error: "Failed to read file" }, 500);
-      }
+    // Resolve and validate file path
+    const resolvedPath = resolveFilePath(project.path, relativePath);
+    if (!resolvedPath) {
+      return c.json({ error: "Invalid file path" }, 400);
     }
 
-    // Compute new content by applying the edit
-    const newContent = fullContent.replace(oldString, newString);
+    // Read current file content from disk
+    let currentContent: string;
+    try {
+      currentContent = await readFile(resolvedPath, "utf-8");
+    } catch {
+      return c.json({ error: "Failed to read file" }, 500);
+    }
+
+    // Determine old and new full file content based on current state
+    let oldFullContent: string;
+    let newFullContent: string;
+
+    if (currentContent.includes(oldString)) {
+      // Edit not yet applied - oldString is still in the file
+      oldFullContent = currentContent;
+      newFullContent = currentContent.replace(oldString, newString);
+    } else if (currentContent.includes(newString)) {
+      // Edit already applied - newString is in the file
+      // Reconstruct the old content by reversing the edit
+      oldFullContent = currentContent.replace(newString, oldString);
+      newFullContent = currentContent;
+    } else {
+      // Neither found - file has changed significantly, use originalFile if provided
+      if (originalFile) {
+        oldFullContent = originalFile;
+        newFullContent = originalFile.replace(oldString, newString);
+      } else {
+        return c.json({ error: "Cannot locate edit in current file" }, 400);
+      }
+    }
 
     // Compute augment with large context (entire file)
     const augment = await computeEditAugment(
       "expand",
-      { file_path: filePath, old_string: fullContent, new_string: newContent },
+      {
+        file_path: filePath,
+        old_string: oldFullContent,
+        new_string: newFullContent,
+      },
       999999, // Full file context
     );
 
