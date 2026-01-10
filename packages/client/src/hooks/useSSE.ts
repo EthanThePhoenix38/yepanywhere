@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { Subscription } from "../lib/connection/types";
+import { type Subscription, getWebSocketConnection } from "../lib/connection";
 import { getWebsocketTransportEnabled } from "./useDeveloperMode";
 
 interface UseSSEOptions {
@@ -30,20 +30,16 @@ export function useSSE(url: string | null, options: UseSSEOptions) {
   const mountedUrlRef = useRef<string | null>(null);
   // Track if using WebSocket
   const useWebSocketRef = useRef(false);
-  // Track pending WebSocket connection to handle race conditions
-  // When sessionId changes during async import, we need to close the old subscription
-  const pendingWsSessionRef = useRef<string | null>(null);
 
   const connect = useCallback(() => {
     if (!url) {
       // Reset tracking when URL becomes null so we can reconnect later
       // (e.g., when status goes idle → owned again for the same session)
       mountedUrlRef.current = null;
-      pendingWsSessionRef.current = null;
       return;
     }
 
-    // Don't create duplicate connections (including pending async connections)
+    // Don't create duplicate connections
     if (eventSourceRef.current || wsSubscriptionRef.current) return;
 
     // Skip StrictMode double-mount (same URL, already connected once)
@@ -65,64 +61,50 @@ export function useSSE(url: string | null, options: UseSSEOptions) {
 
   const connectWebSocket = useCallback(
     (sessionId: string) => {
-      // Track which session we're trying to connect to
-      // This handles race conditions when sessionId changes during async import
-      pendingWsSessionRef.current = sessionId;
+      // Close any existing subscription before creating a new one
+      if (wsSubscriptionRef.current) {
+        wsSubscriptionRef.current.close();
+        wsSubscriptionRef.current = null;
+      }
 
-      // Lazy import to avoid circular dependencies
-      import("../lib/connection").then(({ getWebSocketConnection }) => {
-        // Check if we're still supposed to connect to this session
-        // If sessionId changed during the async import, abort this connection
-        if (pendingWsSessionRef.current !== sessionId) {
-          return;
-        }
+      const connection = getWebSocketConnection();
+      const handlers = {
+        onEvent: (
+          eventType: string,
+          eventId: string | undefined,
+          data: unknown,
+        ) => {
+          if (eventId) {
+            lastEventIdRef.current = eventId;
+          }
+          // Route event to handler
+          optionsRef.current.onMessage({
+            ...(data as Record<string, unknown>),
+            eventType,
+          });
+        },
+        onOpen: () => {
+          setConnected(true);
+          optionsRef.current.onOpen?.();
+        },
+        onError: (error: Error) => {
+          setConnected(false);
+          // Create a synthetic error event for compatibility
+          optionsRef.current.onError?.(new Event("error"));
 
-        // Close any existing subscription before creating a new one
-        // This handles the case where cleanup ran but async import was pending
-        if (wsSubscriptionRef.current) {
-          wsSubscriptionRef.current.close();
+          // Auto-reconnect after 2s
+          wsSubscriptionRef.current?.close();
           wsSubscriptionRef.current = null;
-        }
+          mountedUrlRef.current = null;
+          reconnectTimeoutRef.current = setTimeout(connect, 2000);
+        },
+      };
 
-        const connection = getWebSocketConnection();
-        const handlers = {
-          onEvent: (
-            eventType: string,
-            eventId: string | undefined,
-            data: unknown,
-          ) => {
-            if (eventId) {
-              lastEventIdRef.current = eventId;
-            }
-            // Route event to handler
-            optionsRef.current.onMessage({
-              ...(data as Record<string, unknown>),
-              eventType,
-            });
-          },
-          onOpen: () => {
-            setConnected(true);
-            optionsRef.current.onOpen?.();
-          },
-          onError: (error: Error) => {
-            setConnected(false);
-            // Create a synthetic error event for compatibility
-            optionsRef.current.onError?.(new Event("error"));
-
-            // Auto-reconnect after 2s
-            wsSubscriptionRef.current?.close();
-            wsSubscriptionRef.current = null;
-            mountedUrlRef.current = null;
-            reconnectTimeoutRef.current = setTimeout(connect, 2000);
-          },
-        };
-
-        wsSubscriptionRef.current = connection.subscribeSession(
-          sessionId,
-          handlers,
-          lastEventIdRef.current ?? undefined,
-        );
-      });
+      wsSubscriptionRef.current = connection.subscribeSession(
+        sessionId,
+        handlers,
+        lastEventIdRef.current ?? undefined,
+      );
     },
     [connect],
   );
@@ -202,8 +184,6 @@ export function useSSE(url: string | null, options: UseSSEOptions) {
       eventSourceRef.current = null;
       wsSubscriptionRef.current?.close();
       wsSubscriptionRef.current = null;
-      // Clear pending session to prevent stale async imports from creating subscriptions
-      pendingWsSessionRef.current = null;
       // Reset mountedUrlRef so the next mount can connect
       // This is needed for StrictMode where cleanup runs between mounts
       mountedUrlRef.current = null;

@@ -602,11 +602,12 @@ export function useSession(
           state: string;
           request?: InputRequest;
         };
-        // Track process state (running, idle, waiting-input)
+        // Track process state (running, idle, waiting-input, hold)
         if (
           statusData.state === "idle" ||
           statusData.state === "running" ||
-          statusData.state === "waiting-input"
+          statusData.state === "waiting-input" ||
+          statusData.state === "hold"
         ) {
           setProcessState(statusData.state as ProcessState);
         }
@@ -657,7 +658,8 @@ export function useSession(
         if (
           connectedData.state === "idle" ||
           connectedData.state === "running" ||
-          connectedData.state === "waiting-input"
+          connectedData.state === "waiting-input" ||
+          connectedData.state === "hold"
         ) {
           setProcessState(connectedData.state as ProcessState);
         }
