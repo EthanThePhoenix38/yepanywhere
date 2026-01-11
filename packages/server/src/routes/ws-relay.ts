@@ -146,7 +146,8 @@ const ALLOWED_ORIGIN_PATTERNS = [
  */
 function isAllowedOrigin(origin: string | undefined): boolean {
   // No origin header means same-origin request (allowed)
-  if (!origin) return true;
+  // Browsers send literal "null" string for about:blank, file://, etc.
+  if (!origin || origin === "null") return true;
   // Check against allowed patterns
   return ALLOWED_ORIGIN_PATTERNS.some((pattern) => pattern.test(origin));
 }

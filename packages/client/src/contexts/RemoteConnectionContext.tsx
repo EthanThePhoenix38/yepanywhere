@@ -149,6 +149,13 @@ export function RemoteConnectionProvider({ children }: Props) {
       rememberMeRef.current = rememberMe;
 
       try {
+        // If rememberMe is true, save credentials BEFORE auth so the onSessionEstablished
+        // callback can update them. The callback fires during SRP handshake, before
+        // conn.fetch() returns.
+        if (rememberMe) {
+          saveCredentials(wsUrl, username);
+        }
+
         // Create and authenticate connection
         const conn = new SecureConnection(
           wsUrl,
@@ -160,9 +167,6 @@ export function RemoteConnectionProvider({ children }: Props) {
         // Test the connection by making a simple request
         // This triggers the SRP handshake and verifies auth
         await conn.fetch("/auth/status");
-
-        // Save credentials (session will be added by onSessionEstablished if rememberMe)
-        saveCredentials(wsUrl, username);
 
         setConnection(conn);
       } catch (err) {
