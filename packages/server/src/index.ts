@@ -38,6 +38,7 @@ import { createWsRelayRoutes } from "./routes/ws-relay.js";
 import { detectClaudeCli } from "./sdk/cli-detection.js";
 import { initMessageLogger } from "./sdk/messageLogger.js";
 import { RealClaudeSDK } from "./sdk/real.js";
+import { InstallService } from "./services/index.js";
 import { ClaudeSessionReader } from "./sessions/reader.js";
 import { UploadManager } from "./uploads/manager.js";
 import { EventBus, FileWatcher, SourceWatcher } from "./watcher/index.js";
@@ -146,9 +147,14 @@ const remoteAccessService = new RemoteAccessService({
 const remoteSessionService = new RemoteSessionService({
   dataDir: config.dataDir,
 });
+const installService = new InstallService({
+  dataDir: config.dataDir,
+});
 
 async function startServer() {
   // Initialize services (loads state from disk)
+  // InstallService first since it generates the installation ID used by other services
+  await installService.initialize();
   await notificationService.initialize();
   await sessionMetadataService.initialize();
   await projectMetadataService.initialize();
