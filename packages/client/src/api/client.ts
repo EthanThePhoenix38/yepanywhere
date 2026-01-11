@@ -9,7 +9,11 @@ import type {
   UploadedFile,
 } from "@yep-anywhere/shared";
 import { getWebsocketTransportEnabled } from "../hooks/useDeveloperMode";
-import { getGlobalConnection, getWebSocketConnection } from "../lib/connection";
+import {
+  getGlobalConnection,
+  getWebSocketConnection,
+  isRemoteClient,
+} from "../lib/connection";
 import type {
   AgentSession,
   InputRequest,
@@ -142,6 +146,14 @@ export async function fetchJSON<T>(
   const globalConn = getGlobalConnection();
   if (globalConn) {
     return globalConn.fetch<T>(path, options);
+  }
+
+  // In remote client mode, we MUST have a SecureConnection
+  // If we reach this point, it means authentication hasn't completed yet
+  if (isRemoteClient()) {
+    throw new Error(
+      "Remote client requires SecureConnection - not authenticated",
+    );
   }
 
   // Route through WebSocket if enabled (Phase 2b)

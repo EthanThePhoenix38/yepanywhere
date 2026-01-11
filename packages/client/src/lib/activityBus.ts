@@ -5,7 +5,7 @@ import type {
 } from "@yep-anywhere/shared";
 import { getWebsocketTransportEnabled } from "../hooks/useDeveloperMode";
 import type { SessionStatus, SessionSummary } from "../types";
-import { getGlobalConnection } from "./connection";
+import { getGlobalConnection, isRemoteClient } from "./connection";
 import type { Subscription } from "./connection/types";
 
 // Event types matching what the server emits
@@ -155,6 +155,14 @@ class ActivityBus {
     const globalConn = getGlobalConnection();
     if (globalConn) {
       this.connectWithConnection(globalConn);
+      return;
+    }
+
+    // In remote client mode, we MUST have a SecureConnection
+    if (isRemoteClient()) {
+      console.warn(
+        "[ActivityBus] Remote client requires SecureConnection - not authenticated",
+      );
       return;
     }
 

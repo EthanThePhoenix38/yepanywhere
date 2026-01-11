@@ -39,6 +39,10 @@ export default defineConfig({
   resolve: {
     conditions: ["source"],
   },
+  // Define build-time flag for remote client mode
+  define: {
+    "import.meta.env.VITE_IS_REMOTE_CLIENT": JSON.stringify(true),
+  },
   // Build configuration for static site
   build: {
     outDir: "dist-remote",

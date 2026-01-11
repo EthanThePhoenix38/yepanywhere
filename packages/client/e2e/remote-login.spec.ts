@@ -245,6 +245,24 @@ test.describe("Session Resumption", () => {
     expect(parsed.session.sessionId).toBeDefined();
     expect(parsed.session.sessionKey).toBeDefined();
 
+    // Set up request interception BEFORE reload to catch any direct API calls
+    // Direct XHR/fetch to /api/* would indicate SecureConnection wasn't used
+    const directApiCalls: string[] = [];
+    await page.route("**/api/**", (route) => {
+      // Allow WebSocket upgrade requests (these are expected)
+      const request = route.request();
+      if (
+        request.url().includes("/api/ws") ||
+        request.headers().upgrade === "websocket"
+      ) {
+        route.continue();
+        return;
+      }
+      // Log any direct API calls (these should NOT happen in remote mode)
+      directApiCalls.push(`${request.method()} ${request.url()}`);
+      route.continue();
+    });
+
     // Refresh the page
     await page.reload();
 
@@ -254,6 +272,10 @@ test.describe("Session Resumption", () => {
 
     // Verify login form is NOT visible (we're authenticated)
     await expect(page.locator('[data-testid="login-form"]')).not.toBeVisible();
+
+    // CRITICAL: Verify no direct API calls were made after reload
+    // All API requests should go through SecureConnection (WebSocket)
+    expect(directApiCalls).toEqual([]);
   });
 
   test("login without remember me, refresh page, shows login form", async ({
@@ -361,6 +383,21 @@ test.describe("Session Resumption", () => {
     // Wait for successful login
     await expect(page.locator(".sidebar")).toBeVisible({ timeout: 10000 });
 
+    // Set up request interception to catch any direct API calls after navigation
+    const directApiCalls: string[] = [];
+    await page.route("**/api/**", (route) => {
+      const request = route.request();
+      if (
+        request.url().includes("/api/ws") ||
+        request.headers().upgrade === "websocket"
+      ) {
+        route.continue();
+        return;
+      }
+      directApiCalls.push(`${request.method()} ${request.url()}`);
+      route.continue();
+    });
+
     // Navigate away and back (simulates closing and reopening tab)
     await page.goto("about:blank");
     await page.goto(remoteClientURL);
@@ -368,6 +405,9 @@ test.describe("Session Resumption", () => {
     // Should auto-resume and show main app
     await expect(page.locator(".sidebar")).toBeVisible({ timeout: 10000 });
     await expect(page.locator('[data-testid="login-form"]')).not.toBeVisible();
+
+    // Verify all API calls went through SecureConnection (WebSocket)
+    expect(directApiCalls).toEqual([]);
   });
 });
 

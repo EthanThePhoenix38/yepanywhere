@@ -14,6 +14,19 @@ export { SecureConnection } from "./SecureConnection";
 import type { Connection } from "./types";
 
 /**
+ * Check if this is the remote client build.
+ *
+ * The remote client is a statically-built version that MUST use SecureConnection
+ * for all API requests. This is determined at build time via VITE_IS_REMOTE_CLIENT.
+ *
+ * This is different from isRemoteMode() which checks runtime state.
+ * isRemoteClient() is a static check based on how the app was built.
+ */
+export function isRemoteClient(): boolean {
+  return import.meta.env.VITE_IS_REMOTE_CLIENT === true;
+}
+
+/**
  * Global connection for remote mode.
  *
  * When set, this connection is used for all API calls instead of
