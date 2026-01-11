@@ -189,6 +189,11 @@ export type {
   SrpClientMessage,
   SrpServerMessage,
   SrpMessage,
+  // Session resumption types
+  SrpSessionResume,
+  SrpSessionResumed,
+  SrpSessionInvalid,
+  SrpSessionInvalidReason,
 } from "./crypto/srp-types.js";
 
 export {
@@ -197,6 +202,10 @@ export {
   isSrpServerChallenge,
   isSrpServerVerify,
   isSrpError,
+  // Session resumption type guards
+  isSrpSessionResume,
+  isSrpSessionResumed,
+  isSrpSessionInvalid,
 } from "./crypto/srp-types.js";
 
 // Re-export encryption types

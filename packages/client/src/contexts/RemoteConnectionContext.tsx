@@ -12,18 +12,22 @@ import {
   useCallback,
   useContext,
   useEffect,
+  useRef,
   useState,
 } from "react";
 import { setGlobalConnection } from "../lib/connection";
-import { SecureConnection } from "../lib/connection/SecureConnection";
+import {
+  SecureConnection,
+  type StoredSession,
+} from "../lib/connection/SecureConnection";
 import type { Connection } from "../lib/connection/types";
 
 /** Stored credentials for auto-reconnect */
 interface StoredCredentials {
   wsUrl: string;
   username: string;
-  // Note: We don't store the password. User must re-enter on page refresh.
-  // The session key is derived from password during SRP, not stored.
+  /** Session data for resumption (only stored if rememberMe was enabled) */
+  session?: StoredSession;
 }
 
 interface RemoteConnectionState {
@@ -34,13 +38,22 @@ interface RemoteConnectionState {
   /** Error from last connection attempt */
   error: string | null;
   /** Connect to server with credentials */
-  connect: (wsUrl: string, username: string, password: string) => Promise<void>;
+  connect: (
+    wsUrl: string,
+    username: string,
+    password: string,
+    rememberMe?: boolean,
+  ) => Promise<void>;
   /** Disconnect and clear credentials */
   disconnect: () => void;
   /** Stored server URL (for pre-filling form) */
   storedUrl: string | null;
   /** Stored username (for pre-filling form) */
   storedUsername: string | null;
+  /** Whether there's a stored session that can be resumed */
+  hasStoredSession: boolean;
+  /** Try to resume a stored session (requires password for fallback) */
+  resumeSession: (password: string) => Promise<void>;
 }
 
 const RemoteConnectionContext = createContext<RemoteConnectionState | null>(
@@ -61,10 +74,26 @@ function loadStoredCredentials(): StoredCredentials | null {
   return null;
 }
 
-function saveCredentials(wsUrl: string, username: string): void {
+function saveCredentials(
+  wsUrl: string,
+  username: string,
+  session?: StoredSession,
+): void {
   try {
-    const creds: StoredCredentials = { wsUrl, username };
+    const creds: StoredCredentials = { wsUrl, username, session };
     localStorage.setItem(STORAGE_KEY, JSON.stringify(creds));
+  } catch {
+    // Ignore storage errors
+  }
+}
+
+function updateStoredSession(session: StoredSession): void {
+  try {
+    const stored = loadStoredCredentials();
+    if (stored) {
+      stored.session = session;
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(stored));
+    }
   } catch {
     // Ignore storage errors
   }
@@ -89,21 +118,45 @@ export function RemoteConnectionProvider({ children }: Props) {
 
   // Load stored credentials for form pre-fill
   const stored = loadStoredCredentials();
+  const storedRef = useRef(stored);
+  storedRef.current = stored;
+
+  // Track whether we want to remember sessions
+  const rememberMeRef = useRef(false);
+
+  // Callback for when a new session is established (to store it)
+  const handleSessionEstablished = useCallback((session: StoredSession) => {
+    if (rememberMeRef.current) {
+      console.log("[RemoteConnection] Storing session for resumption");
+      updateStoredSession(session);
+    }
+  }, []);
 
   const connect = useCallback(
-    async (wsUrl: string, username: string, password: string) => {
+    async (
+      wsUrl: string,
+      username: string,
+      password: string,
+      rememberMe = false,
+    ) => {
       setIsConnecting(true);
       setError(null);
+      rememberMeRef.current = rememberMe;
 
       try {
         // Create and authenticate connection
-        const conn = new SecureConnection(wsUrl, username, password);
+        const conn = new SecureConnection(
+          wsUrl,
+          username,
+          password,
+          rememberMe ? handleSessionEstablished : undefined,
+        );
 
         // Test the connection by making a simple request
         // This triggers the SRP handshake and verifies auth
         await conn.fetch("/auth/status");
 
-        // Save credentials (without password) for reconnection
+        // Save credentials (session will be added by onSessionEstablished if rememberMe)
         saveCredentials(wsUrl, username);
 
         setConnection(conn);
@@ -116,7 +169,42 @@ export function RemoteConnectionProvider({ children }: Props) {
         setIsConnecting(false);
       }
     },
-    [],
+    [handleSessionEstablished],
+  );
+
+  const resumeSession = useCallback(
+    async (password: string) => {
+      const currentStored = storedRef.current;
+      if (!currentStored?.session) {
+        throw new Error("No stored session to resume");
+      }
+
+      setIsConnecting(true);
+      setError(null);
+      rememberMeRef.current = true; // If resuming, we want to keep remembering
+
+      try {
+        // Create connection from stored session
+        const conn = SecureConnection.fromStoredSession(
+          currentStored.session,
+          password,
+          handleSessionEstablished,
+        );
+
+        // Test the connection - this will try resume, fall back to SRP if needed
+        await conn.fetch("/auth/status");
+
+        setConnection(conn);
+      } catch (err) {
+        const message =
+          err instanceof Error ? err.message : "Session resume failed";
+        setError(message);
+        throw err;
+      } finally {
+        setIsConnecting(false);
+      }
+    },
+    [handleSessionEstablished],
   );
 
   const disconnect = useCallback(() => {
@@ -145,6 +233,8 @@ export function RemoteConnectionProvider({ children }: Props) {
     disconnect,
     storedUrl: stored?.wsUrl ?? null,
     storedUsername: stored?.username ?? null,
+    hasStoredSession: !!stored?.session,
+    resumeSession,
   };
 
   return (

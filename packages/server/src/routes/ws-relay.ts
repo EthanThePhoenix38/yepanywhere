@@ -18,12 +18,16 @@ import type {
   SrpError,
   SrpServerChallenge,
   SrpServerVerify,
+  SrpSessionInvalid,
+  SrpSessionResume,
+  SrpSessionResumed,
   YepMessage,
 } from "@yep-anywhere/shared";
 import {
   isEncryptedEnvelope,
   isSrpClientHello,
   isSrpClientProof,
+  isSrpSessionResume,
 } from "@yep-anywhere/shared";
 import type { Context, Hono } from "hono";
 import type { WSContext, WSEvents } from "hono/ws";
@@ -43,7 +47,10 @@ import {
   deriveSecretboxKey,
   encrypt,
 } from "../crypto/index.js";
-import type { RemoteAccessService } from "../remote-access/index.js";
+import type {
+  RemoteAccessService,
+  RemoteSessionService,
+} from "../remote-access/index.js";
 import type { Supervisor } from "../supervisor/Supervisor.js";
 import type { UploadManager } from "../uploads/manager.js";
 import type { EventBus } from "../watcher/index.js";
@@ -65,6 +72,8 @@ export interface WsRelayDeps {
   uploadManager: UploadManager;
   /** Remote access service for SRP authentication (optional) */
   remoteAccessService?: RemoteAccessService;
+  /** Remote session service for session persistence (optional) */
+  remoteSessionService?: RemoteSessionService;
 }
 
 /** Connection authentication state */
@@ -83,6 +92,8 @@ interface ConnectionState {
   authState: ConnectionAuthState;
   /** Username if authenticated */
   username: string | null;
+  /** Persistent session ID for resumption (set after successful auth) */
+  sessionId: string | null;
 }
 
 /** Tracks an active upload over WebSocket relay */
@@ -178,6 +189,7 @@ export function createWsRelayRoutes(
     eventBus,
     uploadManager,
     remoteAccessService,
+    remoteSessionService,
   } = deps;
 
   /**
@@ -185,9 +197,84 @@ export function createWsRelayRoutes(
    */
   const sendSrpMessage = (
     ws: WSContext,
-    msg: SrpServerChallenge | SrpServerVerify | SrpError,
+    msg:
+      | SrpServerChallenge
+      | SrpServerVerify
+      | SrpError
+      | SrpSessionResumed
+      | SrpSessionInvalid,
   ) => {
     ws.send(JSON.stringify(msg));
+  };
+
+  /**
+   * Handle SRP session resume (reconnect with stored session).
+   */
+  const handleSrpResume = async (
+    ws: WSContext,
+    connState: ConnectionState,
+    msg: SrpSessionResume,
+  ): Promise<void> => {
+    if (!remoteSessionService) {
+      sendSrpMessage(ws, {
+        type: "srp_invalid",
+        reason: "unknown",
+      });
+      return;
+    }
+
+    try {
+      // Validate the proof and get the session
+      const session = await remoteSessionService.validateProof(
+        msg.sessionId,
+        msg.proof,
+      );
+
+      if (!session) {
+        console.log(
+          `[WS Relay] Session resume failed for ${msg.identity}: invalid or expired`,
+        );
+        sendSrpMessage(ws, {
+          type: "srp_invalid",
+          reason: "invalid_proof",
+        });
+        return;
+      }
+
+      // Verify the identity matches
+      if (session.username !== msg.identity) {
+        console.warn(
+          `[WS Relay] Session resume identity mismatch: ${msg.identity} vs ${session.username}`,
+        );
+        sendSrpMessage(ws, {
+          type: "srp_invalid",
+          reason: "invalid_proof",
+        });
+        return;
+      }
+
+      // Restore session state
+      connState.sessionKey = Buffer.from(session.sessionKey, "base64");
+      connState.authState = "authenticated";
+      connState.username = session.username;
+      connState.sessionId = session.sessionId;
+
+      // Send success response
+      sendSrpMessage(ws, {
+        type: "srp_resumed",
+        sessionId: session.sessionId,
+      });
+
+      console.log(
+        `[WS Relay] Session resumed for ${msg.identity} (${msg.sessionId})`,
+      );
+    } catch (err) {
+      console.error("[WS Relay] Session resume error:", err);
+      sendSrpMessage(ws, {
+        type: "srp_invalid",
+        reason: "unknown",
+      });
+    }
   };
 
   /**
@@ -914,15 +1001,26 @@ export function createWsRelayRoutes(
       connState.sessionKey = deriveSecretboxKey(rawKey);
       connState.authState = "authenticated";
 
-      // Send verification
+      // Create persistent session if session service is available
+      let sessionId: string | undefined;
+      if (remoteSessionService && connState.username) {
+        sessionId = await remoteSessionService.createSession(
+          connState.username,
+          connState.sessionKey,
+        );
+        connState.sessionId = sessionId;
+      }
+
+      // Send verification (with sessionId for session resumption)
       const verify: SrpServerVerify = {
         type: "srp_verify",
         M2: result.M2,
+        sessionId,
       };
       sendSrpMessage(ws, verify);
 
       console.log(
-        `[WS Relay] SRP authentication successful for ${connState.username}`,
+        `[WS Relay] SRP authentication successful for ${connState.username}${sessionId ? ` (session: ${sessionId})` : ""}`,
       );
     } catch (err) {
       console.error("[WS Relay] SRP proof error:", err);
@@ -961,6 +1059,12 @@ export function createWsRelayRoutes(
     }
 
     // Handle SRP messages first (always plaintext)
+    // Session resume takes priority - try to resume before starting full SRP
+    if (isSrpSessionResume(parsed)) {
+      await handleSrpResume(ws, connState, parsed);
+      return;
+    }
+
     if (isSrpClientHello(parsed)) {
       // SRP hello - start authentication
       await handleSrpHello(ws, connState, parsed);
@@ -1069,6 +1173,7 @@ export function createWsRelayRoutes(
       sessionKey: null,
       authState: "unauthenticated",
       username: null,
+      sessionId: null,
     };
     // Encryption-aware send function (created on open, captures connState)
     let send: SendFn;

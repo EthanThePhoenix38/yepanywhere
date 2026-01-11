@@ -29,7 +29,10 @@ import { NotificationService } from "./notifications/index.js";
 import { ProjectScanner } from "./projects/scanner.js";
 import { PushService, getOrCreateVapidKeys } from "./push/index.js";
 import { RecentsService } from "./recents/index.js";
-import { RemoteAccessService } from "./remote-access/index.js";
+import {
+  RemoteAccessService,
+  RemoteSessionService,
+} from "./remote-access/index.js";
 import { createUploadRoutes } from "./routes/upload.js";
 import { createWsRelayRoutes } from "./routes/ws-relay.js";
 import { detectClaudeCli } from "./sdk/cli-detection.js";
@@ -140,6 +143,9 @@ const authService = new AuthService({
 const remoteAccessService = new RemoteAccessService({
   dataDir: config.dataDir,
 });
+const remoteSessionService = new RemoteSessionService({
+  dataDir: config.dataDir,
+});
 
 async function startServer() {
   // Initialize services (loads state from disk)
@@ -151,6 +157,7 @@ async function startServer() {
   await recentsService.initialize();
   await authService.initialize();
   await remoteAccessService.initialize();
+  await remoteSessionService.initialize();
 
   // Log auth status
   if (config.authDisabled) {
@@ -201,6 +208,7 @@ async function startServer() {
     authService,
     authDisabled: config.authDisabled,
     remoteAccessService,
+    remoteSessionService,
     // Note: frontendProxy not passed - will be added below
   });
 
@@ -247,6 +255,8 @@ async function startServer() {
     supervisor,
     eventBus,
     uploadManager: wsRelayUploadManager,
+    remoteAccessService,
+    remoteSessionService,
   });
   app.get("/api/ws", wsRelayHandler);
 

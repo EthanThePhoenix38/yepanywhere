@@ -4,15 +4,18 @@
 
 import { Hono } from "hono";
 import type { RemoteAccessService } from "./RemoteAccessService.js";
+import type { RemoteSessionService } from "./RemoteSessionService.js";
 
 export interface RemoteAccessRoutesOptions {
   remoteAccessService: RemoteAccessService;
+  /** Optional session service for invalidating sessions on password change */
+  remoteSessionService?: RemoteSessionService;
 }
 
 export function createRemoteAccessRoutes(
   options: RemoteAccessRoutesOptions,
 ): Hono {
-  const { remoteAccessService } = options;
+  const { remoteAccessService, remoteSessionService } = options;
   const app = new Hono();
 
   /**
@@ -37,7 +40,34 @@ export function createRemoteAccessRoutes(
         return c.json({ error: "Username and password are required" }, 400);
       }
 
+      // Get existing username before changing (to invalidate their sessions)
+      const existingUsername = remoteAccessService.getUsername();
+
       await remoteAccessService.configure(body.username, body.password);
+
+      // Invalidate all sessions for the old and new username
+      // (handles both password change and username change scenarios)
+      if (remoteSessionService) {
+        if (existingUsername) {
+          const count =
+            await remoteSessionService.invalidateUserSessions(existingUsername);
+          if (count > 0) {
+            console.log(
+              `[RemoteAccess] Invalidated ${count} sessions for ${existingUsername}`,
+            );
+          }
+        }
+        if (body.username !== existingUsername) {
+          const count = await remoteSessionService.invalidateUserSessions(
+            body.username,
+          );
+          if (count > 0) {
+            console.log(
+              `[RemoteAccess] Invalidated ${count} sessions for ${body.username}`,
+            );
+          }
+        }
+      }
 
       return c.json({ success: true, username: body.username });
     } catch (error) {
@@ -83,7 +113,22 @@ export function createRemoteAccessRoutes(
    */
   app.post("/clear", async (c) => {
     try {
+      // Get username before clearing to invalidate their sessions
+      const existingUsername = remoteAccessService.getUsername();
+
       await remoteAccessService.clearCredentials();
+
+      // Invalidate all sessions for the user
+      if (remoteSessionService && existingUsername) {
+        const count =
+          await remoteSessionService.invalidateUserSessions(existingUsername);
+        if (count > 0) {
+          console.log(
+            `[RemoteAccess] Invalidated ${count} sessions for ${existingUsername}`,
+          );
+        }
+      }
+
       return c.json({ success: true });
     } catch (error) {
       const message =

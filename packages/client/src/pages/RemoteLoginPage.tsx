@@ -10,8 +10,15 @@ import { YepAnywhereLogo } from "../components/YepAnywhereLogo";
 import { useRemoteConnection } from "../contexts/RemoteConnectionContext";
 
 export function RemoteLoginPage() {
-  const { connect, isConnecting, error, storedUrl, storedUsername } =
-    useRemoteConnection();
+  const {
+    connect,
+    isConnecting,
+    error,
+    storedUrl,
+    storedUsername,
+    hasStoredSession,
+    resumeSession,
+  } = useRemoteConnection();
 
   // Form state - pre-fill from stored credentials
   const [serverUrl, setServerUrl] = useState(
@@ -19,6 +26,7 @@ export function RemoteLoginPage() {
   );
   const [username, setUsername] = useState(storedUsername ?? "");
   const [password, setPassword] = useState("");
+  const [rememberMe, setRememberMe] = useState(hasStoredSession);
   const [localError, setLocalError] = useState<string | null>(null);
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -57,7 +65,17 @@ export function RemoteLoginPage() {
     }
 
     try {
-      await connect(wsUrl, username.trim(), password);
+      // If we have a stored session and credentials match, try to resume
+      if (
+        hasStoredSession &&
+        rememberMe &&
+        wsUrl === storedUrl &&
+        username.trim() === storedUsername
+      ) {
+        await resumeSession(password);
+      } else {
+        await connect(wsUrl, username.trim(), password, rememberMe);
+      }
       // On success, the RemoteApp will render the main app instead of login
     } catch {
       // Error is already set in context
@@ -122,6 +140,24 @@ export function RemoteLoginPage() {
               autoComplete="current-password"
               data-testid="password-input"
             />
+          </div>
+
+          <div className="login-field login-field-checkbox">
+            <label className="login-checkbox-label">
+              <input
+                type="checkbox"
+                checked={rememberMe}
+                onChange={(e) => setRememberMe(e.target.checked)}
+                disabled={isConnecting}
+                data-testid="remember-me-checkbox"
+              />
+              <span>Remember me</span>
+            </label>
+            <p className="login-field-hint">
+              {hasStoredSession
+                ? "Session will resume automatically"
+                : "Stay logged in on this device"}
+            </p>
           </div>
 
           {displayError && (

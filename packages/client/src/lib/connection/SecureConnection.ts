@@ -22,6 +22,7 @@ import type {
   RemoteClientMessage,
   SrpClientHello,
   SrpClientProof,
+  SrpSessionResume,
   UploadedFile,
   YepMessage,
 } from "@yep-anywhere/shared";
@@ -30,6 +31,8 @@ import {
   isSrpError,
   isSrpServerChallenge,
   isSrpServerVerify,
+  isSrpSessionInvalid,
+  isSrpSessionResumed,
 } from "@yep-anywhere/shared";
 import { decrypt, deriveSecretboxKey, encrypt } from "./nacl-wrapper";
 import { SrpClientSession } from "./srp-client";
@@ -54,10 +57,20 @@ const DEFAULT_CHUNK_SIZE = 64 * 1024;
 type ConnectionState =
   | "disconnected"
   | "connecting"
+  | "srp_resume_sent"
   | "srp_hello_sent"
   | "srp_proof_sent"
   | "authenticated"
   | "failed";
+
+/** Stored session for resumption (persisted to localStorage) */
+export interface StoredSession {
+  wsUrl: string;
+  username: string;
+  sessionId: string;
+  /** Base64-encoded session key (32 bytes) */
+  sessionKey: string;
+}
 
 /** Handlers for pending uploads */
 interface PendingUpload {
@@ -81,6 +94,7 @@ export class SecureConnection implements Connection {
   private ws: WebSocket | null = null;
   private srpSession: SrpClientSession | null = null;
   private sessionKey: Uint8Array | null = null;
+  private sessionId: string | null = null;
   private connectionState: ConnectionState = "disconnected";
   private pendingRequests = new Map<
     string,
@@ -96,20 +110,151 @@ export class SecureConnection implements Connection {
 
   // Credentials for authentication
   private username: string;
-  private password: string;
+  private password: string | null;
   private wsUrl: string;
 
+  // Stored session for resumption (optional)
+  private storedSession: StoredSession | null = null;
+
+  // Callback when session is established (for storing session data)
+  private onSessionEstablished?: (session: StoredSession) => void;
+
   /**
-   * Create a new secure connection.
+   * Create a new secure connection with password authentication.
    *
    * @param wsUrl - WebSocket URL to connect to
    * @param username - Username for SRP authentication
    * @param password - Password for SRP authentication
+   * @param onSessionEstablished - Optional callback when session is established (for storing)
    */
-  constructor(wsUrl: string, username: string, password: string) {
+  constructor(
+    wsUrl: string,
+    username: string,
+    password: string,
+    onSessionEstablished?: (session: StoredSession) => void,
+  ) {
     this.wsUrl = wsUrl;
     this.username = username;
     this.password = password;
+    this.onSessionEstablished = onSessionEstablished;
+  }
+
+  /**
+   * Create a secure connection from a stored session.
+   * Will attempt to resume the session, falling back to full SRP if the session is invalid.
+   *
+   * @param storedSession - Previously stored session data
+   * @param password - Password (required for fallback to full SRP)
+   * @param onSessionEstablished - Optional callback when a new session is established
+   */
+  static fromStoredSession(
+    storedSession: StoredSession,
+    password: string,
+    onSessionEstablished?: (session: StoredSession) => void,
+  ): SecureConnection {
+    const conn = new SecureConnection(
+      storedSession.wsUrl,
+      storedSession.username,
+      password,
+      onSessionEstablished,
+    );
+    conn.storedSession = storedSession;
+    return conn;
+  }
+
+  /**
+   * Generate a resume proof by encrypting the current timestamp with the session key.
+   */
+  private generateResumeProof(base64SessionKey: string): string {
+    const sessionKeyBytes = Uint8Array.from(atob(base64SessionKey), (c) =>
+      c.charCodeAt(0),
+    );
+    const timestamp = Date.now();
+    const proofData = JSON.stringify({ timestamp });
+    const { nonce, ciphertext } = encrypt(proofData, sessionKeyBytes);
+    return JSON.stringify({ nonce, ciphertext });
+  }
+
+  /**
+   * Start the full SRP handshake (when session resume fails or no stored session).
+   */
+  private async startFullSrpHandshake(
+    authRejectHandler: (err: Error) => void,
+  ): Promise<void> {
+    if (!this.password) {
+      throw new Error("Password required for SRP authentication");
+    }
+
+    console.log("[SecureConnection] Starting full SRP handshake");
+    this.srpSession = new SrpClientSession();
+    await this.srpSession.generateHello(this.username, this.password);
+
+    // Send hello
+    const hello: SrpClientHello = {
+      type: "srp_hello",
+      identity: this.username,
+    };
+    this.ws?.send(JSON.stringify(hello));
+    this.connectionState = "srp_hello_sent";
+    console.log("[SecureConnection] SRP hello sent");
+  }
+
+  /**
+   * Handle session resume response.
+   */
+  private async handleSrpResumeResponse(
+    data: string,
+    resolve: () => void,
+    reject: (err: Error) => void,
+  ): Promise<void> {
+    try {
+      const msg = JSON.parse(data);
+
+      if (isSrpSessionResumed(msg)) {
+        // Session resumed successfully - restore session key from stored session
+        console.log("[SecureConnection] Session resumed successfully");
+        if (!this.storedSession) {
+          reject(new Error("No stored session for resumption"));
+          return;
+        }
+        this.sessionKey = Uint8Array.from(
+          atob(this.storedSession.sessionKey),
+          (c) => c.charCodeAt(0),
+        );
+        this.sessionId = msg.sessionId;
+        this.connectionState = "authenticated";
+        resolve();
+        return;
+      }
+
+      if (isSrpSessionInvalid(msg)) {
+        console.log(
+          `[SecureConnection] Session resume failed: ${msg.reason}, falling back to SRP`,
+        );
+        // Clear stored session and fall back to full SRP
+        this.storedSession = null;
+        await this.startFullSrpHandshake(reject);
+        return;
+      }
+
+      if (isSrpError(msg)) {
+        console.error(
+          "[SecureConnection] SRP error during resume:",
+          msg.message,
+        );
+        this.connectionState = "failed";
+        reject(new Error(`Authentication failed: ${msg.message}`));
+        this.ws?.close();
+        return;
+      }
+
+      console.warn("[SecureConnection] Unexpected message during resume:", msg);
+    } catch (err) {
+      console.error("[SecureConnection] Resume response error:", err);
+      this.connectionState = "failed";
+      reject(err instanceof Error ? err : new Error(String(err)));
+      this.ws?.close();
+    }
   }
 
   /**
@@ -159,24 +304,32 @@ export class SecureConnection implements Connection {
       });
 
       ws.onopen = async () => {
-        console.log("[SecureConnection] WebSocket connected, starting SRP");
+        console.log("[SecureConnection] WebSocket connected");
         this.ws = ws;
 
         try {
-          // Start SRP handshake
-          this.srpSession = new SrpClientSession();
-          await this.srpSession.generateHello(this.username, this.password);
+          // Try session resumption first if we have a stored session
+          if (this.storedSession) {
+            console.log("[SecureConnection] Attempting session resumption");
+            const proof = this.generateResumeProof(
+              this.storedSession.sessionKey,
+            );
+            const resume: SrpSessionResume = {
+              type: "srp_resume",
+              identity: this.username,
+              sessionId: this.storedSession.sessionId,
+              proof,
+            };
+            ws.send(JSON.stringify(resume));
+            this.connectionState = "srp_resume_sent";
+            console.log("[SecureConnection] SRP resume sent");
+            return;
+          }
 
-          // Send hello
-          const hello: SrpClientHello = {
-            type: "srp_hello",
-            identity: this.username,
-          };
-          ws.send(JSON.stringify(hello));
-          this.connectionState = "srp_hello_sent";
-          console.log("[SecureConnection] SRP hello sent");
+          // No stored session, do full SRP handshake
+          await this.startFullSrpHandshake(authRejectHandler);
         } catch (err) {
-          console.error("[SecureConnection] SRP hello error:", err);
+          console.error("[SecureConnection] Connection error:", err);
           this.connectionState = "failed";
           authRejectHandler(
             err instanceof Error ? err : new Error(String(err)),
@@ -225,7 +378,13 @@ export class SecureConnection implements Connection {
 
       ws.onmessage = async (event) => {
         // During SRP handshake, handle SRP messages
-        if (this.connectionState === "srp_hello_sent") {
+        if (this.connectionState === "srp_resume_sent") {
+          await this.handleSrpResumeResponse(
+            event.data,
+            authResolveHandler,
+            authRejectHandler,
+          );
+        } else if (this.connectionState === "srp_hello_sent") {
           await this.handleSrpChallenge(
             event.data,
             authResolveHandler,
@@ -363,7 +522,23 @@ export class SecureConnection implements Connection {
         return;
       }
       this.sessionKey = deriveSecretboxKey(rawKey);
+      this.sessionId = msg.sessionId ?? null;
       this.connectionState = "authenticated";
+
+      // Notify caller of new session for storage
+      if (this.onSessionEstablished && this.sessionKey && this.sessionId) {
+        const sessionKeyBase64 = btoa(
+          Array.from(this.sessionKey)
+            .map((b) => String.fromCharCode(b))
+            .join(""),
+        );
+        this.onSessionEstablished({
+          wsUrl: this.wsUrl,
+          username: this.username,
+          sessionId: this.sessionId,
+          sessionKey: sessionKeyBase64,
+        });
+      }
 
       console.log("[SecureConnection] Authentication complete");
       resolve();

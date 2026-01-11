@@ -26,7 +26,10 @@ import {
   startMaintenanceServer,
 } from "./maintenance/index.js";
 import { ProjectScanner } from "./projects/scanner.js";
-import { RemoteAccessService } from "./remote-access/index.js";
+import {
+  RemoteAccessService,
+  RemoteSessionService,
+} from "./remote-access/index.js";
 import { createUploadRoutes } from "./routes/upload.js";
 import { createWsRelayRoutes } from "./routes/ws-relay.js";
 import {
@@ -189,8 +192,11 @@ createWatcherIfExists(config.claudeSessionsDir, "claude");
 createWatcherIfExists(config.geminiSessionsDir, "gemini");
 createWatcherIfExists(config.codexSessionsDir, "codex");
 
-// Create RemoteAccessService for secure WebSocket testing
+// Create RemoteAccessService and RemoteSessionService for secure WebSocket testing
 const remoteAccessService = new RemoteAccessService({
+  dataDir: config.dataDir,
+});
+const remoteSessionService = new RemoteSessionService({
   dataDir: config.dataDir,
 });
 
@@ -269,6 +275,7 @@ const wsRelayHandler = createWsRelayRoutes({
   eventBus,
   uploadManager: wsRelayUploadManager,
   remoteAccessService,
+  remoteSessionService,
 });
 app.get("/api/ws", wsRelayHandler);
 
@@ -332,8 +339,9 @@ if (useStaticFiles) {
 
 // Start the server (async to allow service initialization)
 async function startServer() {
-  // Initialize remote access service (loads state from disk)
+  // Initialize remote access and session services (loads state from disk)
   await remoteAccessService.initialize();
+  await remoteSessionService.initialize();
 
   const port = config.port;
   const server = serve({ fetch: app.fetch, port }, () => {

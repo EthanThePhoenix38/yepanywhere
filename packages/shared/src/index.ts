@@ -282,6 +282,11 @@ export type {
   SrpClientMessage,
   SrpServerMessage,
   SrpMessage,
+  // Session resumption types
+  SrpSessionResume,
+  SrpSessionResumed,
+  SrpSessionInvalid,
+  SrpSessionInvalidReason,
   // Encryption types
   EncryptedEnvelope,
   // Connection state
@@ -295,6 +300,10 @@ export {
   isSrpServerChallenge,
   isSrpServerVerify,
   isSrpError,
+  // Session resumption type guards
+  isSrpSessionResume,
+  isSrpSessionResumed,
+  isSrpSessionInvalid,
   // Encryption type guard
   isEncryptedEnvelope,
 } from "./relay.js";

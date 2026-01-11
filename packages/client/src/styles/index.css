@@ -5125,6 +5125,35 @@ a.sidebar-nav-item {
   border-color: var(--focus-border);
 }
 
+.login-field-hint {
+  font-size: var(--font-size-xs);
+  color: var(--text-dimmed);
+  margin: 0;
+}
+
+.login-field-checkbox {
+  flex-direction: row;
+  align-items: flex-start;
+  gap: var(--space-2);
+}
+
+.login-checkbox-label {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  cursor: pointer;
+  font-size: var(--font-size-sm);
+  color: var(--text-primary);
+}
+
+.login-checkbox-label input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  cursor: pointer;
+  accent-color: var(--app-yep-green);
+}
+
 .login-error {
   color: var(--error-color);
   font-size: var(--font-size-sm);

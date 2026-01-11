@@ -714,31 +714,158 @@ test.describe("Encrypted Data Flow", () => {
 #### Checklist Summary
 
 **Remote Client E2E Setup**
-- [ ] Add `dev:remote` / `build:remote` / `preview:remote` scripts to package.json
-- [ ] Update vite.config.remote.ts to support REMOTE_PORT=0 for auto-assign
-- [ ] Start remote client Vite dev server in global-setup.ts
-- [ ] Add `remoteClientURL` fixture to fixtures.ts
-- [ ] Kill remote client process in global-teardown.ts
-- [ ] Configure CORS in ws.ts for remote client origins
+- [x] Add `dev:remote` / `build:remote` / `preview:remote` scripts to package.json
+- [x] Update vite.config.remote.ts to support REMOTE_PORT=0 for auto-assign
+- [x] Start remote client Vite dev server in global-setup.ts
+- [x] Add `remoteClientURL` fixture to fixtures.ts
+- [x] Kill remote client process in global-teardown.ts
+- [x] Configure CORS in ws-relay.ts for remote client origins
 
 **Full Login Flow Tests** (remote-login.spec.ts)
-- [ ] Add data-testid attributes to RemoteLoginPage.tsx
-- [ ] Test: successful login renders main app
-- [ ] Test: wrong password shows error
-- [ ] Test: server unreachable shows connection error
+- [x] Add data-testid attributes to RemoteLoginPage.tsx
+- [x] Test: login page renders correctly
+- [x] Test: successful login renders main app
+- [x] Test: wrong password shows error
+- [x] Test: unknown username shows error
+- [x] Test: server unreachable shows connection error
+- [x] Test: empty fields show validation error
 
 **Encrypted Data Flow Tests**
-- [ ] Test: projects list loads via SecureConnection
-- [ ] Test: activity subscription receives events
-- [ ] Test: create session, send message, verify streaming
-- [ ] Test: file upload through encrypted WebSocket
+- [x] Test: sidebar navigation loads via SecureConnection
+- [x] Test: activity subscription receives events
+- [x] Test: mock project visible in sidebar
+- [ ] Test: create session, send message, verify streaming (requires more UI instrumentation)
+- [ ] Test: file upload through encrypted WebSocket (requires more UI instrumentation)
 
 **Test Isolation**
-- [ ] beforeEach configures fresh remote access credentials
-- [ ] beforeEach clears localStorage/sessionStorage
-- [ ] afterEach disables remote access
+- [x] beforeEach configures fresh remote access credentials
+- [x] beforeEach clears localStorage/sessionStorage
+- [x] afterEach disables remote access
 
 This phase validates the complete user experience: a browser loading the remote client, entering credentials, and using the app through an encrypted WebSocket connection.
+
+### Phase 3.7: Session Resumption
+
+Enable page refresh and navigation without re-entering password by persisting the SRP session key.
+
+**Problem**: Currently, the session key derived from SRP is stored only in memory. Page refresh, URL navigation, or browser restart requires full re-authentication with password.
+
+**Solution**: Store the session key locally and add a session resumption protocol that skips the SRP handshake when a valid session exists.
+
+#### Protocol Messages
+
+Add to `packages/shared/src/relay.ts`:
+
+```typescript
+// Client → Server: Attempt to resume existing session
+type SrpSessionResume = {
+  type: "srp_resume";
+  identity: string;           // Username
+  sessionId: string;          // Session identifier from previous auth
+  proof: string;              // Encrypted timestamp to prove key possession
+};
+
+// Server → Client: Session resumed successfully
+type SrpSessionResumed = {
+  type: "srp_resumed";
+  sessionId: string;
+};
+
+// Server → Client: Session invalid, do full SRP
+type SrpSessionInvalid = {
+  type: "srp_invalid";
+  reason: "expired" | "unknown" | "invalid_proof";
+};
+```
+
+#### Server Changes
+
+**Session storage** (`packages/server/src/services/remote-access.ts`):
+- Store session keys in data dir: `{dataDir}/remote-sessions.json`
+- Map: `{ [sessionId]: { username, sessionKey, createdAt, lastUsed } }`
+- Session expiry: configurable (default 7 days idle, 30 days max)
+
+**WebSocket handler** (`packages/server/src/routes/ws-relay.ts`):
+- Handle `srp_resume` message before SRP hello
+- Verify proof by decrypting with stored session key
+- Send `srp_resumed` on success, `srp_invalid` on failure
+- Update `lastUsed` timestamp on successful resume
+
+#### Client Changes
+
+**Session storage** (`packages/client/src/contexts/RemoteConnectionContext.tsx`):
+```typescript
+interface StoredSession {
+  wsUrl: string;
+  username: string;
+  sessionId: string;
+  sessionKey: string;  // Base64-encoded Uint8Array
+  createdAt: number;
+}
+```
+- Store in localStorage after successful SRP
+- Clear on explicit logout or auth failure
+
+**SecureConnection** (`packages/client/src/lib/connection/SecureConnection.ts`):
+- Add `static fromStoredSession(session: StoredSession)` factory
+- `connectAndAuthenticate()` tries resume first, falls back to SRP
+- Generate proof: encrypt current timestamp with session key
+
+#### Flow
+
+```
+Reconnect with stored session:
+
+Client                           Server
+  │                                │
+  │ ── srp_resume ───────────────▶ │  (sessionId + encrypted timestamp)
+  │                                │
+  │ ◀── srp_resumed ────────────── │  (session valid)
+  │                                │
+  │ ══ encrypted traffic ════════▶ │  (using stored session key)
+
+Session expired/invalid:
+
+Client                           Server
+  │                                │
+  │ ── srp_resume ───────────────▶ │
+  │                                │
+  │ ◀── srp_invalid ────────────── │  (reason: expired)
+  │                                │
+  │    (fall back to full SRP handshake)
+```
+
+#### Security Considerations
+
+- **Session key storage**: localStorage is accessible to JS on same origin. Acceptable for convenience vs. security tradeoff. Users can choose to not save session.
+- **Proof mechanism**: Encrypting timestamp prevents replay attacks. Server validates timestamp is recent (within 5 minutes).
+- **Session revocation**: Changing password invalidates all sessions. Add explicit "sign out everywhere" option.
+- **Session limits**: Max 5 active sessions per user. Oldest evicted on new auth.
+
+#### Checklist
+
+**Protocol**
+- [x] Add `SrpSessionResume`, `SrpSessionResumed`, `SrpSessionInvalid` types
+- [x] Add type guards for new message types
+
+**Server**
+- [x] Add session storage service (create, lookup, delete, cleanup)
+- [x] Handle `srp_resume` in ws-relay.ts
+- [x] Session expiry cleanup (on startup + periodic)
+- [x] Invalidate sessions on password change
+
+**Client**
+- [x] Update `StoredCredentials` to include sessionId and sessionKey
+- [x] Add `SecureConnection.fromStoredSession()` factory
+- [x] Try session resume in `connectAndAuthenticate()`
+- [x] Fall back to SRP on `srp_invalid`
+- [x] Add "Remember me" checkbox to login form (controls session storage)
+
+**Tests**
+- [ ] Unit tests for session storage service
+- [ ] E2E test: login, refresh page, still authenticated
+- [ ] E2E test: session expiry triggers re-login
+- [ ] E2E test: password change invalidates sessions
 
 ### Phase 4: Relay
 - [ ] Separate relay package/service
@@ -759,7 +886,7 @@ This phase validates the complete user experience: a browser loading the remote 
 
 1. **Username format** - Allow dots/dashes? Min/max length?
 2. **Password requirements** - Minimum entropy? Passphrase suggestions?
-3. **Session persistence** - How long to cache session key on phone?
+3. **Session persistence** - ~~How long to cache session key on phone?~~ → See Phase 3.7 (7 days idle, 30 days max)
 4. **Conflict handling** - When yepanywhere server moves to new machine, last-write-wins?
 5. **Offline indicator** - Show "yepanywhere offline" vs "wrong password"?
 

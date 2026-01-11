@@ -24,7 +24,10 @@ import { ProjectScanner } from "./projects/scanner.js";
 import { PushNotifier, type PushService } from "./push/index.js";
 import { createPushRoutes } from "./push/routes.js";
 import type { RecentsService } from "./recents/index.js";
-import type { RemoteAccessService } from "./remote-access/index.js";
+import type {
+  RemoteAccessService,
+  RemoteSessionService,
+} from "./remote-access/index.js";
 import { createRemoteAccessRoutes } from "./remote-access/index.js";
 import { createActivityRoutes } from "./routes/activity.js";
 import { createBeadsRoutes } from "./routes/beads.js";
@@ -97,6 +100,8 @@ export interface AppOptions {
   authDisabled?: boolean;
   /** RemoteAccessService for SRP-based remote access (optional) */
   remoteAccessService?: RemoteAccessService;
+  /** RemoteSessionService for session persistence (optional) */
+  remoteSessionService?: RemoteSessionService;
 }
 
 export interface AppResult {
@@ -146,6 +151,7 @@ export function createApp(options: AppOptions): AppResult {
       "/api/remote-access",
       createRemoteAccessRoutes({
         remoteAccessService: options.remoteAccessService,
+        remoteSessionService: options.remoteSessionService,
       }),
     );
   }
