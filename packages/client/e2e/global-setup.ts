@@ -17,6 +17,8 @@ const __dirname = dirname(__filename);
 const PORT_FILE = join(tmpdir(), "claude-e2e-port");
 const MAINTENANCE_PORT_FILE = join(tmpdir(), "claude-e2e-maintenance-port");
 const PID_FILE = join(tmpdir(), "claude-e2e-pid");
+const REMOTE_CLIENT_PORT_FILE = join(tmpdir(), "claude-e2e-remote-port");
+const REMOTE_CLIENT_PID_FILE = join(tmpdir(), "claude-e2e-remote-pid");
 
 // Isolated test directories to avoid polluting real ~/.claude, ~/.codex, ~/.gemini
 const E2E_TEST_DIR = join(tmpdir(), "claude-e2e-sessions");
@@ -36,7 +38,13 @@ export {
 
 export default async function globalSetup() {
   // Clean up any stale files
-  for (const file of [PORT_FILE, MAINTENANCE_PORT_FILE, PID_FILE]) {
+  for (const file of [
+    PORT_FILE,
+    MAINTENANCE_PORT_FILE,
+    PID_FILE,
+    REMOTE_CLIENT_PORT_FILE,
+    REMOTE_CLIENT_PID_FILE,
+  ]) {
     if (existsSync(file)) {
       unlinkSync(file);
     }
@@ -211,6 +219,70 @@ export default async function globalSetup() {
 
   // Unref so the process doesn't block node exit
   serverProcess.unref();
+
+  // Start remote client Vite dev server for E2E testing
+  console.log("[E2E] Starting remote client dev server...");
+  const clientRoot = join(repoRoot, "packages", "client");
+  const remoteClientProcess = spawn(
+    "pnpm",
+    ["exec", "vite", "--config", "vite.config.remote.ts"],
+    {
+      cwd: clientRoot,
+      env: { ...process.env, REMOTE_PORT: "0" },
+      stdio: ["ignore", "pipe", "pipe"],
+      detached: true,
+    },
+  );
+
+  if (remoteClientProcess.pid) {
+    writeFileSync(REMOTE_CLIENT_PID_FILE, String(remoteClientProcess.pid));
+  }
+
+  // Parse port from Vite's "Local: http://localhost:XXXXX/" output
+  const remotePort = await new Promise<number>((resolve, reject) => {
+    const timeout = setTimeout(
+      () => reject(new Error("Timeout waiting for remote client (30s)")),
+      30000,
+    );
+    let output = "";
+    remoteClientProcess.stdout?.on("data", (data: Buffer) => {
+      output += data.toString();
+      const match = output.match(/Local:\s+http:\/\/localhost:(\d+)/);
+      if (match) {
+        clearTimeout(timeout);
+        resolve(Number.parseInt(match[1], 10));
+      }
+    });
+
+    remoteClientProcess.stderr?.on("data", (data: Buffer) => {
+      const msg = data.toString();
+      if (!msg.includes("ExperimentalWarning")) {
+        console.error("[E2E Remote Client]", msg);
+      }
+    });
+
+    remoteClientProcess.on("error", (err) => {
+      clearTimeout(timeout);
+      reject(err);
+    });
+
+    remoteClientProcess.on("exit", (code) => {
+      if (code !== 0 && code !== null) {
+        clearTimeout(timeout);
+        reject(new Error(`Remote client exited with code ${code}`));
+      }
+    });
+  });
+
+  writeFileSync(REMOTE_CLIENT_PORT_FILE, String(remotePort));
+  console.log(`[E2E] Remote client dev server on port ${remotePort}`);
+  remoteClientProcess.unref();
 }
 
-export { PORT_FILE, MAINTENANCE_PORT_FILE, PID_FILE };
+export {
+  PORT_FILE,
+  MAINTENANCE_PORT_FILE,
+  PID_FILE,
+  REMOTE_CLIENT_PORT_FILE,
+  REMOTE_CLIENT_PID_FILE,
+};

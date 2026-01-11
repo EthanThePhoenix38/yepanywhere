@@ -7,16 +7,35 @@
 
 import { resolve } from "node:path";
 import react from "@vitejs/plugin-react";
-import { defineConfig } from "vite";
+import { type Plugin, defineConfig } from "vite";
 
 // Port for dev server (different from regular client to allow parallel dev)
 const remoteDevPort = process.env.REMOTE_PORT
   ? Number.parseInt(process.env.REMOTE_PORT, 10)
   : 3403;
 
+/**
+ * Plugin to serve remote.html instead of index.html in dev mode.
+ * This makes the dev server behave like the production build.
+ */
+function serveRemoteHtml(): Plugin {
+  return {
+    name: "serve-remote-html",
+    configureServer(server) {
+      server.middlewares.use((req, _res, next) => {
+        // Rewrite root to remote.html
+        if (req.url === "/" || req.url === "/index.html") {
+          req.url = "/remote.html";
+        }
+        next();
+      });
+    },
+  };
+}
+
 export default defineConfig({
   clearScreen: false,
-  plugins: [react()],
+  plugins: [serveRemoteHtml(), react()],
   resolve: {
     conditions: ["source"],
   },
@@ -32,9 +51,10 @@ export default defineConfig({
   },
   // Dev server configuration
   server: {
-    port: remoteDevPort,
+    // When REMOTE_PORT=0, let Vite pick an available port (for E2E tests)
+    port: remoteDevPort === 0 ? undefined : remoteDevPort,
+    strictPort: remoteDevPort !== 0,
     // Allow connections from any host (for LAN testing)
     host: true,
-    // No HMR config needed for remote - it's standalone
   },
 });

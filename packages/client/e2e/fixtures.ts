@@ -5,6 +5,7 @@ import { test as base } from "@playwright/test";
 
 const PORT_FILE = join(tmpdir(), "claude-e2e-port");
 const MAINTENANCE_PORT_FILE = join(tmpdir(), "claude-e2e-maintenance-port");
+const REMOTE_CLIENT_PORT_FILE = join(tmpdir(), "claude-e2e-remote-port");
 const PATHS_FILE = join(tmpdir(), "claude-e2e-paths.json");
 
 function getServerPort(): number {
@@ -20,6 +21,15 @@ function getMaintenancePort(): number {
   }
   throw new Error(
     `Maintenance port file not found: ${MAINTENANCE_PORT_FILE}. Did global-setup run?`,
+  );
+}
+
+function getRemoteClientPort(): number {
+  if (existsSync(REMOTE_CLIENT_PORT_FILE)) {
+    return Number.parseInt(readFileSync(REMOTE_CLIENT_PORT_FILE, "utf-8"), 10);
+  }
+  throw new Error(
+    `Remote client port file not found: ${REMOTE_CLIENT_PORT_FILE}. Did global-setup run?`,
   );
 }
 
@@ -102,6 +112,7 @@ interface TestFixtures {
   baseURL: string;
   maintenanceURL: string;
   wsURL: string;
+  remoteClientURL: string;
 }
 
 // Extend base test with dynamic baseURL and maintenanceURL
@@ -120,6 +131,11 @@ export const test = base.extend<TestFixtures>({
   wsURL: async ({}, use) => {
     const port = getServerPort();
     await use(`ws://localhost:${port}/api/ws`);
+  },
+  // biome-ignore lint/correctness/noEmptyPattern: Playwright fixture pattern requires empty destructure
+  remoteClientURL: async ({}, use) => {
+    const port = getRemoteClientPort();
+    await use(`http://localhost:${port}`);
   },
 });
 

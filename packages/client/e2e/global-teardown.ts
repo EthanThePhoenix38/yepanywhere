@@ -4,6 +4,8 @@ import { join } from "node:path";
 
 const PORT_FILE = join(tmpdir(), "claude-e2e-port");
 const PID_FILE = join(tmpdir(), "claude-e2e-pid");
+const REMOTE_CLIENT_PORT_FILE = join(tmpdir(), "claude-e2e-remote-port");
+const REMOTE_CLIENT_PID_FILE = join(tmpdir(), "claude-e2e-remote-pid");
 
 export default async function globalTeardown() {
   // Kill the server process
@@ -25,6 +27,28 @@ export default async function globalTeardown() {
   // Clean up port file
   if (existsSync(PORT_FILE)) {
     unlinkSync(PORT_FILE);
+  }
+
+  // Kill the remote client process
+  if (existsSync(REMOTE_CLIENT_PID_FILE)) {
+    const pid = Number.parseInt(
+      readFileSync(REMOTE_CLIENT_PID_FILE, "utf-8"),
+      10,
+    );
+    try {
+      process.kill(-pid, "SIGTERM");
+      console.log(`[E2E] Killed remote client process group ${pid}`);
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code !== "ESRCH") {
+        console.error("[E2E] Error killing remote client:", err);
+      }
+    }
+    unlinkSync(REMOTE_CLIENT_PID_FILE);
+  }
+
+  // Clean up remote client port file
+  if (existsSync(REMOTE_CLIENT_PORT_FILE)) {
+    unlinkSync(REMOTE_CLIENT_PORT_FILE);
   }
 
   // Clean up mock project data created by dev-mock.ts setupMockProjects()

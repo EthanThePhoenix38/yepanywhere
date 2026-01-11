@@ -422,9 +422,6 @@ Before adding relay complexity, validate the full secure connection flow using a
 
 **Testing Scenarios**
 - [ ] Localhost dev server → localhost yepanywhere (primary development flow)
-- [ ] E2E test with Playwright: full login flow (enter URL/credentials → SRP → app loads)
-- [ ] E2E test: verify API calls work through SecureConnection (list sessions, etc.)
-- [ ] E2E test: verify SSE streaming works (send message, see response)
 - [ ] LAN testing once localhost works (e.g., `ws://192.168.1.50:3400/ws`)
 
 **Nice to Have**
@@ -436,6 +433,312 @@ This phase validates:
 2. SecureConnection handles all app traffic correctly
 3. Encryption/decryption is seamless
 4. The protocol is ready for relay passthrough
+
+### Phase 3.6: Browser E2E Tests for Remote Login
+
+Full Playwright browser tests that serve the remote client and perform real login flows.
+
+**Test Infrastructure** (completed)
+- [x] E2E test server uses auto-assigned ports (PORT=0)
+- [x] Maintenance server enabled in dev-mock.ts for test configuration
+- [x] Health check before tests start
+- [x] `configureRemoteAccess()` / `disableRemoteAccess()` test helpers
+- [x] `maintenanceURL` and `wsURL` Playwright fixtures
+
+#### Implementation Plan
+
+##### Step 1: Add Remote Client Dev Server Script
+
+Add proper package.json scripts for running the remote client with HMR, usable for both development and E2E testing.
+
+**File: `packages/client/package.json`** - Add scripts:
+```json
+{
+  "scripts": {
+    "dev:remote": "vite --config vite.config.remote.ts",
+    "build:remote": "vite build --config vite.config.remote.ts",
+    "preview:remote": "vite preview --config vite.config.remote.ts"
+  }
+}
+```
+
+**File: `packages/client/vite.config.remote.ts`** - Support dynamic port for E2E:
+```typescript
+const remoteDevPort = process.env.REMOTE_PORT
+  ? Number.parseInt(process.env.REMOTE_PORT, 10)
+  : 3403;
+
+export default defineConfig({
+  // ...existing config...
+  server: {
+    // When REMOTE_PORT=0, let Vite pick an available port
+    port: remoteDevPort === 0 ? undefined : remoteDevPort,
+    strictPort: remoteDevPort !== 0,
+    host: true,
+  },
+});
+```
+
+##### Step 2: Start Remote Client Dev Server in Global Setup
+
+**File: `packages/client/e2e/global-setup.ts`**
+
+Add after main server startup:
+```typescript
+const REMOTE_CLIENT_PORT_FILE = join(tmpdir(), "claude-e2e-remote-port");
+const REMOTE_CLIENT_PID_FILE = join(tmpdir(), "claude-e2e-remote-pid");
+
+// Start remote client Vite dev server for E2E testing
+console.log("[E2E] Starting remote client dev server...");
+const clientRoot = join(repoRoot, "packages", "client");
+const remoteClientProcess = spawn(
+  "pnpm",
+  ["exec", "vite", "--config", "vite.config.remote.ts"],
+  {
+    cwd: clientRoot,
+    env: { ...process.env, REMOTE_PORT: "0" },
+    stdio: ["ignore", "pipe", "pipe"],
+    detached: true,
+  }
+);
+
+if (remoteClientProcess.pid) {
+  writeFileSync(REMOTE_CLIENT_PID_FILE, String(remoteClientProcess.pid));
+}
+
+// Parse port from Vite's "Local: http://localhost:XXXXX/" output
+const remotePort = await new Promise<number>((resolve, reject) => {
+  const timeout = setTimeout(() => reject(new Error("Timeout waiting for remote client")), 30000);
+  let output = "";
+  remoteClientProcess.stdout?.on("data", (data: Buffer) => {
+    output += data.toString();
+    const match = output.match(/Local:\s+http:\/\/localhost:(\d+)/);
+    if (match) {
+      clearTimeout(timeout);
+      resolve(Number.parseInt(match[1], 10));
+    }
+  });
+});
+
+writeFileSync(REMOTE_CLIENT_PORT_FILE, String(remotePort));
+console.log(`[E2E] Remote client dev server on port ${remotePort}`);
+remoteClientProcess.unref();
+```
+
+**File: `packages/client/e2e/global-teardown.ts`** - Kill remote client process:
+```typescript
+const REMOTE_CLIENT_PID_FILE = join(tmpdir(), "claude-e2e-remote-pid");
+
+// Kill remote client process
+if (existsSync(REMOTE_CLIENT_PID_FILE)) {
+  const pid = Number.parseInt(readFileSync(REMOTE_CLIENT_PID_FILE, "utf-8"), 10);
+  try {
+    process.kill(-pid, "SIGTERM");
+  } catch {}
+  unlinkSync(REMOTE_CLIENT_PID_FILE);
+}
+```
+
+##### Step 3: Add remoteClientURL Fixture
+
+**File: `packages/client/e2e/fixtures.ts`**
+```typescript
+const REMOTE_CLIENT_PORT_FILE = join(tmpdir(), "claude-e2e-remote-port");
+
+export const test = base.extend<{
+  baseURL: string;
+  maintenanceURL: string;
+  wsURL: string;
+  remoteClientURL: string;  // NEW
+}>({
+  // ...existing fixtures...
+  remoteClientURL: async ({}, use) => {
+    const port = readFileSync(REMOTE_CLIENT_PORT_FILE, "utf-8").trim();
+    await use(`http://localhost:${port}`);
+  },
+});
+```
+
+##### Step 4: Configure CORS for Remote Client Origin
+
+The yepanywhere server WebSocket endpoint must accept connections from the remote client origin.
+
+**File: `packages/server/src/routes/ws.ts`** - Add origin validation:
+```typescript
+// In WebSocket upgrade handler
+const origin = request.headers.get("origin");
+const allowedOrigins = [
+  /^https?:\/\/localhost:\d+$/,
+  /^https?:\/\/127\.0\.0\.1:\d+$/,
+  /^https:\/\/[\w-]+\.github\.io$/,  // GitHub Pages
+];
+
+const isAllowed = !origin || allowedOrigins.some((re) => re.test(origin));
+if (!isAllowed) {
+  return new Response("Forbidden", { status: 403 });
+}
+```
+
+##### Step 5: Add data-testid Attributes to RemoteLoginPage
+
+**File: `packages/client/src/pages/RemoteLoginPage.tsx`**
+
+Add test IDs to form elements:
+```tsx
+<form data-testid="login-form" onSubmit={handleSubmit}>
+  <input data-testid="ws-url-input" ... />
+  <input data-testid="username-input" ... />
+  <input data-testid="password-input" ... />
+  <button data-testid="login-button" type="submit">Connect</button>
+  {error && <div data-testid="login-error">{error}</div>}
+</form>
+```
+
+##### Step 6: Create Remote Login E2E Test File
+
+**File: `packages/client/e2e/remote-login.spec.ts`**
+
+```typescript
+import { expect } from "@playwright/test";
+import { test, configureRemoteAccess, disableRemoteAccess } from "./fixtures";
+
+test.describe("Remote Login Flow", () => {
+  const testUsername = "e2e-test-user";
+  const testPassword = "test-password-123";
+
+  test.beforeEach(async ({ baseURL, page }) => {
+    await configureRemoteAccess(baseURL, {
+      username: testUsername,
+      password: testPassword,
+    });
+    // Clear localStorage for fresh state
+    await page.addInitScript(() => {
+      localStorage.clear();
+      sessionStorage.clear();
+    });
+  });
+
+  test.afterEach(async ({ baseURL }) => {
+    await disableRemoteAccess(baseURL);
+  });
+
+  test("successful login renders main app", async ({ page, remoteClientURL, wsURL }) => {
+    await page.goto(remoteClientURL);
+
+    await page.fill('[data-testid="ws-url-input"]', wsURL);
+    await page.fill('[data-testid="username-input"]', testUsername);
+    await page.fill('[data-testid="password-input"]', testPassword);
+    await page.click('[data-testid="login-button"]');
+
+    // Wait for main app (projects list)
+    await expect(page.locator('[data-testid="projects-list"]')).toBeVisible({ timeout: 10000 });
+  });
+
+  test("wrong password shows error", async ({ page, remoteClientURL, wsURL }) => {
+    await page.goto(remoteClientURL);
+
+    await page.fill('[data-testid="ws-url-input"]', wsURL);
+    await page.fill('[data-testid="username-input"]', testUsername);
+    await page.fill('[data-testid="password-input"]', "wrong-password");
+    await page.click('[data-testid="login-button"]');
+
+    await expect(page.locator('[data-testid="login-error"]')).toBeVisible();
+    await expect(page.locator('[data-testid="login-form"]')).toBeVisible();
+  });
+
+  test("server unreachable shows connection error", async ({ page, remoteClientURL }) => {
+    await page.goto(remoteClientURL);
+
+    await page.fill('[data-testid="ws-url-input"]', "ws://localhost:9999/api/ws");
+    await page.fill('[data-testid="username-input"]', testUsername);
+    await page.fill('[data-testid="password-input"]', testPassword);
+    await page.click('[data-testid="login-button"]');
+
+    await expect(page.locator('[data-testid="login-error"]')).toBeVisible();
+  });
+});
+```
+
+##### Step 7: Add Encrypted Data Flow Tests
+
+Add to `packages/client/e2e/remote-login.spec.ts`:
+
+```typescript
+test.describe("Encrypted Data Flow", () => {
+  const testUsername = "e2e-test-user";
+  const testPassword = "test-password-123";
+
+  async function login(page, remoteClientURL, wsURL) {
+    await page.goto(remoteClientURL);
+    await page.fill('[data-testid="ws-url-input"]', wsURL);
+    await page.fill('[data-testid="username-input"]', testUsername);
+    await page.fill('[data-testid="password-input"]', testPassword);
+    await page.click('[data-testid="login-button"]');
+    await expect(page.locator('[data-testid="projects-list"]')).toBeVisible({ timeout: 10000 });
+  }
+
+  test.beforeEach(async ({ baseURL }) => {
+    await configureRemoteAccess(baseURL, { username: testUsername, password: testPassword });
+  });
+
+  test.afterEach(async ({ baseURL }) => {
+    await disableRemoteAccess(baseURL);
+  });
+
+  test("projects list loads via SecureConnection", async ({ page, remoteClientURL, wsURL }) => {
+    await login(page, remoteClientURL, wsURL);
+    // If we get here, encrypted fetch worked
+    const projectItems = page.locator('[data-testid="project-item"]');
+    await expect(projectItems.first()).toBeVisible();
+  });
+
+  test("can create session and receive streaming response", async ({ page, remoteClientURL, wsURL }) => {
+    await login(page, remoteClientURL, wsURL);
+
+    // Click on a project to create/view session
+    await page.locator('[data-testid="project-item"]').first().click();
+
+    // Create new session
+    await page.click('[data-testid="new-session-button"]');
+
+    // Send a message
+    await page.fill('[data-testid="message-input"]', "Hello from E2E test");
+    await page.click('[data-testid="send-button"]');
+
+    // Verify streaming response appears
+    await expect(page.locator('[data-testid="assistant-message"]')).toBeVisible({ timeout: 15000 });
+  });
+});
+```
+
+#### Checklist Summary
+
+**Remote Client E2E Setup**
+- [ ] Add `dev:remote` / `build:remote` / `preview:remote` scripts to package.json
+- [ ] Update vite.config.remote.ts to support REMOTE_PORT=0 for auto-assign
+- [ ] Start remote client Vite dev server in global-setup.ts
+- [ ] Add `remoteClientURL` fixture to fixtures.ts
+- [ ] Kill remote client process in global-teardown.ts
+- [ ] Configure CORS in ws.ts for remote client origins
+
+**Full Login Flow Tests** (remote-login.spec.ts)
+- [ ] Add data-testid attributes to RemoteLoginPage.tsx
+- [ ] Test: successful login renders main app
+- [ ] Test: wrong password shows error
+- [ ] Test: server unreachable shows connection error
+
+**Encrypted Data Flow Tests**
+- [ ] Test: projects list loads via SecureConnection
+- [ ] Test: activity subscription receives events
+- [ ] Test: create session, send message, verify streaming
+- [ ] Test: file upload through encrypted WebSocket
+
+**Test Isolation**
+- [ ] beforeEach configures fresh remote access credentials
+- [ ] beforeEach clears localStorage/sessionStorage
+- [ ] afterEach disables remote access
+
+This phase validates the complete user experience: a browser loading the remote client, entering credentials, and using the app through an encrypted WebSocket connection.
 
 ### Phase 4: Relay
 - [ ] Separate relay package/service

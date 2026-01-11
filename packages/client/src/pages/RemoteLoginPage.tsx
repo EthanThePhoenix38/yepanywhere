@@ -15,7 +15,7 @@ export function RemoteLoginPage() {
 
   // Form state - pre-fill from stored credentials
   const [serverUrl, setServerUrl] = useState(
-    storedUrl ?? "ws://localhost:3400/ws",
+    storedUrl ?? "ws://localhost:3400/api/ws",
   );
   const [username, setUsername] = useState(storedUsername ?? "");
   const [password, setPassword] = useState("");
@@ -51,9 +51,9 @@ export function RemoteLoginPage() {
       wsUrl = `ws://${wsUrl}`;
     }
 
-    // Ensure /ws path
-    if (!wsUrl.endsWith("/ws")) {
-      wsUrl = `${wsUrl.replace(/\/$/, "")}/ws`;
+    // Ensure /api/ws path
+    if (!wsUrl.endsWith("/api/ws")) {
+      wsUrl = `${wsUrl.replace(/\/$/, "")}/api/ws`;
     }
 
     try {
@@ -74,7 +74,11 @@ export function RemoteLoginPage() {
         </div>
         <p className="login-subtitle">Connect to your Yep Anywhere server</p>
 
-        <form onSubmit={handleSubmit} className="login-form">
+        <form
+          onSubmit={handleSubmit}
+          className="login-form"
+          data-testid="login-form"
+        >
           <div className="login-field">
             <label htmlFor="serverUrl">Server URL</label>
             <input
@@ -82,12 +86,13 @@ export function RemoteLoginPage() {
               type="text"
               value={serverUrl}
               onChange={(e) => setServerUrl(e.target.value)}
-              placeholder="ws://localhost:3400/ws"
+              placeholder="ws://localhost:3400/api/ws"
               disabled={isConnecting}
               autoComplete="url"
+              data-testid="ws-url-input"
             />
             <p className="login-field-hint">
-              Your server's address (e.g., ws://192.168.1.50:3400/ws)
+              Your server's address (e.g., ws://192.168.1.50:3400/api/ws)
             </p>
           </div>
 
@@ -101,6 +106,7 @@ export function RemoteLoginPage() {
               placeholder="Enter username"
               disabled={isConnecting}
               autoComplete="username"
+              data-testid="username-input"
             />
           </div>
 
@@ -114,15 +120,21 @@ export function RemoteLoginPage() {
               placeholder="Enter password"
               disabled={isConnecting}
               autoComplete="current-password"
+              data-testid="password-input"
             />
           </div>
 
-          {displayError && <div className="login-error">{displayError}</div>}
+          {displayError && (
+            <div className="login-error" data-testid="login-error">
+              {displayError}
+            </div>
+          )}
 
           <button
             type="submit"
             className="login-button"
             disabled={isConnecting}
+            data-testid="login-button"
           >
             {isConnecting ? "Connecting..." : "Connect"}
           </button>

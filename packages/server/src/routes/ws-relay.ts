@@ -113,6 +113,34 @@ interface RelayUploadState {
 const PROGRESS_INTERVAL = 64 * 1024;
 
 /**
+ * Allowed origins for WebSocket connections.
+ * Matches:
+ * - localhost with any port (http/https)
+ * - 127.0.0.1 with any port (http/https)
+ * - LAN IPs (192.168.x.x, 10.x.x.x, 172.16-31.x.x)
+ * - GitHub Pages (*.github.io)
+ */
+const ALLOWED_ORIGIN_PATTERNS = [
+  /^https?:\/\/localhost(:\d+)?$/,
+  /^https?:\/\/127\.0\.0\.1(:\d+)?$/,
+  /^https?:\/\/192\.168\.\d{1,3}\.\d{1,3}(:\d+)?$/,
+  /^https?:\/\/10\.\d{1,3}\.\d{1,3}\.\d{1,3}(:\d+)?$/,
+  /^https?:\/\/172\.(1[6-9]|2\d|3[01])\.\d{1,3}\.\d{1,3}(:\d+)?$/,
+  /^https:\/\/[\w-]+\.github\.io$/,
+];
+
+/**
+ * Check if an origin is allowed for WebSocket connections.
+ * Allows null/undefined origin (same-origin requests) and matches against allowed patterns.
+ */
+function isAllowedOrigin(origin: string | undefined): boolean {
+  // No origin header means same-origin request (allowed)
+  if (!origin) return true;
+  // Check against allowed patterns
+  return ALLOWED_ORIGIN_PATTERNS.some((pattern) => pattern.test(origin));
+}
+
+/**
  * Encryption-aware send function type.
  * Created per-connection, captures connection state for automatic encryption.
  */
@@ -1015,8 +1043,20 @@ export function createWsRelayRoutes(
     }
   };
 
-  // Return the WebSocket handler
-  return upgradeWebSocket((_c) => {
+  // Return the WebSocket handler with origin validation
+  return upgradeWebSocket((c) => {
+    // Check origin before upgrading
+    const origin = c.req.header("origin");
+    if (!isAllowedOrigin(origin)) {
+      console.warn(`[WS Relay] Rejected connection from origin: ${origin}`);
+      // Return empty handlers - connection will be closed immediately
+      return {
+        onOpen(_evt, ws) {
+          ws.close(4003, "Forbidden: Invalid origin");
+        },
+      };
+    }
+
     // Track active subscriptions for this connection
     const subscriptions = new Map<string, () => void>();
     // Track active uploads for this connection
