@@ -116,6 +116,8 @@ export class WebSocketConnection implements Connection {
       console.log("[WebSocketConnection] Connecting to", wsUrl);
 
       const ws = new WebSocket(wsUrl);
+      // Set binaryType to receive ArrayBuffer instead of Blob for binary frames
+      ws.binaryType = "arraybuffer";
 
       ws.onopen = () => {
         console.log("[WebSocketConnection] Connected");
