@@ -1,8 +1,33 @@
 # Remote Access
 
-Yep Anywhere runs on your development machine. To access it from your phone or another device outside your local network, you'll need to set up remote access using one of the options below.
+Yep Anywhere runs on your development machine. To access it from your phone or another device outside your local network, you'll need to set up remote access.
 
-All options require you to trust some external party with routing your traffic. Choose based on your comfort level and existing setup.
+## Secure Relay (Coming Soon)
+
+We're building a zero-config relay that makes remote access simple:
+
+1. **Set up once**: Enter a username and password in Settings → Remote Access
+2. **Connect from anywhere**: Visit `yepanywhere.com/c/yourusername` (URL TBD) and enter your password
+3. **That's it** — no accounts, no Tailscale, no port forwarding
+
+**How it works:**
+- Your yepanywhere server connects to our public relay
+- Your phone connects to the same relay and authenticates with SRP-6a (zero-knowledge password proof)
+- All traffic is end-to-end encrypted with TweetNaCl — the relay only sees opaque blobs
+- You can [run your own relay](relay-design.md) if you prefer
+
+**Security:**
+- The relay never sees your password or session keys
+- Traffic is encrypted with XSalsa20-Poly1305 (same as Signal, Keybase, etc.)
+- No accounts or sign-ups required — just a username/password you control
+
+See [relay-design.md](relay-design.md) for technical details.
+
+---
+
+## Current Options
+
+Until the relay is ready, use one of these options. All require you to trust some external party with routing your traffic.
 
 ## Option 1: Tailscale (Recommended)
 
