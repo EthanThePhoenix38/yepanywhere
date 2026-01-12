@@ -2,6 +2,19 @@ import type { ToolResultData } from "../../types/renderItems";
 import { toolRegistry } from "../renderers/tools";
 
 /**
+ * Safely call a renderer method, falling back to undefined on error.
+ * This handles cases where tool input/result doesn't match expected schema
+ * (e.g., Gemini using different field names than Claude SDK).
+ */
+function safeCall<T>(fn: () => T): T | undefined {
+  try {
+    return fn();
+  } catch {
+    return undefined;
+  }
+}
+
+/**
  * Get a summary string for a tool call based on its status.
  *
  * Uses the tool registry's getUseSummary and getResultSummary methods when available,
@@ -18,24 +31,36 @@ export function getToolSummary(
   if (status === "pending" || status === "aborted") {
     // Show input summary while pending or aborted (no result available)
     if (renderer.getUseSummary) {
-      return renderer.getUseSummary(input);
+      const summary = safeCall(() => renderer.getUseSummary?.(input));
+      if (summary !== undefined) return summary;
     }
     return getDefaultInputSummary(toolName, input);
   }
 
   // Show result summary when complete or error
   // For some tools, combine input + result for a complete summary
-  const inputSummary = renderer.getUseSummary
-    ? renderer.getUseSummary(input)
-    : getDefaultInputSummary(toolName, input);
+  let inputSummary: string;
+  if (renderer.getUseSummary) {
+    const summary = safeCall(() => renderer.getUseSummary?.(input));
+    inputSummary = summary ?? getDefaultInputSummary(toolName, input);
+  } else {
+    inputSummary = getDefaultInputSummary(toolName, input);
+  }
 
-  const resultSummary = renderer.getResultSummary
-    ? renderer.getResultSummary(
+  let resultSummary: string;
+  if (renderer.getResultSummary) {
+    const summary = safeCall(() =>
+      renderer.getResultSummary?.(
         result?.structured,
         result?.isError ?? false,
         input,
-      )
-    : getDefaultResultSummary(toolName, result, status);
+      ),
+    );
+    resultSummary =
+      summary ?? getDefaultResultSummary(toolName, result, status);
+  } else {
+    resultSummary = getDefaultResultSummary(toolName, result, status);
+  }
 
   // Combine input and result for tools where the input context is valuable
   if (toolName === "Glob" || toolName === "Grep") {
@@ -51,33 +76,59 @@ export function getToolSummary(
 }
 
 /**
- * Default input summary when renderer doesn't provide one
+ * Default input summary when renderer doesn't provide one.
+ * Handles both Claude SDK field names and generic fallback for other providers.
  */
 function getDefaultInputSummary(toolName: string, input: unknown): string {
+  // Guard against null/undefined input
+  if (!input || typeof input !== "object") {
+    return "...";
+  }
+
   const i = input as Record<string, unknown>;
 
+  // Try Claude SDK field names first, then fall back to generic
   switch (toolName) {
     case "Read":
-      return getFileName(String(i.file_path || ""));
     case "Write":
-      return getFileName(String(i.file_path || ""));
     case "Edit":
-      return getFileName(String(i.file_path || ""));
+      if (typeof i.file_path === "string") return getFileName(i.file_path);
+      break;
     case "Bash":
-      return truncate(String(i.command || ""), 40);
+      if (typeof i.command === "string") return truncate(i.command, 40);
+      break;
     case "Glob":
-      return String(i.pattern || "*");
+      if (typeof i.pattern === "string") return i.pattern;
+      break;
     case "Grep":
-      return `"${i.pattern || ""}"`;
+      if (typeof i.pattern === "string") return `"${i.pattern}"`;
+      break;
     case "Task":
-      return truncate(String(i.description || ""), 30);
+      if (typeof i.description === "string") return truncate(i.description, 30);
+      break;
     case "WebSearch":
-      return truncate(String(i.query || ""), 30);
+      if (typeof i.query === "string") return truncate(i.query, 30);
+      break;
     case "WebFetch":
-      return truncate(String(i.url || ""), 40);
-    default:
-      return "...";
+      if (typeof i.url === "string") return truncate(i.url, 40);
+      break;
   }
+
+  // Fallback: try to find first meaningful string property to show
+  return getFirstStringValue(i);
+}
+
+/**
+ * Get the first short string value from an object for fallback display.
+ * Useful for unknown tool inputs from non-Claude providers.
+ */
+function getFirstStringValue(obj: Record<string, unknown>): string {
+  for (const value of Object.values(obj)) {
+    if (typeof value === "string" && value.length > 0 && value.length < 100) {
+      return truncate(value, 40);
+    }
+  }
+  return "...";
 }
 
 /**

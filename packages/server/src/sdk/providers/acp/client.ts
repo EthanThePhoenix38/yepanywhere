@@ -4,8 +4,9 @@
  * Provides a reusable client for spawning and communicating with ACP agents
  * (Gemini, Codex, OpenCode, etc.) over JSON-RPC/stdio.
  *
- * Phase 1: Brain only - no tool handlers.
- * Phase 2: Will add filesystem and terminal tool handlers.
+ * Gemini uses a hybrid model where it executes its own tools internally,
+ * but asks for permission on sensitive operations (file writes, shell commands).
+ * This client handles those permission requests via a callback mechanism.
  */
 
 import { type ChildProcess, spawn } from "node:child_process";
@@ -42,6 +43,15 @@ export interface ACPClientConfig {
 export type SessionUpdateCallback = (update: SessionNotification) => void;
 
 /**
+ * Callback for permission requests from the agent.
+ * The callback should surface the request to UI and wait for user response.
+ * Returns a promise that resolves with the user's decision.
+ */
+export type PermissionRequestCallback = (
+  request: RequestPermissionRequest,
+) => Promise<RequestPermissionResponse>;
+
+/**
  * ACP Client - manages connection to an ACP-compatible agent.
  *
  * Usage:
@@ -59,6 +69,7 @@ export class ACPClient {
   private connection: ClientSideConnection | null = null;
   private log = getLogger();
   private onSessionUpdate: SessionUpdateCallback | null = null;
+  private onPermissionRequest: PermissionRequestCallback | null = null;
 
   /**
    * Set callback for session update notifications.
@@ -66,6 +77,16 @@ export class ACPClient {
    */
   setSessionUpdateCallback(callback: SessionUpdateCallback): void {
     this.onSessionUpdate = callback;
+  }
+
+  /**
+   * Set callback for permission requests.
+   * The callback should surface the request to UI and wait for user response.
+   * Must be called before sending prompts to receive permission requests.
+   */
+  setPermissionRequestCallback(callback: PermissionRequestCallback): void {
+    this.log.debug("Permission request callback registered");
+    this.onPermissionRequest = callback;
   }
 
   /**
@@ -116,23 +137,30 @@ export class ACPClient {
 
   /**
    * Create client-side handlers for ACP protocol.
-   * Phase 1: Only session update handling, no tools.
+   * Handles session updates and permission requests.
    */
   private createClientHandlers(): Client {
+    this.log.debug(
+      { hasPermissionCallback: !!this.onPermissionRequest },
+      "Creating ACP client handlers",
+    );
     return {
       sessionUpdate: async (params: SessionNotification) => {
         this.log.trace({ update: params }, "ACP session update");
         this.onSessionUpdate?.(params);
       },
-      // Phase 1: Always cancel permission requests since we don't handle tools yet.
-      // Phase 2 will implement proper tool execution and permission handling.
       requestPermission: async (
         params: RequestPermissionRequest,
       ): Promise<RequestPermissionResponse> => {
-        this.log.debug(
-          { params },
-          "ACP permission request (cancelling - Phase 1)",
-        );
+        this.log.debug({ params }, "ACP permission request received");
+
+        if (this.onPermissionRequest) {
+          // Wait for user to decide - no timeout, waits for user response
+          return this.onPermissionRequest(params);
+        }
+
+        // No handler configured - deny by default
+        this.log.warn("No permission handler configured, cancelling");
         return { outcome: { outcome: "cancelled" } };
       },
     };
@@ -246,5 +274,6 @@ export class ACPClient {
     this.process = null;
     this.connection = null;
     this.onSessionUpdate = null;
+    this.onPermissionRequest = null;
   }
 }

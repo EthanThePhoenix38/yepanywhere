@@ -38,6 +38,8 @@ export interface RenderContext {
   thinkingExpanded?: boolean;
   /** Toggle thinking blocks expanded state */
   toggleThinkingExpanded?: () => void;
+  /** Provider type - tool renderers may use fallback rendering for non-Claude providers */
+  provider?: string;
 }
 
 /**

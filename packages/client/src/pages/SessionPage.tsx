@@ -292,6 +292,8 @@ function SessionPageContent({
         // otherwise fall back to user's model preference for new Claude sessions
         const model = session?.model ?? getModelSetting();
         const thinking = getThinkingSetting();
+        // Use effectiveProvider to ensure correct provider even if session data hasn't loaded
+        // effectiveProvider = session?.provider ?? initialProvider (from navigation state)
         const result = await api.resumeSession(
           projectId,
           sessionId,
@@ -300,7 +302,7 @@ function SessionPageContent({
             mode: permissionMode,
             model,
             thinking,
-            provider: session?.provider,
+            provider: effectiveProvider,
           },
           currentAttachments.length > 0 ? currentAttachments : undefined,
           tempId,

@@ -1,11 +1,10 @@
 /**
  * Gemini ACP Provider implementation using Agent Client Protocol.
  *
- * This provider uses the ACP protocol to communicate with the Gemini CLI,
- * enabling tool execution on our side rather than relying on Gemini's internal tools.
- *
- * Phase 1: Brain only - no tool handlers. Agent can think and respond but tools will fail.
- * Phase 2: Will add filesystem and terminal tool handlers.
+ * Gemini uses a hybrid model where it executes its own tools internally,
+ * but asks for permission on sensitive operations (file writes, shell commands).
+ * This provider handles those permission requests by converting them to
+ * yepanywhere's InputRequest format and routing through the Process approval flow.
  */
 
 import { execSync, spawn } from "node:child_process";
@@ -14,13 +13,22 @@ import { existsSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import type {
+  RequestPermissionRequest,
+  RequestPermissionResponse,
   SessionNotification,
   SessionUpdate,
+  ToolKind,
 } from "@agentclientprotocol/sdk";
 import type { ModelInfo } from "@yep-anywhere/shared";
 import { getLogger } from "../../logging/logger.js";
 import { MessageQueue } from "../messageQueue.js";
-import type { SDKMessage, UserMessage } from "../types.js";
+import type {
+  CanUseTool,
+  PermissionMode,
+  SDKMessage,
+  ToolApprovalResult,
+  UserMessage,
+} from "../types.js";
 import { ACPClient } from "./acp/client.js";
 import type {
   AgentProvider,
@@ -286,6 +294,22 @@ export class GeminiACPProvider implements AgentProvider {
       }
     });
 
+    // Set up permission request handler if onToolApproval callback provided
+    this.log.debug(
+      { hasOnToolApproval: !!options.onToolApproval },
+      "Setting up ACP permission handler",
+    );
+    if (options.onToolApproval) {
+      client.setPermissionRequestCallback(async (request) => {
+        this.log.debug({ request }, "Permission callback invoked");
+        return this.handlePermissionRequest(request, options, signal);
+      });
+    } else {
+      this.log.warn(
+        "No onToolApproval callback provided - permissions will be auto-denied",
+      );
+    }
+
     try {
       // Connect to the ACP agent
       await client.connect({
@@ -294,7 +318,6 @@ export class GeminiACPProvider implements AgentProvider {
         cwd: options.cwd,
       });
 
-      // Initialize with no tool capabilities (Phase 1)
       await client.initialize({});
 
       // Create or load session
@@ -367,6 +390,168 @@ export class GeminiACPProvider implements AgentProvider {
     } finally {
       client.close();
     }
+  }
+
+  /**
+   * Handle ACP permission request by routing to yepanywhere's approval flow.
+   *
+   * Converts ACP's RequestPermissionRequest to our CanUseTool format,
+   * waits for user approval, and converts the result back to ACP format.
+   */
+  private async handlePermissionRequest(
+    request: RequestPermissionRequest,
+    options: StartSessionOptions,
+    signal: AbortSignal,
+  ): Promise<RequestPermissionResponse> {
+    const { onToolApproval, permissionMode } = options;
+    if (!onToolApproval) {
+      // No approval handler - deny by default
+      return { outcome: { outcome: "cancelled" } };
+    }
+
+    const toolCall = request.toolCall;
+    const kind = toolCall.kind ?? "other";
+
+    // Check if we should auto-approve based on permission mode
+    if (this.shouldAutoApprove(kind, permissionMode)) {
+      this.log.debug(
+        { kind, permissionMode },
+        "Auto-approving ACP permission request",
+      );
+      // Find the "allow_once" option to return
+      const allowOnceOption = request.options.find(
+        (o) => o.kind === "allow_once",
+      );
+      return {
+        outcome: {
+          outcome: "selected",
+          optionId: allowOnceOption?.optionId ?? "proceed_once",
+        },
+      };
+    }
+
+    // Map ACP toolCall.kind to a tool name for the approval UI
+    const toolName = this.mapKindToToolName(kind, toolCall.title ?? undefined);
+
+    // Build input for the approval dialog
+    const toolInput = {
+      kind,
+      title: toolCall.title,
+      locations: toolCall.locations,
+      content: toolCall.content,
+      rawInput: toolCall.rawInput,
+    };
+
+    this.log.debug(
+      { toolName, toolInput },
+      "Requesting user approval for ACP permission",
+    );
+
+    // Call the onToolApproval callback and wait for user response
+    const result = await onToolApproval(toolName, toolInput, { signal });
+
+    // Convert result back to ACP format
+    return this.convertApprovalResultToACPResponse(result, request);
+  }
+
+  /**
+   * Check if we should auto-approve based on permission mode and tool kind.
+   */
+  private shouldAutoApprove(
+    kind: ToolKind | null | undefined,
+    permissionMode?: PermissionMode,
+  ): boolean {
+    switch (permissionMode) {
+      case "bypassPermissions":
+        // Auto-approve all tools
+        return true;
+
+      case "acceptEdits":
+        // Auto-approve file edits, but not shell commands
+        return kind === "edit" || kind === "read" || kind === "search";
+
+      case "plan":
+        // Read-only tools only (Gemini shouldn't be asking for reads, but just in case)
+        return kind === "read" || kind === "search" || kind === "fetch";
+
+      default:
+        // Default mode - no auto-approve, ask for everything
+        return false;
+    }
+  }
+
+  /**
+   * Map ACP tool kind to a human-readable tool name for the approval UI.
+   */
+  private mapKindToToolName(
+    kind: ToolKind | null | undefined,
+    title?: string,
+  ): string {
+    switch (kind) {
+      case "edit":
+        return "Write";
+      case "delete":
+        return "Delete";
+      case "move":
+        return "Move";
+      case "execute":
+        return "Bash";
+      case "read":
+        return "Read";
+      case "search":
+        return "Search";
+      case "fetch":
+        return "WebFetch";
+      case "think":
+        return "Think";
+      case "switch_mode":
+        return "SwitchMode";
+      default:
+        // Use title if available, otherwise generic name
+        return title ?? "GeminiTool";
+    }
+  }
+
+  /**
+   * Convert our ToolApprovalResult to ACP's RequestPermissionResponse.
+   */
+  private convertApprovalResultToACPResponse(
+    result: ToolApprovalResult,
+    request: RequestPermissionRequest,
+  ): RequestPermissionResponse {
+    if (result.behavior === "allow") {
+      // User approved - find the appropriate option ID
+      // Prefer "allow_once" unless we want to remember the choice
+      const allowOnceOption = request.options.find(
+        (o) => o.kind === "allow_once",
+      );
+      const allowAlwaysOption = request.options.find(
+        (o) => o.kind === "allow_always",
+      );
+
+      // TODO: Support "allow_always" when user checks "Remember this choice"
+      const selectedOption = allowOnceOption ?? allowAlwaysOption;
+
+      if (selectedOption) {
+        return {
+          outcome: {
+            outcome: "selected",
+            optionId: selectedOption.optionId,
+          },
+        };
+      }
+
+      // Fallback if no options found
+      return {
+        outcome: {
+          outcome: "selected",
+          optionId: "proceed_once",
+        },
+      };
+    }
+
+    // User denied - return cancelled
+    return { outcome: { outcome: "cancelled" } };
   }
 
   /**
