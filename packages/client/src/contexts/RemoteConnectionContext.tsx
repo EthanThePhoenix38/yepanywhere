@@ -422,10 +422,93 @@ export function RemoteConnectionProvider({ children }: Props) {
       rememberMeRef.current = true;
 
       try {
-        const conn = SecureConnection.forResumeOnly(
-          storedSession,
-          handleSessionEstablished,
-        );
+        let conn: SecureConnection;
+
+        if (currentStored.mode === "relay") {
+          // Relay mode: reconnect through relay, then resume SRP session
+          console.log("[RemoteConnection] Auto-resume via relay");
+          const relayUrl = currentStored.wsUrl;
+          const relayUsername = currentStored.relayUsername;
+
+          if (!relayUrl || !relayUsername) {
+            throw new Error("Missing relay credentials for auto-resume");
+          }
+
+          // 1. Connect to relay server
+          const ws = new WebSocket(relayUrl);
+          ws.binaryType = "arraybuffer";
+
+          await new Promise<void>((resolve, reject) => {
+            const timeout = setTimeout(() => {
+              ws.close();
+              reject(new Error("Relay connection timeout"));
+            }, 15000);
+
+            ws.onopen = () => {
+              clearTimeout(timeout);
+              resolve();
+            };
+
+            ws.onerror = () => {
+              clearTimeout(timeout);
+              reject(new Error("Failed to connect to relay server"));
+            };
+          });
+
+          // 2. Send client_connect message
+          ws.send(
+            JSON.stringify({ type: "client_connect", username: relayUsername }),
+          );
+
+          // 3. Wait for client_connected or error
+          await new Promise<void>((resolve, reject) => {
+            const timeout = setTimeout(() => {
+              ws.close();
+              reject(new Error("Waiting for server timed out"));
+            }, 30000);
+
+            ws.onmessage = (event) => {
+              clearTimeout(timeout);
+              try {
+                const msg = JSON.parse(event.data as string);
+                if (isRelayClientConnected(msg)) {
+                  resolve();
+                } else if (isRelayClientError(msg)) {
+                  ws.close();
+                  reject(new Error(msg.reason));
+                } else {
+                  resolve();
+                }
+              } catch {
+                ws.close();
+                reject(new Error("Invalid relay response"));
+              }
+            };
+
+            ws.onclose = () => {
+              clearTimeout(timeout);
+              reject(new Error("Relay connection closed"));
+            };
+
+            ws.onerror = () => {
+              clearTimeout(timeout);
+              reject(new Error("Relay connection error"));
+            };
+          });
+
+          // 4. Create SecureConnection for resume using the existing socket
+          conn = await SecureConnection.forResumeOnlyWithSocket(
+            ws,
+            storedSession,
+            handleSessionEstablished,
+          );
+        } else {
+          // Direct mode: just create connection and resume
+          conn = SecureConnection.forResumeOnly(
+            storedSession,
+            handleSessionEstablished,
+          );
+        }
 
         // Test the connection - this will try resume only
         await conn.fetch("/auth/status");

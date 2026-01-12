@@ -199,6 +199,103 @@ export class SecureConnection implements Connection {
   }
 
   /**
+   * Create a secure connection for resume-only mode using an existing WebSocket.
+   * Used for relay connections where we need to reconnect through the relay first,
+   * then resume the SRP session on the paired socket.
+   *
+   * @param ws - Pre-connected WebSocket (already paired through relay)
+   * @param storedSession - Previously stored session data
+   * @param onSessionEstablished - Optional callback when session is refreshed
+   * @returns Promise that resolves to SecureConnection after session resume completes
+   */
+  static async forResumeOnlyWithSocket(
+    ws: WebSocket,
+    storedSession: StoredSession,
+    onSessionEstablished?: (session: StoredSession) => void,
+  ): Promise<SecureConnection> {
+    const conn = new SecureConnection(
+      "relay://", // Marker URL for relay connections
+      storedSession.username,
+      "", // No password - resume only
+      onSessionEstablished,
+    );
+    conn.ws = ws;
+    conn.storedSession = storedSession;
+    conn.password = null; // Mark as resume-only
+
+    // Resume the session on the existing socket
+    await conn.resumeOnExistingSocket();
+    return conn;
+  }
+
+  /**
+   * Perform session resume on an already-connected WebSocket.
+   * Used by forResumeOnlyWithSocket for relay connections.
+   */
+  private resumeOnExistingSocket(): Promise<void> {
+    return new Promise((resolve, reject) => {
+      if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
+        reject(new Error("WebSocket is not open"));
+        return;
+      }
+
+      if (!this.storedSession) {
+        reject(new Error("No stored session for resume"));
+        return;
+      }
+
+      console.log("[SecureConnection] Resuming session on existing socket");
+      this.connectionState = "connecting";
+
+      // Create auth handlers
+      let authResolveHandler: () => void = () => {};
+      let authRejectHandler: (err: Error) => void = () => {};
+
+      const authPromise = new Promise<void>((res, rej) => {
+        authResolveHandler = res;
+        authRejectHandler = rej;
+      });
+
+      const ws = this.ws;
+
+      ws.onerror = (event) => {
+        console.error("[SecureConnection] Error:", event);
+      };
+
+      ws.onclose = (event) => {
+        console.log("[SecureConnection] Closed:", event.code, event.reason);
+        this.ws = null;
+        this.sessionKey = null;
+        this.srpSession = null;
+
+        const closeError = new WebSocketCloseError(event.code, event.reason);
+        if (this.connectionState !== "authenticated") {
+          authRejectHandler(closeError);
+        }
+      };
+
+      ws.onmessage = (event) => {
+        this.handleSrpResumeResponse(event.data, authResolveHandler, reject);
+      };
+
+      // Send resume message
+      const proof = this.generateResumeProof(this.storedSession.sessionKey);
+      const resume: SrpSessionResume = {
+        type: "srp_resume",
+        identity: this.username,
+        sessionId: this.storedSession.sessionId,
+        proof,
+      };
+      ws.send(JSON.stringify(resume));
+      this.connectionState = "srp_resume_sent";
+      console.log("[SecureConnection] SRP resume sent");
+
+      // Wait for auth to complete
+      authPromise.then(resolve).catch(reject);
+    });
+  }
+
+  /**
    * Generate a resume proof by encrypting the current timestamp with the session key.
    */
   private generateResumeProof(base64SessionKey: string): string {
@@ -259,6 +356,11 @@ export class SecureConnection implements Connection {
         );
         this.sessionId = msg.sessionId;
         this.connectionState = "authenticated";
+
+        // Switch to encrypted message handler now that we're authenticated
+        if (this.ws) {
+          this.ws.onmessage = this.handleMessage.bind(this);
+        }
 
         // Send client capabilities (Phase 3) - first encrypted message after auth
         this.sendCapabilities();

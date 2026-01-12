@@ -60,7 +60,7 @@ function RemoteAppContent({ children }: Props) {
  * - If connected and not on a login route: render children (app)
  */
 function ConnectionGate({ children }: Props) {
-  const { connection, isAutoResuming } = useRemoteConnection();
+  const { connection } = useRemoteConnection();
   const location = useLocation();
   const isLoginRoute = LOGIN_ROUTES.some(
     (route) =>
@@ -69,9 +69,9 @@ function ConnectionGate({ children }: Props) {
 
   // Not connected
   if (!connection) {
-    // Auto-resuming happens in the login page component
-    // So we should redirect to /login which will show loading state
-    if (!isLoginRoute && !isAutoResuming) {
+    // If not on a login route, redirect to /login
+    // The login page handles showing loading state during auto-resume
+    if (!isLoginRoute) {
       return <Navigate to="/login" replace />;
     }
     // On a login route - render children (login pages)
