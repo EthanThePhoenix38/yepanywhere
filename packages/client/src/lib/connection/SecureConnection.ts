@@ -38,6 +38,7 @@ import {
   isSrpSessionInvalid,
   isSrpSessionResumed,
 } from "@yep-anywhere/shared";
+import { getRelayDebugEnabled } from "../../hooks/useDeveloperMode";
 import {
   decrypt,
   decryptBinaryEnvelopeWithDecompression,
@@ -114,6 +115,9 @@ export class SecureConnection implements Connection {
       resolve: (response: RelayResponse) => void;
       reject: (error: Error) => void;
       timeout: ReturnType<typeof setTimeout>;
+      startTime: number;
+      method: string;
+      path: string;
     }
   >();
   private pendingUploads = new Map<string, PendingUpload>();
@@ -845,6 +849,16 @@ export class SecureConnection implements Connection {
 
     clearTimeout(pending.timeout);
     this.pendingRequests.delete(response.id);
+
+    // Log response if relay debug is enabled
+    if (getRelayDebugEnabled()) {
+      const duration = Date.now() - pending.startTime;
+      const statusIcon = response.status >= 400 ? "\u2717" : "\u2190";
+      console.log(
+        `[Relay] ${statusIcon} ${pending.method} ${pending.path} ${response.status} (${duration}ms)`,
+      );
+    }
+
     pending.resolve(response);
   }
 
@@ -981,9 +995,23 @@ export class SecureConnection implements Connection {
       body,
     };
 
+    const startTime = Date.now();
+
+    // Log outgoing request if relay debug is enabled
+    if (getRelayDebugEnabled()) {
+      console.log(`[Relay] \u2192 ${method} ${request.path}`);
+    }
+
     return new Promise<T>((resolve, reject) => {
       // Set up timeout
       const timeout = setTimeout(() => {
+        // Log timeout if relay debug is enabled
+        if (getRelayDebugEnabled()) {
+          const duration = Date.now() - startTime;
+          console.log(
+            `[Relay] \u2717 ${method} ${request.path} TIMEOUT (${duration}ms)`,
+          );
+        }
         this.pendingRequests.delete(id);
         reject(new Error("Request timeout"));
       }, 30000);
@@ -1006,6 +1034,9 @@ export class SecureConnection implements Connection {
         },
         reject,
         timeout,
+        startTime,
+        method,
+        path: request.path,
       });
 
       // Send encrypted request

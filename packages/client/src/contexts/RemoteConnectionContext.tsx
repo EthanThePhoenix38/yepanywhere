@@ -580,6 +580,14 @@ export function useRemoteConnection(): RemoteConnectionState {
 }
 
 /**
+ * Hook to optionally access remote connection state.
+ * Returns null if not within a RemoteConnectionProvider (e.g., non-remote mode).
+ */
+export function useOptionalRemoteConnection(): RemoteConnectionState | null {
+  return useContext(RemoteConnectionContext);
+}
+
+/**
  * Hook to get the connection, throwing if not connected.
  * Use this in components that require an active connection.
  */

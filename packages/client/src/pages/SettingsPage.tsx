@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { PageHeader } from "../components/PageHeader";
 import { PushNotificationToggle } from "../components/PushNotificationToggle";
 import { useOptionalAuth } from "../contexts/AuthContext";
+import { useOptionalRemoteConnection } from "../contexts/RemoteConnectionContext";
 import { useSchemaValidationContext } from "../contexts/SchemaValidationContext";
 import { useDeveloperMode } from "../hooks/useDeveloperMode";
 import {
@@ -57,11 +58,15 @@ export function SettingsPage() {
     setHoldModeEnabled,
     websocketTransportEnabled,
     setWebsocketTransportEnabled,
+    relayDebugEnabled,
+    setRelayDebugEnabled,
   } = useDeveloperMode();
   const { ignoredTools, clearIgnoredTools } = useSchemaValidationContext();
   // Auth is only available in non-remote mode (cookie-based auth)
   // Remote mode uses SRP authentication instead
   const auth = useOptionalAuth();
+  // Remote connection is only available in remote mode
+  const remoteConnection = useOptionalRemoteConnection();
   const { providers: serverProviders, loading: providersLoading } =
     useProviders();
   const { version: versionInfo } = useVersion();
@@ -740,6 +745,45 @@ export function SettingsPage() {
                       </div>
                     </>
                   )}
+                </div>
+              </section>
+            )}
+
+            {/* Security section for remote mode (SRP auth) */}
+            {remoteConnection && (
+              <section className="settings-section">
+                <h2>Security</h2>
+                <div className="settings-group">
+                  <div className="settings-item">
+                    <div className="settings-item-info">
+                      <strong>Logout</strong>
+                      <p>Disconnect from the remote server.</p>
+                    </div>
+                    <button
+                      type="button"
+                      className="settings-button settings-button-danger"
+                      onClick={remoteConnection.disconnect}
+                    >
+                      Logout
+                    </button>
+                  </div>
+                  <div className="settings-item">
+                    <div className="settings-item-info">
+                      <strong>Relay Debug Logging</strong>
+                      <p>
+                        Log relay requests and responses to the browser console.
+                        Useful for debugging connection timeouts.
+                      </p>
+                    </div>
+                    <label className="toggle-switch">
+                      <input
+                        type="checkbox"
+                        checked={relayDebugEnabled}
+                        onChange={(e) => setRelayDebugEnabled(e.target.checked)}
+                      />
+                      <span className="toggle-slider" />
+                    </label>
+                  </div>
                 </div>
               </section>
             )}
