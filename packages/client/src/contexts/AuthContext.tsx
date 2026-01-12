@@ -188,3 +188,11 @@ export function useAuth() {
   }
   return context;
 }
+
+/**
+ * Hook to optionally access auth state.
+ * Returns null if not within an AuthProvider (e.g., remote client mode).
+ */
+export function useOptionalAuth() {
+  return useContext(AuthContext);
+}

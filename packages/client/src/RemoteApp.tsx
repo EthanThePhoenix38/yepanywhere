@@ -54,23 +54,34 @@ function RemoteAppContent({ children }: Props) {
 /**
  * Gate component that controls access based on connection state.
  *
+ * - If auto-resuming: show loading (don't redirect yet)
  * - If not connected and on a login route: render children (login pages)
  * - If not connected and not on a login route: redirect to /login
  * - If connected and on a login route: redirect to /projects
  * - If connected and not on a login route: render children (app)
  */
 function ConnectionGate({ children }: Props) {
-  const { connection } = useRemoteConnection();
+  const { connection, isAutoResuming } = useRemoteConnection();
   const location = useLocation();
   const isLoginRoute = LOGIN_ROUTES.some(
     (route) =>
       location.pathname === route || location.pathname.startsWith(`${route}/`),
   );
 
-  // Not connected
+  // During auto-resume, don't redirect - show loading state
+  // This preserves the current URL so we stay on the same page after successful resume
+  if (isAutoResuming) {
+    return (
+      <div className="auto-resume-loading">
+        <div className="loading-spinner" />
+        <p>Reconnecting...</p>
+      </div>
+    );
+  }
+
+  // Not connected (and not auto-resuming)
   if (!connection) {
     // If not on a login route, redirect to /login
-    // The login page handles showing loading state during auto-resume
     if (!isLoginRoute) {
       return <Navigate to="/login" replace />;
     }
