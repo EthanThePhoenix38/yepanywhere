@@ -78,8 +78,15 @@ export class Process {
   /** Set synchronously when transport/spawn fails to prevent race with queueMessage */
   private transportFailed = false;
 
-  /** In-memory message history for mock SDK (real SDK persists to disk) */
-  private messageHistory: SDKMessage[] = [];
+  /**
+   * Two-bucket message buffer for SSE replay to late-joining clients.
+   * Buckets swap every 15 seconds, giving 15-30s of history.
+   * This bounds memory while covering the JSONL persistence gap.
+   */
+  private currentBucket: SDKMessage[] = [];
+  private previousBucket: SDKMessage[] = [];
+  private bucketSwapTimer: ReturnType<typeof setInterval> | null = null;
+  private static readonly BUCKET_SWAP_INTERVAL_MS = 15_000;
 
   /** Accumulated streaming text for catch-up when clients connect mid-stream */
   private _streamingText = "";
@@ -130,8 +137,32 @@ export class Process {
     this.model = options.model;
     this._maxThinkingTokens = options.maxThinkingTokens;
 
+    // Start bucket swap timer for bounded message history
+    this.startBucketSwapTimer();
+
     // Start processing messages from the SDK
     this.processMessages();
+  }
+
+  /**
+   * Start the timer that swaps message buckets.
+   * This bounds memory by discarding messages older than ~30 seconds.
+   */
+  private startBucketSwapTimer(): void {
+    this.bucketSwapTimer = setInterval(() => {
+      this.previousBucket = this.currentBucket;
+      this.currentBucket = [];
+    }, Process.BUCKET_SWAP_INTERVAL_MS);
+  }
+
+  /**
+   * Stop the bucket swap timer.
+   */
+  private stopBucketSwapTimer(): void {
+    if (this.bucketSwapTimer) {
+      clearInterval(this.bucketSwapTimer);
+      this.bucketSwapTimer = null;
+    }
   }
 
   get sessionId(): string {
@@ -305,6 +336,7 @@ export class Process {
     );
 
     this.clearIdleTimer();
+    this.stopBucketSwapTimer();
     this.iteratorDone = true;
 
     // Wake up hold wait if held (so processMessages loop can exit)
@@ -395,11 +427,11 @@ export class Process {
   }
 
   /**
-   * Get the in-memory message history.
-   * Used by mock SDK sessions where messages aren't persisted to disk.
+   * Get recent message history (15-30 seconds) for SSE replay.
+   * Returns messages from both buckets for late-joining clients.
    */
   getMessageHistory(): SDKMessage[] {
-    return [...this.messageHistory];
+    return [...this.previousBucket, ...this.currentBucket];
   }
 
   /**
@@ -455,7 +487,7 @@ export class Process {
       message: { role: "user", content: text },
     } as SDKMessage;
 
-    this.messageHistory.push(sdkMessage);
+    this.currentBucket.push(sdkMessage);
     this.emit({ type: "message", message: sdkMessage });
   }
 
@@ -539,13 +571,13 @@ export class Process {
     // for the two-phase flow (createSession + queueMessage) where the client
     // may connect before the JSONL is written.
     if (shouldEmitMessage(sdkMessage)) {
-      // Check for duplicates in history before adding
+      // Check for duplicates in both buckets before adding
       // This prevents duplicates if the provider echoes the message back with the same UUID
-      const isDuplicate = this.messageHistory.some(
-        (m) => m.uuid && m.uuid === sdkMessage.uuid,
-      );
+      const isDuplicate =
+        this.currentBucket.some((m) => m.uuid && m.uuid === sdkMessage.uuid) ||
+        this.previousBucket.some((m) => m.uuid && m.uuid === sdkMessage.uuid);
       if (!isDuplicate) {
-        this.messageHistory.push(sdkMessage);
+        this.currentBucket.push(sdkMessage);
       }
     }
 
@@ -918,10 +950,11 @@ export class Process {
           const isDuplicate =
             message.type === "user" &&
             message.uuid &&
-            this.messageHistory.some((m) => m.uuid === message.uuid);
+            (this.currentBucket.some((m) => m.uuid === message.uuid) ||
+              this.previousBucket.some((m) => m.uuid === message.uuid));
 
           if (!isDuplicate) {
-            this.messageHistory.push(message);
+            this.currentBucket.push(message);
           }
         }
 
