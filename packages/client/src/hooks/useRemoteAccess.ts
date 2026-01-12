@@ -8,6 +8,13 @@
 import { useCallback, useEffect, useState } from "react";
 import { fetchJSON } from "../api/client";
 
+export interface RelayConfig {
+  /** Relay server URL (e.g., wss://relay.yepanywhere.com/ws) */
+  url: string;
+  /** Username for relay registration */
+  username: string;
+}
+
 export interface RemoteAccessConfig {
   /** Whether remote access is enabled */
   enabled: boolean;
@@ -20,6 +27,8 @@ export interface RemoteAccessConfig {
 interface UseRemoteAccessResult {
   /** Current remote access configuration */
   config: RemoteAccessConfig | null;
+  /** Current relay configuration */
+  relayConfig: RelayConfig | null;
   /** Whether the config is loading */
   loading: boolean;
   /** Error message if any */
@@ -30,21 +39,28 @@ interface UseRemoteAccessResult {
   disable: () => Promise<void>;
   /** Clear credentials without disabling */
   clearCredentials: () => Promise<void>;
+  /** Update relay configuration */
+  updateRelayConfig: (config: RelayConfig) => Promise<void>;
+  /** Clear relay configuration */
+  clearRelayConfig: () => Promise<void>;
   /** Refresh the configuration */
   refresh: () => Promise<void>;
 }
 
 export function useRemoteAccess(): UseRemoteAccessResult {
   const [config, setConfig] = useState<RemoteAccessConfig | null>(null);
+  const [relayConfig, setRelayConfig] = useState<RelayConfig | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   const refresh = useCallback(async () => {
     try {
-      const response = await fetchJSON<RemoteAccessConfig>(
-        "/remote-access/config",
-      );
-      setConfig(response);
+      const [configResponse, relayResponse] = await Promise.all([
+        fetchJSON<RemoteAccessConfig>("/remote-access/config"),
+        fetchJSON<{ relay: RelayConfig | null }>("/remote-access/relay"),
+      ]);
+      setConfig(configResponse);
+      setRelayConfig(relayResponse.relay);
       setError(null);
     } catch (err) {
       console.error("[useRemoteAccess] Failed to fetch config:", err);
@@ -105,13 +121,52 @@ export function useRemoteAccess(): UseRemoteAccessResult {
     }
   }, [refresh]);
 
+  const updateRelayConfig = useCallback(
+    async (newConfig: RelayConfig) => {
+      try {
+        await fetchJSON("/remote-access/relay", {
+          method: "PUT",
+          body: JSON.stringify(newConfig),
+        });
+        await refresh();
+      } catch (err) {
+        const message =
+          err instanceof Error
+            ? err.message
+            : "Failed to update relay configuration";
+        setError(message);
+        throw new Error(message);
+      }
+    },
+    [refresh],
+  );
+
+  const clearRelayConfig = useCallback(async () => {
+    try {
+      await fetchJSON("/remote-access/relay", {
+        method: "DELETE",
+      });
+      await refresh();
+    } catch (err) {
+      const message =
+        err instanceof Error
+          ? err.message
+          : "Failed to clear relay configuration";
+      setError(message);
+      throw new Error(message);
+    }
+  }, [refresh]);
+
   return {
     config,
+    relayConfig,
     loading,
     error,
     enable,
     disable,
     clearCredentials,
+    updateRelayConfig,
+    clearRelayConfig,
     refresh,
   };
 }

@@ -111,9 +111,12 @@ export function SettingsPage() {
   // Remote access settings
   const {
     config: remoteAccessConfig,
+    relayConfig,
     loading: remoteAccessLoading,
     enable: enableRemoteAccess,
     disable: disableRemoteAccess,
+    updateRelayConfig,
+    clearRelayConfig,
   } = useRemoteAccess();
   const [showRemoteAccessSetup, setShowRemoteAccessSetup] = useState(false);
   const [remoteAccessUsername, setRemoteAccessUsername] = useState("");
@@ -125,6 +128,14 @@ export function SettingsPage() {
   const [isEnablingRemoteAccess, setIsEnablingRemoteAccess] = useState(false);
   const [showRemoteAccessDisable, setShowRemoteAccessDisable] = useState(false);
   const [isDisablingRemoteAccess, setIsDisablingRemoteAccess] = useState(false);
+  // Relay settings state
+  const [showRelaySetup, setShowRelaySetup] = useState(false);
+  const [relayUrl, setRelayUrl] = useState("");
+  const [relayUsername, setRelayUsername] = useState("");
+  const [relayError, setRelayError] = useState<string | null>(null);
+  const [isSavingRelay, setIsSavingRelay] = useState(false);
+  const [showRelayDisable, setShowRelayDisable] = useState(false);
+  const [isDisablingRelay, setIsDisablingRelay] = useState(false);
 
   const { openSidebar, isWideScreen } = useNavigationLayout();
 
@@ -920,6 +931,200 @@ export function SettingsPage() {
                         Enabled
                       </span>
                     </div>
+
+                    {/* Relay Configuration */}
+                    {!relayConfig ? (
+                      <>
+                        <div className="settings-item">
+                          <div className="settings-item-info">
+                            <strong>Relay Server</strong>
+                            <p>
+                              Connect through a relay server to access from
+                              anywhere without port forwarding.
+                            </p>
+                          </div>
+                          {!showRelaySetup ? (
+                            <button
+                              type="button"
+                              className="settings-button"
+                              onClick={() => setShowRelaySetup(true)}
+                            >
+                              Configure
+                            </button>
+                          ) : (
+                            <button
+                              type="button"
+                              className="settings-button settings-button-secondary"
+                              onClick={() => {
+                                setShowRelaySetup(false);
+                                setRelayUrl("");
+                                setRelayUsername("");
+                                setRelayError(null);
+                              }}
+                            >
+                              Cancel
+                            </button>
+                          )}
+                        </div>
+
+                        {showRelaySetup && (
+                          <div className="settings-item settings-item-form">
+                            <form
+                              onSubmit={async (e) => {
+                                e.preventDefault();
+                                setRelayError(null);
+
+                                if (!relayUrl.trim()) {
+                                  setRelayError("Relay URL is required");
+                                  return;
+                                }
+
+                                if (!relayUsername.trim()) {
+                                  setRelayError("Relay username is required");
+                                  return;
+                                }
+
+                                if (relayUsername.length < 3) {
+                                  setRelayError(
+                                    "Relay username must be at least 3 characters",
+                                  );
+                                  return;
+                                }
+
+                                setIsSavingRelay(true);
+                                try {
+                                  await updateRelayConfig({
+                                    url: relayUrl,
+                                    username: relayUsername,
+                                  });
+                                  setShowRelaySetup(false);
+                                  setRelayUrl("");
+                                  setRelayUsername("");
+                                } catch (err) {
+                                  setRelayError(
+                                    err instanceof Error
+                                      ? err.message
+                                      : "Failed to save relay configuration",
+                                  );
+                                } finally {
+                                  setIsSavingRelay(false);
+                                }
+                              }}
+                            >
+                              <div className="form-field">
+                                <label htmlFor="relay-url">Relay URL</label>
+                                <input
+                                  id="relay-url"
+                                  type="text"
+                                  value={relayUrl}
+                                  onChange={(e) => setRelayUrl(e.target.value)}
+                                  placeholder="wss://relay.yepanywhere.com/ws"
+                                  required
+                                />
+                              </div>
+                              <div className="form-field">
+                                <label htmlFor="relay-username">
+                                  Relay Username
+                                </label>
+                                <input
+                                  id="relay-username"
+                                  type="text"
+                                  value={relayUsername}
+                                  onChange={(e) =>
+                                    setRelayUsername(
+                                      e.target.value.toLowerCase(),
+                                    )
+                                  }
+                                  placeholder="my-server"
+                                  minLength={3}
+                                  maxLength={32}
+                                  pattern="[a-z0-9][a-z0-9-]*[a-z0-9]|[a-z0-9]{1,2}"
+                                  title="Lowercase letters, numbers, and hyphens only"
+                                  required
+                                />
+                              </div>
+                              {relayError && (
+                                <p className="form-error">{relayError}</p>
+                              )}
+                              <p className="form-hint">
+                                This username identifies your server on the
+                                relay. Use something memorable like your name or
+                                machine name.
+                              </p>
+                              <button
+                                type="submit"
+                                className="settings-button"
+                                disabled={isSavingRelay}
+                              >
+                                {isSavingRelay ? "Saving..." : "Save Relay"}
+                              </button>
+                            </form>
+                          </div>
+                        )}
+                      </>
+                    ) : (
+                      <>
+                        <div className="settings-item">
+                          <div className="settings-item-info">
+                            <strong>Relay Server</strong>
+                            <p>
+                              Connected as <code>{relayConfig.username}</code>{" "}
+                              to <code>{relayConfig.url}</code>
+                            </p>
+                          </div>
+                          <span className="settings-status-badge settings-status-detected">
+                            Configured
+                          </span>
+                        </div>
+
+                        <div className="settings-item">
+                          <div className="settings-item-info">
+                            <strong>Remove Relay</strong>
+                            <p>
+                              Disconnect from the relay server. You will need to
+                              use direct connections.
+                            </p>
+                          </div>
+                          {!showRelayDisable ? (
+                            <button
+                              type="button"
+                              className="settings-button settings-button-danger"
+                              onClick={() => setShowRelayDisable(true)}
+                            >
+                              Remove
+                            </button>
+                          ) : (
+                            <div className="settings-confirm-buttons">
+                              <button
+                                type="button"
+                                className="settings-button settings-button-danger"
+                                onClick={async () => {
+                                  setIsDisablingRelay(true);
+                                  try {
+                                    await clearRelayConfig();
+                                    setShowRelayDisable(false);
+                                  } finally {
+                                    setIsDisablingRelay(false);
+                                  }
+                                }}
+                                disabled={isDisablingRelay}
+                              >
+                                {isDisablingRelay
+                                  ? "Removing..."
+                                  : "Confirm Remove"}
+                              </button>
+                              <button
+                                type="button"
+                                className="settings-button settings-button-secondary"
+                                onClick={() => setShowRelayDisable(false)}
+                              >
+                                Cancel
+                              </button>
+                            </div>
+                          )}
+                        </div>
+                      </>
+                    )}
 
                     <div className="settings-item">
                       <div className="settings-item-info">

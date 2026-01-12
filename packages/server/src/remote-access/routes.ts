@@ -137,5 +137,55 @@ export function createRemoteAccessRoutes(
     }
   });
 
+  /**
+   * GET /api/remote-access/relay
+   * Get relay configuration.
+   */
+  app.get("/relay", async (c) => {
+    const relay = remoteAccessService.getRelayConfig();
+    return c.json({ relay });
+  });
+
+  /**
+   * PUT /api/remote-access/relay
+   * Set relay URL and username.
+   * Body: { url: string, username: string }
+   */
+  app.put("/relay", async (c) => {
+    try {
+      const body = await c.req.json<{ url: string; username: string }>();
+
+      if (!body.url || !body.username) {
+        return c.json({ error: "URL and username are required" }, 400);
+      }
+
+      await remoteAccessService.setRelayConfig({
+        url: body.url,
+        username: body.username,
+      });
+
+      return c.json({ success: true });
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "Failed to set relay config";
+      return c.json({ error: message }, 400);
+    }
+  });
+
+  /**
+   * DELETE /api/remote-access/relay
+   * Clear relay configuration.
+   */
+  app.delete("/relay", async (c) => {
+    try {
+      await remoteAccessService.clearRelayConfig();
+      return c.json({ success: true });
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "Failed to clear relay config";
+      return c.json({ error: message }, 400);
+    }
+  });
+
   return app;
 }

@@ -15,6 +15,13 @@ import { generateVerifier } from "../crypto/srp-server.js";
 
 const CURRENT_VERSION = 1;
 
+export interface RelayConfig {
+  /** Relay server URL (e.g., wss://relay.yepanywhere.com/ws) */
+  url: string;
+  /** Username for relay registration (separate from local auth username) */
+  username: string;
+}
+
 export interface RemoteAccessState {
   /** Schema version for future migrations */
   version: number;
@@ -31,6 +38,8 @@ export interface RemoteAccessState {
     /** When credentials were created */
     createdAt: string;
   };
+  /** Relay server configuration (optional) */
+  relay?: RelayConfig;
 }
 
 export interface RemoteAccessServiceOptions {
@@ -185,6 +194,59 @@ export class RemoteAccessService {
   async clearCredentials(): Promise<void> {
     this.state.enabled = false;
     this.state.credentials = undefined;
+    await this.save();
+  }
+
+  /**
+   * Get the relay configuration.
+   */
+  getRelayConfig(): RelayConfig | null {
+    return this.state.relay ?? null;
+  }
+
+  /**
+   * Set the relay configuration.
+   */
+  async setRelayConfig(config: RelayConfig): Promise<void> {
+    // Validate URL format
+    try {
+      const url = new URL(config.url);
+      if (url.protocol !== "ws:" && url.protocol !== "wss:") {
+        throw new Error("Relay URL must use ws:// or wss:// protocol");
+      }
+    } catch (error) {
+      if (error instanceof TypeError) {
+        throw new Error("Invalid relay URL format");
+      }
+      throw error;
+    }
+
+    // Validate username format (relay usernames are more restrictive)
+    if (!config.username || config.username.length < 3) {
+      throw new Error("Relay username must be at least 3 characters");
+    }
+    if (config.username.length > 32) {
+      throw new Error("Relay username must be at most 32 characters");
+    }
+    // Relay usernames: lowercase alphanumeric with hyphens, no leading/trailing hyphen
+    if (!/^[a-z0-9][a-z0-9-]*[a-z0-9]$|^[a-z0-9]{1,2}$/.test(config.username)) {
+      throw new Error(
+        "Relay username can only contain lowercase letters, numbers, and hyphens (no leading/trailing hyphen)",
+      );
+    }
+
+    this.state.relay = {
+      url: config.url,
+      username: config.username,
+    };
+    await this.save();
+  }
+
+  /**
+   * Clear the relay configuration.
+   */
+  async clearRelayConfig(): Promise<void> {
+    this.state.relay = undefined;
     await this.save();
   }
 
