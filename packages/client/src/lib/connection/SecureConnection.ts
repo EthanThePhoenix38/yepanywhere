@@ -359,7 +359,7 @@ export class SecureConnection implements Connection {
 
         // Switch to encrypted message handler now that we're authenticated
         if (this.ws) {
-          this.ws.onmessage = this.handleMessage.bind(this);
+          this.ws.onmessage = (event) => this.handleMessage(event.data);
         }
 
         // Send client capabilities (Phase 3) - first encrypted message after auth
