@@ -60,7 +60,8 @@ function SettingsCategoryItem({
 export function SettingsLayout() {
   const { category } = useParams<{ category?: string }>();
   const navigate = useNavigate();
-  const { openSidebar, isWideScreen } = useNavigationLayout();
+  const { openSidebar, isWideScreen, toggleSidebar, isSidebarCollapsed } =
+    useNavigationLayout();
   const { isManualReloadMode } = useReloadNotifications();
 
   // Build the list of categories, including dev category if in dev mode
@@ -92,7 +93,13 @@ export function SettingsLayout() {
       return (
         <div className="main-content-mobile">
           <div className="main-content-mobile-inner">
-            <PageHeader title="Settings" onOpenSidebar={openSidebar} />
+            <PageHeader
+              title="Settings"
+              onOpenSidebar={openSidebar}
+              onToggleSidebar={toggleSidebar}
+              isWideScreen={isWideScreen}
+              isSidebarCollapsed={isSidebarCollapsed}
+            />
             <main className="page-scroll-container">
               <div className="page-content-inner">
                 <div className="settings-category-list">
@@ -137,7 +144,13 @@ export function SettingsLayout() {
   return (
     <div className="main-content-wrapper">
       <div className="main-content-constrained">
-        <PageHeader title="Settings" onOpenSidebar={openSidebar} />
+        <PageHeader
+          title="Settings"
+          onOpenSidebar={openSidebar}
+          onToggleSidebar={toggleSidebar}
+          isWideScreen={isWideScreen}
+          isSidebarCollapsed={isSidebarCollapsed}
+        />
         <main className="page-scroll-container">
           <div className="settings-two-column">
             <nav className="settings-category-nav">
