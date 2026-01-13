@@ -25,8 +25,13 @@ export function useSidebarPreference(): {
   }, []);
 
   const toggleExpanded = useCallback(() => {
-    setIsExpanded(!isExpanded);
-  }, [isExpanded, setIsExpanded]);
+    // Use functional update to avoid stale closure issues
+    setIsExpandedState((prev) => {
+      const next = !prev;
+      localStorage.setItem(UI_KEYS.sidebarExpanded, String(next));
+      return next;
+    });
+  }, []);
 
   return { isExpanded, setIsExpanded, toggleExpanded };
 }
