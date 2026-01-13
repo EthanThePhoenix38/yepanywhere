@@ -42,10 +42,7 @@ interface AuthContextValue {
   /** Create initial account (setup mode only) - deprecated, use enableAuth */
   setupAccount: (password: string) => Promise<void>;
   /** Change password */
-  changePassword: (
-    currentPassword: string,
-    newPassword: string,
-  ) => Promise<void>;
+  changePassword: (newPassword: string) => Promise<void>;
   /** Re-check auth status */
   checkAuth: () => Promise<void>;
 }
@@ -130,8 +127,9 @@ export function AuthProvider({ children }: AuthProviderProps) {
   const enableAuth = useCallback(async (password: string) => {
     await api.enableAuth(password);
     setAuthEnabled(true);
-    setIsAuthenticated(true);
+    setIsAuthenticated(false);
     setIsSetupMode(false);
+    // The useEffect will redirect to /login with { from: location.pathname }
   }, []);
 
   const disableAuth = useCallback(async () => {
@@ -147,12 +145,9 @@ export function AuthProvider({ children }: AuthProviderProps) {
     setIsSetupMode(false);
   }, []);
 
-  const changePassword = useCallback(
-    async (currentPassword: string, newPassword: string) => {
-      await api.changePassword(currentPassword, newPassword);
-    },
-    [],
-  );
+  const changePassword = useCallback(async (newPassword: string) => {
+    await api.changePassword(newPassword);
+  }, []);
 
   return (
     <AuthContext.Provider

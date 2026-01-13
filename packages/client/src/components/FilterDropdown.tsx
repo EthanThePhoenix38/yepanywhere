@@ -18,6 +18,7 @@ export interface FilterDropdownProps<T extends string> {
   onChange: (selected: T[]) => void;
   multiSelect?: boolean; // default true
   placeholder?: string; // shown when nothing selected
+  align?: "left" | "right"; // dropdown alignment, default left
 }
 
 /**
@@ -32,6 +33,7 @@ export function FilterDropdown<T extends string>({
   onChange,
   multiSelect = true,
   placeholder,
+  align = "left",
 }: FilterDropdownProps<T>) {
   const [isOpen, setIsOpen] = useState(false);
   const [isDesktop, setIsDesktop] = useState(
@@ -42,7 +44,7 @@ export function FilterDropdown<T extends string>({
 
   const handleButtonClick = () => {
     buttonRef.current?.blur();
-    setIsOpen(true);
+    setIsOpen((prev) => !prev);
   };
 
   const handleOptionClick = (value: T) => {
@@ -234,7 +236,7 @@ export function FilterDropdown<T extends string>({
     isOpen && isDesktop ? (
       <div
         ref={sheetRef}
-        className="filter-dropdown-dropdown"
+        className={`filter-dropdown-dropdown ${align === "right" ? "align-right" : ""}`}
         tabIndex={-1}
         aria-label={`Filter by ${label}`}
       >

@@ -184,21 +184,11 @@ export class AuthService {
   }
 
   /**
-   * Change the account password. Requires current password.
+   * Change the account password.
+   * Requires an authenticated session (checked in route).
    */
-  async changePassword(
-    currentPassword: string,
-    newPassword: string,
-  ): Promise<boolean> {
+  async changePassword(newPassword: string): Promise<boolean> {
     if (!this.state.account) {
-      return false;
-    }
-
-    const valid = await bcrypt.compare(
-      currentPassword,
-      this.state.account.passwordHash,
-    );
-    if (!valid) {
       return false;
     }
 

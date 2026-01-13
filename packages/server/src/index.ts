@@ -406,6 +406,13 @@ async function startServer() {
   async function onLocalhostPortChange(
     newPort: number,
   ): Promise<{ success: boolean; error?: string; redirectUrl?: string }> {
+    const currentPort = networkBindingService.getLocalhostPort();
+
+    // If port hasn't changed, no action needed
+    if (newPort === currentPort) {
+      return { success: true };
+    }
+
     try {
       // Test-first: try to bind new port before closing old one
       const testServer = serve(
@@ -429,6 +436,7 @@ async function startServer() {
 
       return {
         success: true,
+        // Only include redirectUrl if port actually changed
         redirectUrl: `http://127.0.0.1:${newPort}`,
       };
     } catch (error) {

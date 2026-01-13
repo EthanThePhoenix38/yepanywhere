@@ -78,6 +78,7 @@
   --error-color: #c74e39;
   --success-color: #74c991;
   --warning-color: #e1c08d;
+  --warning-badge-bg: #c2410c;
   --attention-color: #4daafc;
   --focus-border: #007acc;
   --primary-color: #60a5fa;
@@ -150,6 +151,7 @@
   --error-color: #e05545;
   --success-color: #7dd39a;
   --warning-color: #ebd09d;
+  --warning-badge-bg: #c2410c;
   --attention-color: #5db5ff;
   --focus-border: #007acc;
   --primary-color: #60a5fa;
@@ -222,6 +224,7 @@
   --error-color: #cf222e;
   --success-color: #1a7f37;
   --warning-color: #9a6700;
+  --warning-badge-bg: #c2410c;
   --attention-color: #0066cc;
   --focus-border: #0066cc;
   --primary-color: #2563eb;
@@ -291,6 +294,7 @@
   --error-color: #e05545;
   --success-color: #7dd39a;
   --warning-color: #ebd09d;
+  --warning-badge-bg: #c2410c;
   --attention-color: #5db5ff;
   --focus-border: #007acc;
   --primary-color: #60a5fa;
@@ -356,6 +360,7 @@
     --error-color: #cf222e;
     --success-color: #1a7f37;
     --warning-color: #9a6700;
+    --warning-badge-bg: #c2410c;
     --attention-color: #0066cc;
     --focus-border: #0066cc;
     --primary-color: #2563eb;
@@ -3328,6 +3333,11 @@ a.sidebar-nav-item {
   display: flex;
   flex-direction: column;
   gap: var(--space-3);
+  margin-bottom: var(--space-4);
+}
+
+.settings-group:last-child {
+  margin-bottom: 0;
 }
 
 .settings-item {
@@ -3543,7 +3553,7 @@ a.sidebar-nav-item {
 }
 
 .settings-status-warning {
-  background: var(--warning-color, #f59e0b);
+  background: var(--warning-badge-bg);
   color: #fff;
 }
 
@@ -5524,6 +5534,12 @@ a.sidebar-nav-item {
   border-radius: var(--radius-md);
 }
 
+.form-buttons {
+  display: flex;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+
 /* ==========================================================================
    SessionListItem Component
    ========================================================================== */
@@ -5958,6 +5974,11 @@ a.sidebar-nav-item {
     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
     z-index: 100;
     animation: filterDropdownFadeIn 0.15s ease-out;
+  }
+
+  .filter-dropdown-dropdown.align-right {
+    left: auto;
+    right: 0;
   }
 
   .filter-dropdown-dropdown .filter-dropdown-options {

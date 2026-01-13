@@ -658,10 +658,10 @@ export const api = {
       method: "POST",
     }),
 
-  changePassword: (currentPassword: string, newPassword: string) =>
+  changePassword: (newPassword: string) =>
     fetchJSON<{ success: boolean }>("/auth/change-password", {
       method: "POST",
-      body: JSON.stringify({ currentPassword, newPassword }),
+      body: JSON.stringify({ newPassword }),
     }),
 
   // Claude CLI Login API (for re-authentication when SDK auth expires)

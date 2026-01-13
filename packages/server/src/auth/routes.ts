@@ -26,7 +26,6 @@ interface LoginBody {
 }
 
 interface ChangePasswordBody {
-  currentPassword: string;
   newPassword: string;
 }
 
@@ -126,18 +125,7 @@ export function createAuthRoutes(deps: AuthRoutesDeps): Hono {
       return c.json({ error: "Failed to enable auth" }, 500);
     }
 
-    // Auto-login after enabling
-    const userAgent = c.req.header("User-Agent");
-    const sessionId = await authService.createSession(userAgent);
-
-    setCookie(c, SESSION_COOKIE_NAME, sessionId, {
-      httpOnly: true,
-      secure: true,
-      sameSite: "Lax",
-      path: "/",
-      maxAge: 30 * 24 * 60 * 60, // 30 days
-    });
-
+    // Don't auto-login - require user to log in with their new password
     return c.json({ success: true });
   });
 
@@ -261,7 +249,7 @@ export function createAuthRoutes(deps: AuthRoutesDeps): Hono {
 
   /**
    * POST /api/auth/change-password
-   * Change password (requires current password)
+   * Change password (requires authenticated session)
    */
   app.post("/change-password", async (c) => {
     // Require authenticated session
@@ -271,10 +259,6 @@ export function createAuthRoutes(deps: AuthRoutesDeps): Hono {
     }
 
     const body = await c.req.json<ChangePasswordBody>();
-
-    if (!body.currentPassword || typeof body.currentPassword !== "string") {
-      return c.json({ error: "Current password is required" }, 400);
-    }
 
     if (!body.newPassword || typeof body.newPassword !== "string") {
       return c.json({ error: "New password is required" }, 400);
@@ -287,16 +271,10 @@ export function createAuthRoutes(deps: AuthRoutesDeps): Hono {
       );
     }
 
-    const success = await authService.changePassword(
-      body.currentPassword,
-      body.newPassword,
-    );
+    const success = await authService.changePassword(body.newPassword);
     if (!success) {
-      return c.json({ error: "Current password is incorrect" }, 401);
+      return c.json({ error: "Failed to change password" }, 500);
     }
-
-    // Optionally invalidate all other sessions
-    // await authService.invalidateAllSessions();
 
     return c.json({ success: true });
   });
