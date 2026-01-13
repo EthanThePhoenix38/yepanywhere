@@ -553,6 +553,39 @@ export const api = {
       body: JSON.stringify({ deviceId, message }),
     }),
 
+  deletePushSubscription: (deviceId: string) =>
+    fetchJSON<{ success: boolean }>(
+      `/push/subscriptions/${encodeURIComponent(deviceId)}`,
+      { method: "DELETE" },
+    ),
+
+  getNotificationSettings: () =>
+    fetchJSON<{
+      settings: {
+        toolApproval: boolean;
+        userQuestion: boolean;
+        sessionHalted: boolean;
+      };
+    }>("/push/settings"),
+
+  updateNotificationSettings: (
+    settings: Partial<{
+      toolApproval: boolean;
+      userQuestion: boolean;
+      sessionHalted: boolean;
+    }>,
+  ) =>
+    fetchJSON<{
+      settings: {
+        toolApproval: boolean;
+        userQuestion: boolean;
+        sessionHalted: boolean;
+      };
+    }>("/push/settings", {
+      method: "PUT",
+      body: JSON.stringify(settings),
+    }),
+
   // File API
   getFile: (projectId: string, path: string, highlight = false) => {
     const params = new URLSearchParams({ path });

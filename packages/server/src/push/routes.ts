@@ -4,7 +4,7 @@
 
 import { Hono } from "hono";
 import type { PushService } from "./PushService.js";
-import type { PushSubscription } from "./types.js";
+import type { NotificationSettings, PushSubscription } from "./types.js";
 
 export interface PushRoutesDeps {
   pushService: PushService;
@@ -161,6 +161,44 @@ export function createPushRoutes(deps: PushRoutesDeps): Hono {
     }
 
     return c.json({ success: true });
+  });
+
+  /**
+   * GET /api/push/settings
+   * Get notification settings (what types of notifications are sent)
+   */
+  app.get("/settings", (c) => {
+    const settings = pushService.getNotificationSettings();
+    return c.json({ settings });
+  });
+
+  /**
+   * PUT /api/push/settings
+   * Update notification settings
+   */
+  app.put("/settings", async (c) => {
+    const body = await c.req.json<Partial<NotificationSettings>>();
+
+    // Validate that we got at least one setting
+    const validKeys = [
+      "toolApproval",
+      "userQuestion",
+      "sessionHalted",
+    ] as const;
+    const updates: Partial<NotificationSettings> = {};
+
+    for (const key of validKeys) {
+      if (typeof body[key] === "boolean") {
+        updates[key] = body[key];
+      }
+    }
+
+    if (Object.keys(updates).length === 0) {
+      return c.json({ error: "At least one valid setting is required" }, 400);
+    }
+
+    const settings = await pushService.setNotificationSettings(updates);
+    return c.json({ settings });
   });
 
   return app;

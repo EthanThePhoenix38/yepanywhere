@@ -76,6 +76,16 @@ export class PushNotifier {
     }
 
     const request = process.state.request;
+    const inputType =
+      request.type === "tool-approval" ? "tool-approval" : "user-question";
+
+    // Check if this notification type is enabled in settings
+    const settingKey =
+      inputType === "tool-approval" ? "toolApproval" : "userQuestion";
+    if (!this.pushService.isNotificationTypeEnabled(settingKey)) {
+      return;
+    }
+
     const projectName = this.getProjectName(event.projectId);
     const summary = this.buildSummary(request);
 
@@ -84,8 +94,7 @@ export class PushNotifier {
       sessionId: event.sessionId,
       projectId: event.projectId,
       projectName,
-      inputType:
-        request.type === "tool-approval" ? "tool-approval" : "user-question",
+      inputType,
       summary,
       requestId: request.id,
       timestamp: event.timestamp,

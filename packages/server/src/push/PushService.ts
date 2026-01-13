@@ -10,12 +10,14 @@
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import webPush from "web-push";
-import type {
-  PushPayload,
-  PushSubscription,
-  SendResult,
-  StoredSubscription,
-  SubscriptionState,
+import {
+  DEFAULT_NOTIFICATION_SETTINGS,
+  type NotificationSettings,
+  type PushPayload,
+  type PushSubscription,
+  type SendResult,
+  type StoredSubscription,
+  type SubscriptionState,
 } from "./types.js";
 import type { VapidKeys } from "./vapid.js";
 
@@ -166,6 +168,43 @@ export class PushService {
    */
   isSubscribed(deviceId: string): boolean {
     return !!this.state.subscriptions[deviceId];
+  }
+
+  /**
+   * Get notification settings.
+   */
+  getNotificationSettings(): NotificationSettings {
+    return this.state.settings ?? DEFAULT_NOTIFICATION_SETTINGS;
+  }
+
+  /**
+   * Update notification settings.
+   */
+  async setNotificationSettings(
+    settings: Partial<NotificationSettings>,
+  ): Promise<NotificationSettings> {
+    this.ensureInitialized();
+
+    const current = this.getNotificationSettings();
+    const updated: NotificationSettings = {
+      ...current,
+      ...settings,
+    };
+
+    this.state.settings = updated;
+    await this.save();
+
+    return updated;
+  }
+
+  /**
+   * Check if a specific notification type is enabled.
+   */
+  isNotificationTypeEnabled(
+    type: "toolApproval" | "userQuestion" | "sessionHalted",
+  ): boolean {
+    const settings = this.getNotificationSettings();
+    return settings[type];
   }
 
   /**

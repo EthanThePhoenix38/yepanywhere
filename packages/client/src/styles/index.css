@@ -6981,3 +6981,84 @@ a.sidebar-nav-item {
 .onboarding-progress-dot.completed {
   background: var(--app-yep-green-dark);
 }
+
+/* ==========================================================================
+   Device List (Push Notifications Settings)
+   ========================================================================== */
+
+.device-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.device-list-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: var(--space-3);
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-muted);
+  border-radius: var(--radius-md);
+}
+
+.device-list-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.device-list-info strong {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: var(--font-size-base);
+}
+
+.device-list-info p {
+  margin: var(--space-1) 0 0;
+  font-size: var(--font-size-sm);
+  color: var(--text-muted);
+}
+
+.device-current-badge {
+  font-size: var(--font-size-xs);
+  font-weight: 500;
+  padding: 2px 6px;
+  background: var(--app-yep-green);
+  color: #000;
+  border-radius: var(--radius-sm);
+}
+
+.settings-button-danger-subtle {
+  background: transparent;
+  border-color: var(--error-color);
+  color: var(--error-color);
+}
+
+.settings-button-danger-subtle:hover {
+  background: var(--error-color);
+  color: #fff;
+}
+
+/* Info box for explaining things like "SW disabled only affects this device" */
+.settings-info-box {
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-muted);
+  border-radius: var(--radius-md);
+  padding: var(--space-3);
+  font-size: var(--font-size-sm);
+  color: var(--text-muted);
+}
+
+.settings-info-box p {
+  margin: 0 0 var(--space-2);
+}
+
+.settings-info-box p:last-child {
+  margin-bottom: 0;
+}
+
+.settings-info-box a {
+  color: var(--link-color);
+}

@@ -23,12 +23,31 @@ export interface StoredSubscription {
   deviceName?: string;
 }
 
+/** Server-side notification settings (controls what types of notifications are sent) */
+export interface NotificationSettings {
+  /** Send notifications for tool approval requests */
+  toolApproval: boolean;
+  /** Send notifications for user questions */
+  userQuestion: boolean;
+  /** Send notifications when sessions halt/complete */
+  sessionHalted: boolean;
+}
+
+/** Default notification settings (all enabled) */
+export const DEFAULT_NOTIFICATION_SETTINGS: NotificationSettings = {
+  toolApproval: true,
+  userQuestion: true,
+  sessionHalted: true,
+};
+
 /** Subscription storage state */
 export interface SubscriptionState {
   /** Schema version for future migrations */
   version: number;
   /** Map of deviceId -> subscription info */
   subscriptions: Record<string, StoredSubscription>;
+  /** Server-side notification type settings */
+  settings?: NotificationSettings;
 }
 
 /** Push notification payload types */

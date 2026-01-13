@@ -28,14 +28,31 @@ export function PushNotificationToggle() {
 
   // Not supported - show message with reason and help link
   if (!isSupported) {
+    // Check if this is specifically the dev mode SW disabled case
+    const isDevModeDisabled = error?.includes(
+      "Service worker disabled in dev mode",
+    );
+
     return (
       <div className="settings-item">
         <div className="settings-item-info">
           <strong>Push Notifications</strong>
-          <p className="settings-muted">
+          <p>
             {error || "Push notifications are not supported in this browser."}
           </p>
-          <p className="settings-muted">
+          {isDevModeDisabled && (
+            <div className="settings-info-box" style={{ marginTop: "0.5rem" }}>
+              <p>
+                This only affects <strong>this device</strong>. Other subscribed
+                devices will still receive notifications from the server.
+              </p>
+              <p>
+                To enable push on this device in dev mode, restart with{" "}
+                <code>VITE_ENABLE_SW=true</code>.
+              </p>
+            </div>
+          )}
+          <p style={{ marginTop: "0.5rem" }}>
             <a
               href="https://github.com/kzahel/yepanywhere/blob/main/docs/push-notifications.md"
               target="_blank"

@@ -65,11 +65,14 @@ export function usePushNotifications() {
       const reason = !SW_ENABLED
         ? "Service worker disabled in dev mode (set VITE_ENABLE_SW=true to enable)"
         : "Push notifications not supported in this browser";
+      // Still populate deviceId so we can identify this device in the subscribed list
+      const deviceId = localStorage.getItem(DEVICE_ID_KEY);
       setState((s) => ({
         ...s,
         isSupported: false,
         isLoading: false,
         error: reason,
+        deviceId,
       }));
       return;
     }
