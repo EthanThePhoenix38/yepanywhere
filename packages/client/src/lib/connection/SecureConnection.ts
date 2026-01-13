@@ -39,7 +39,7 @@ import {
   isSrpSessionResumed,
 } from "@yep-anywhere/shared";
 import { getRelayDebugEnabled } from "../../hooks/useDeveloperMode";
-import { LEGACY_KEYS, getServerScoped } from "../storageKeys";
+import { getOrCreateBrowserProfileId } from "../storageKeys";
 import {
   decrypt,
   decryptBinaryEnvelopeWithDecompression,
@@ -1109,9 +1109,8 @@ export class SecureConnection implements Connection {
    */
   subscribeActivity(handlers: StreamHandlers): Subscription {
     const subscriptionId = generateId();
-    const browserProfileId =
-      getServerScoped("browserProfileId", LEGACY_KEYS.browserProfileId) ??
-      undefined;
+    // Get or create browser profile ID for connection tracking
+    const browserProfileId = getOrCreateBrowserProfileId();
 
     // Store handlers for routing events
     this.subscriptions.set(subscriptionId, handlers);

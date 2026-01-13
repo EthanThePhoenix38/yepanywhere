@@ -1,3 +1,4 @@
+import { BrowserNotificationToggle } from "../../components/BrowserNotificationToggle";
 import { PushNotificationToggle } from "../../components/PushNotificationToggle";
 import { useConnectedDevices } from "../../hooks/useConnectedDevices";
 import { useNotificationSettings } from "../../hooks/useNotificationSettings";
@@ -259,12 +260,24 @@ export function NotificationsSettings() {
         </div>
       </section>
 
-      {/* This device - local push subscription */}
+      {/* Desktop notifications - browser Notification API */}
       <section className="settings-section">
-        <h2>This Device</h2>
+        <h2>Desktop Notifications</h2>
         <p className="settings-section-description">
-          Enable push notifications on this device to receive alerts when
-          sessions need attention.
+          Get browser notifications when sessions need attention. Works while
+          the tab is open.
+        </p>
+        <div className="settings-group">
+          <BrowserNotificationToggle />
+        </div>
+      </section>
+
+      {/* Push notifications - service worker based */}
+      <section className="settings-section">
+        <h2>Push Notifications</h2>
+        <p className="settings-section-description">
+          Receive push notifications even when the browser is closed or you're
+          on another device.
         </p>
         <div className="settings-group">
           <PushNotificationToggle />

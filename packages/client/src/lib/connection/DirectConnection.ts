@@ -1,6 +1,6 @@
 import type { UploadedFile } from "@yep-anywhere/shared";
 import { uploadFile } from "../../api/upload";
-import { LEGACY_KEYS, getServerScoped } from "../storageKeys";
+import { getOrCreateBrowserProfileId } from "../storageKeys";
 import type {
   Connection,
   StreamHandlers,
@@ -110,14 +110,10 @@ export class DirectConnection implements Connection {
    * Subscribe to activity events via SSE.
    */
   subscribeActivity(handlers: StreamHandlers): Subscription {
-    const browserProfileId = getServerScoped(
-      "browserProfileId",
-      LEGACY_KEYS.browserProfileId,
-    );
+    // Get or create browser profile ID for connection tracking
+    const browserProfileId = getOrCreateBrowserProfileId();
     const baseUrl = `${API_BASE}/activity/events`;
-    const url = browserProfileId
-      ? `${baseUrl}?browserProfileId=${encodeURIComponent(browserProfileId)}`
-      : baseUrl;
+    const url = `${baseUrl}?browserProfileId=${encodeURIComponent(browserProfileId)}`;
     return this.createEventSourceSubscription(
       url,
       handlers,

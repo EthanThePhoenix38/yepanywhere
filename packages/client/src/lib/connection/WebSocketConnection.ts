@@ -20,7 +20,7 @@ import {
   encodeUploadChunkFrame,
   isBinaryData,
 } from "@yep-anywhere/shared";
-import { LEGACY_KEYS, getServerScoped } from "../storageKeys";
+import { getOrCreateBrowserProfileId } from "../storageKeys";
 import {
   type Connection,
   type StreamHandlers,
@@ -476,9 +476,8 @@ export class WebSocketConnection implements Connection {
    */
   subscribeActivity(handlers: StreamHandlers): Subscription {
     const subscriptionId = generateId();
-    const browserProfileId =
-      getServerScoped("browserProfileId", LEGACY_KEYS.browserProfileId) ??
-      undefined;
+    // Get or create browser profile ID for connection tracking
+    const browserProfileId = getOrCreateBrowserProfileId();
 
     // Store handlers for routing events
     this.subscriptions.set(subscriptionId, handlers);

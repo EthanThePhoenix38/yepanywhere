@@ -132,6 +132,27 @@ export function removeServerScoped(
   }
 }
 
+/**
+ * Get or create the browser profile ID.
+ * This identifies the browser profile (shared across tabs) for connection tracking.
+ * Creates a new UUID if one doesn't exist.
+ */
+export function getOrCreateBrowserProfileId(): string {
+  let browserProfileId = getServerScoped(
+    "browserProfileId",
+    LEGACY_KEYS.browserProfileId,
+  );
+  if (!browserProfileId) {
+    browserProfileId = crypto.randomUUID();
+    setServerScoped(
+      "browserProfileId",
+      browserProfileId,
+      LEGACY_KEYS.browserProfileId,
+    );
+  }
+  return browserProfileId;
+}
+
 // ============================================================================
 // Dynamic Key Builders (for session/project-specific keys)
 // ============================================================================

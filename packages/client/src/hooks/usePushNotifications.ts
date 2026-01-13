@@ -2,8 +2,8 @@ import { useCallback, useEffect, useState } from "react";
 import { api } from "../api/client";
 import {
   LEGACY_KEYS,
+  getOrCreateBrowserProfileId,
   getServerScoped,
-  setServerScoped,
 } from "../lib/storageKeys";
 const SW_PATH = "/sw.js";
 
@@ -52,23 +52,6 @@ export function usePushNotifications() {
     "PushManager" in window &&
     "Notification" in window;
 
-  // Get or create browser profile ID
-  const getBrowserProfileId = useCallback((): string => {
-    let browserProfileId = getServerScoped(
-      "browserProfileId",
-      LEGACY_KEYS.browserProfileId,
-    );
-    if (!browserProfileId) {
-      browserProfileId = crypto.randomUUID();
-      setServerScoped(
-        "browserProfileId",
-        browserProfileId,
-        LEGACY_KEYS.browserProfileId,
-      );
-    }
-    return browserProfileId;
-  }, []);
-
   // Initialize: register service worker and check subscription status
   useEffect(() => {
     if (!isSupported) {
@@ -101,7 +84,7 @@ export function usePushNotifications() {
 
         // Check current subscription status
         const subscription = await reg.pushManager.getSubscription();
-        const browserProfileId = getBrowserProfileId();
+        const browserProfileId = getOrCreateBrowserProfileId();
 
         setState({
           isSupported: true,
@@ -123,7 +106,7 @@ export function usePushNotifications() {
     };
 
     init();
-  }, [isSupported, getBrowserProfileId]);
+  }, [isSupported]);
 
   // Subscribe to push notifications
   const subscribe = useCallback(async () => {
@@ -161,7 +144,7 @@ export function usePushNotifications() {
       });
 
       // Send subscription to server
-      const browserProfileId = getBrowserProfileId();
+      const browserProfileId = getOrCreateBrowserProfileId();
       const subscriptionJson = subscription.toJSON();
 
       await api.subscribePush(
@@ -185,7 +168,7 @@ export function usePushNotifications() {
         error: err instanceof Error ? err.message : "Failed to subscribe",
       }));
     }
-  }, [registration, getBrowserProfileId]);
+  }, [registration]);
 
   // Unsubscribe from push notifications
   const unsubscribe = useCallback(async () => {
@@ -206,7 +189,7 @@ export function usePushNotifications() {
       }
 
       // Notify server
-      const browserProfileId = getBrowserProfileId();
+      const browserProfileId = getOrCreateBrowserProfileId();
       await api.unsubscribePush(browserProfileId);
 
       setState((s) => ({
@@ -223,11 +206,11 @@ export function usePushNotifications() {
         error: err instanceof Error ? err.message : "Failed to unsubscribe",
       }));
     }
-  }, [registration, getBrowserProfileId]);
+  }, [registration]);
 
   // Send a test notification
   const sendTest = useCallback(async () => {
-    const browserProfileId = getBrowserProfileId();
+    const browserProfileId = getOrCreateBrowserProfileId();
     setState((s) => ({ ...s, isLoading: true, error: null }));
 
     try {
@@ -241,7 +224,7 @@ export function usePushNotifications() {
         error: err instanceof Error ? err.message : "Failed to send test",
       }));
     }
-  }, [getBrowserProfileId]);
+  }, []);
 
   // Get service worker logs (for debugging)
   const getSwLogs = useCallback(async (): Promise<SwLogEntry[]> => {
