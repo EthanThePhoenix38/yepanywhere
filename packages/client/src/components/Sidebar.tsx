@@ -58,13 +58,17 @@ export function Sidebar({
   onResizeEnd,
 }: SidebarProps) {
   // Fetch global sessions for sidebar (non-starred only for recent/older sections)
-  const { sessions: globalSessions } = useGlobalSessions({ limit: 50 });
+  const { sessions: globalSessions, loading: globalLoading } =
+    useGlobalSessions({ limit: 50 });
 
   // Fetch starred sessions separately to ensure we get ALL starred sessions
-  const { sessions: starredSessions } = useGlobalSessions({
-    starred: true,
-    limit: 100,
-  });
+  const { sessions: starredSessions, loading: starredLoading } =
+    useGlobalSessions({
+      starred: true,
+      limit: 100,
+    });
+
+  const sessionsLoading = globalLoading || starredLoading;
 
   // Global inbox count
   const inboxCount = useNeedsAttentionBadge();
@@ -497,7 +501,9 @@ export function Sidebar({
           {filteredStarredSessions.length === 0 &&
             recentDaySessions.length === 0 &&
             olderSessions.length === 0 && (
-              <p className="sidebar-empty">No sessions yet</p>
+              <p className="sidebar-empty">
+                {sessionsLoading ? "Loading sessions..." : "No sessions yet"}
+              </p>
             )}
         </div>
 

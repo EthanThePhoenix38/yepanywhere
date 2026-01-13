@@ -450,10 +450,19 @@ async function startServer() {
     }
   }
 
+  // Track whether we're currently bound to 0.0.0.0 (which covers localhost)
+  let boundToAllInterfaces = false;
+
   // Callback for network socket changes
   async function onNetworkBindingChange(
     bindConfig: { host: string; port: number } | null,
   ): Promise<{ success: boolean; error?: string }> {
+    const isBindingToAllInterfaces =
+      bindConfig?.host === "0.0.0.0" || bindConfig?.host === "::";
+    const localhostPort = networkBindingService.getLocalhostPort();
+    const samePortAsLocalhost = bindConfig?.port === localhostPort;
+    const needsLocalhostClose = isBindingToAllInterfaces && samePortAsLocalhost;
+
     try {
       // Close existing network server if running
       if (networkServer) {
@@ -462,17 +471,59 @@ async function startServer() {
         console.log("[NetworkBinding] Network socket closed");
       }
 
+      // If we were bound to 0.0.0.0 and now we're not, rebind localhost
+      if (boundToAllInterfaces && !isBindingToAllInterfaces) {
+        localhostServer = createServer(localhostPort, "127.0.0.1", (info) => {
+          console.log(
+            `[NetworkBinding] Localhost server rebound on port ${info.port}`,
+          );
+        });
+        boundToAllInterfaces = false;
+      }
+
       // Create new network server if config provided
       if (bindConfig) {
-        networkServer = createServer(
-          bindConfig.port,
-          bindConfig.host,
-          (info) => {
+        // If binding to 0.0.0.0 on the same port as localhost, we need to
+        // close the localhost server first since 0.0.0.0 includes 127.0.0.1
+        if (needsLocalhostClose) {
+          localhostServer.close();
+          console.log(
+            "[NetworkBinding] Closed localhost server to bind to all interfaces",
+          );
+        }
+
+        try {
+          networkServer = createServer(
+            bindConfig.port,
+            bindConfig.host,
+            (info) => {
+              console.log(
+                `[NetworkBinding] Network socket listening on ${bindConfig.host}:${info.port}`,
+              );
+            },
+          );
+          // Only set this flag after successful binding
+          if (needsLocalhostClose) {
+            boundToAllInterfaces = true;
+          }
+        } catch (bindError) {
+          // If we closed localhost but failed to bind network, recover localhost
+          if (needsLocalhostClose) {
             console.log(
-              `[NetworkBinding] Network socket listening on ${bindConfig.host}:${info.port}`,
+              "[NetworkBinding] Recovering localhost server after failed bind",
             );
-          },
-        );
+            localhostServer = createServer(
+              localhostPort,
+              "127.0.0.1",
+              (info) => {
+                console.log(
+                  `[NetworkBinding] Localhost server recovered on port ${info.port}`,
+                );
+              },
+            );
+          }
+          throw bindError;
+        }
       }
 
       return { success: true };

@@ -4652,23 +4652,41 @@ a.sidebar-nav-item {
     display: none;
   }
 
-  /* Collapsed sidebar - hide text, center icons */
-  .sidebar-collapsed .sidebar-brand,
+  /* Collapsed sidebar - hide text, show icons only */
   .sidebar-collapsed .sidebar-nav-text,
+  .sidebar-collapsed .sidebar-nav-badge,
+  .sidebar-collapsed .sidebar-section,
   .sidebar-collapsed .sidebar-section-title,
-  .sidebar-collapsed .sidebar-sessions,
-  .sidebar-collapsed .sidebar-header {
-    justify-content: center;
-    padding: 0.5rem; /* Match toolbar vertical padding */
+  .sidebar-collapsed .sidebar-empty {
+    display: none;
   }
 
   .sidebar-collapsed .sidebar-close {
     display: none;
   }
 
+  .sidebar-collapsed .sidebar-header {
+    justify-content: center;
+    padding: 0.5rem;
+  }
+
   .sidebar-collapsed .sidebar-actions {
     padding: 0.5rem;
     align-items: center;
+  }
+
+  .sidebar-collapsed .sidebar-sessions {
+    overflow: hidden;
+    padding: 0;
+  }
+
+  .sidebar-collapsed .sidebar-nav-section {
+    padding: 0.25rem;
+  }
+
+  .sidebar-collapsed .sidebar-nav-item {
+    justify-content: center;
+    padding: 0.5rem;
   }
 
   /* Sidebar resize handle */

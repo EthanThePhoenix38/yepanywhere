@@ -51,14 +51,20 @@ export function LocalAccessSettings() {
     newNetworkEnabled: boolean,
     newInterface: string,
     newRequirePassword: boolean,
+    newPassword: string,
   ) => {
     if (!binding || !auth) return false;
     const portChanged = newPort !== String(binding.localhost.port);
     const networkEnabledChanged = newNetworkEnabled !== binding.network.enabled;
     const interfaceChanged = newInterface !== (binding.network.host ?? "");
     const authChanged = newRequirePassword !== auth.authEnabled;
+    const passwordEntered = newPassword.length > 0;
     return (
-      portChanged || networkEnabledChanged || interfaceChanged || authChanged
+      portChanged ||
+      networkEnabledChanged ||
+      interfaceChanged ||
+      authChanged ||
+      passwordEntered
     );
   };
 
@@ -73,9 +79,11 @@ export function LocalAccessSettings() {
       return;
     }
 
-    // Validate password if enabling auth
+    // Validate password if enabling or changing auth
     const enablingAuth = requirePassword && !auth.authEnabled;
-    if (enablingAuth) {
+    const changingPassword =
+      requirePassword && auth.authEnabled && authPassword.length > 0;
+    if (enablingAuth || changingPassword) {
       if (authPassword.length < 6) {
         setFormError("Password must be at least 6 characters");
         return;
@@ -105,6 +113,10 @@ export function LocalAccessSettings() {
         await auth.enableAuth(authPassword);
         setAuthPassword("");
         setAuthPasswordConfirm("");
+      } else if (changingPassword) {
+        await auth.changePassword(authPassword);
+        setAuthPassword("");
+        setAuthPasswordConfirm("");
       } else if (!requirePassword && auth.authEnabled) {
         await auth.disableAuth();
       }
@@ -127,14 +139,6 @@ export function LocalAccessSettings() {
     }
   };
 
-  // Change password state (separate from main form)
-  const [showChangePassword, setShowChangePassword] = useState(false);
-  const [newPassword, setNewPassword] = useState("");
-  const [confirmPassword, setConfirmPassword] = useState("");
-  const [passwordError, setPasswordError] = useState<string | null>(null);
-  const [passwordSuccess, setPasswordSuccess] = useState(false);
-  const [isChangingPassword, setIsChangingPassword] = useState(false);
-
   // Non-remote mode (cookie-based auth)
   if (auth) {
     // Show loading state until data is ready
@@ -150,8 +154,8 @@ export function LocalAccessSettings() {
       );
     }
 
-    // Check if we're enabling auth (need to show password fields)
-    const showPasswordFields = requirePassword && !auth.authEnabled;
+    // Show password fields when auth is enabled or being enabled
+    const showPasswordFields = requirePassword;
 
     return (
       <section className="settings-section">
@@ -167,22 +171,49 @@ export function LocalAccessSettings() {
               <strong>Status</strong>
               <p>
                 {serverInfo ? (
-                  <>
-                    Listening on{" "}
-                    <code>
-                      {serverInfo.host}:{serverInfo.port}
-                    </code>
-                    {binding?.network.enabled && binding.network.host && (
+                  (() => {
+                    const networkHost = binding?.network.host;
+                    const networkPort =
+                      binding?.network.port ?? serverInfo.port;
+                    const isAllInterfaces =
+                      networkHost === "0.0.0.0" || networkHost === "::";
+                    const samePort = networkPort === serverInfo.port;
+
+                    // If bound to all interfaces on same port, just show that
+                    if (
+                      binding?.network.enabled &&
+                      isAllInterfaces &&
+                      samePort
+                    ) {
+                      return (
+                        <>
+                          Listening on{" "}
+                          <code>
+                            {networkHost}:{networkPort}
+                          </code>
+                        </>
+                      );
+                    }
+
+                    // Otherwise show localhost, and optionally network
+                    return (
                       <>
-                        {" "}
-                        and{" "}
+                        Listening on{" "}
                         <code>
-                          {binding.network.host}:
-                          {binding.network.port ?? serverInfo.port}
+                          {serverInfo.host}:{serverInfo.port}
                         </code>
+                        {binding?.network.enabled && networkHost && (
+                          <>
+                            {" "}
+                            and{" "}
+                            <code>
+                              {networkHost}:{networkPort}
+                            </code>
+                          </>
+                        )}
                       </>
-                    )}
-                  </>
+                    );
+                  })()
                 ) : (
                   "Unable to fetch server info"
                 )}
@@ -203,7 +234,13 @@ export function LocalAccessSettings() {
         </div>
 
         {/* Network Configuration */}
-        <div className="settings-group">
+        <form
+          className="settings-group"
+          onSubmit={(e) => {
+            e.preventDefault();
+            handleApplyChanges();
+          }}
+        >
           <div className="settings-item">
             <div className="settings-item-info">
               <strong>Listening Port</strong>
@@ -227,6 +264,7 @@ export function LocalAccessSettings() {
                       networkEnabled,
                       selectedInterface,
                       requirePassword,
+                      authPassword,
                     ),
                   );
                 }}
@@ -260,6 +298,7 @@ export function LocalAccessSettings() {
                         e.target.checked,
                         selectedInterface,
                         requirePassword,
+                        authPassword,
                       ),
                     );
                   }}
@@ -298,6 +337,7 @@ export function LocalAccessSettings() {
                       networkEnabled,
                       newInterface,
                       requirePassword,
+                      authPassword,
                     ),
                   );
                 }}
@@ -342,6 +382,7 @@ export function LocalAccessSettings() {
                         networkEnabled,
                         selectedInterface,
                         e.target.checked,
+                        authPassword,
                       ),
                     );
                   }}
@@ -351,7 +392,7 @@ export function LocalAccessSettings() {
             </div>
           )}
 
-          {/* Password fields - shown when enabling auth */}
+          {/* Password fields - shown when auth is on */}
           {showPasswordFields && (
             <>
               {/* Hidden username field to prevent Chrome from using port as username */}
@@ -359,40 +400,65 @@ export function LocalAccessSettings() {
                 type="text"
                 name="username"
                 autoComplete="username"
-                style={{ display: "none" }}
+                style={{
+                  position: "absolute",
+                  visibility: "hidden",
+                  pointerEvents: "none",
+                }}
                 tabIndex={-1}
               />
               <div className="settings-item">
                 <div className="settings-item-info">
                   <strong>Password</strong>
-                  <p>At least 6 characters</p>
+                  <p>
+                    {auth.authEnabled
+                      ? "Leave blank to keep current"
+                      : "At least 6 characters"}
+                  </p>
                 </div>
                 <input
                   type="password"
                   className="settings-input"
                   value={authPassword}
-                  onChange={(e) => setAuthPassword(e.target.value)}
+                  onChange={(e) => {
+                    setAuthPassword(e.target.value);
+                    setHasChanges(
+                      checkForChanges(
+                        localhostPort,
+                        networkEnabled,
+                        selectedInterface,
+                        requirePassword,
+                        e.target.value,
+                      ),
+                    );
+                  }}
                   autoComplete="new-password"
-                  placeholder="Enter password"
+                  placeholder={
+                    auth.authEnabled ? "New password" : "Enter password"
+                  }
                 />
               </div>
-              <div className="settings-item">
-                <div className="settings-item-info">
-                  <strong>Confirm Password</strong>
+              {authPassword.length > 0 && (
+                <div className="settings-item">
+                  <div className="settings-item-info">
+                    <strong>Confirm Password</strong>
+                  </div>
+                  <input
+                    type="password"
+                    className="settings-input"
+                    value={authPasswordConfirm}
+                    onChange={(e) => setAuthPasswordConfirm(e.target.value)}
+                    autoComplete="new-password"
+                    placeholder="Confirm password"
+                  />
                 </div>
-                <input
-                  type="password"
-                  className="settings-input"
-                  value={authPasswordConfirm}
-                  onChange={(e) => setAuthPasswordConfirm(e.target.value)}
-                  autoComplete="new-password"
-                  placeholder="Confirm password"
-                />
-              </div>
-              <p className="form-hint">
-                If you forget your password, restart with{" "}
-                <code>--auth-disable</code> to bypass auth.
-              </p>
+              )}
+              {!auth.authEnabled && (
+                <p className="form-hint">
+                  If you forget your password, restart with{" "}
+                  <code>--auth-disable</code> to bypass auth.
+                </p>
+              )}
             </>
           )}
 
@@ -406,133 +472,18 @@ export function LocalAccessSettings() {
           <div className="settings-item">
             {formError && <p className="form-error">{formError}</p>}
             <button
-              type="button"
+              type="submit"
               className="settings-button"
-              onClick={handleApplyChanges}
               disabled={!hasChanges || isApplying || applying}
             >
               {isApplying || applying ? "Applying..." : "Apply Changes"}
             </button>
           </div>
-        </div>
+        </form>
 
-        {/* Auth management - separate section when auth is enabled */}
+        {/* Logout - shown when auth is enabled */}
         {auth.authEnabled && auth.isAuthenticated && (
           <div className="settings-group">
-            <div className="settings-item">
-              <div className="settings-item-info">
-                <strong>Change Password</strong>
-                <p>Update your account password</p>
-              </div>
-              {!showChangePassword ? (
-                <button
-                  type="button"
-                  className="settings-button"
-                  onClick={() => setShowChangePassword(true)}
-                >
-                  Change
-                </button>
-              ) : (
-                <button
-                  type="button"
-                  className="settings-button settings-button-secondary"
-                  onClick={() => {
-                    setShowChangePassword(false);
-                    setNewPassword("");
-                    setConfirmPassword("");
-                    setPasswordError(null);
-                    setPasswordSuccess(false);
-                  }}
-                >
-                  Cancel
-                </button>
-              )}
-            </div>
-
-            {showChangePassword && (
-              <div className="settings-item settings-item-form">
-                <form
-                  onSubmit={async (e) => {
-                    e.preventDefault();
-                    setPasswordError(null);
-                    setPasswordSuccess(false);
-
-                    if (newPassword !== confirmPassword) {
-                      setPasswordError("Passwords do not match");
-                      return;
-                    }
-
-                    if (newPassword.length < 6) {
-                      setPasswordError(
-                        "Password must be at least 6 characters",
-                      );
-                      return;
-                    }
-
-                    setIsChangingPassword(true);
-                    try {
-                      await auth.changePassword(newPassword);
-                      setPasswordSuccess(true);
-                      setNewPassword("");
-                      setConfirmPassword("");
-                      setTimeout(() => {
-                        setShowChangePassword(false);
-                        setPasswordSuccess(false);
-                      }, 2000);
-                    } catch (err) {
-                      setPasswordError(
-                        err instanceof Error
-                          ? err.message
-                          : "Failed to change password",
-                      );
-                    } finally {
-                      setIsChangingPassword(false);
-                    }
-                  }}
-                >
-                  <div className="form-field">
-                    <label htmlFor="new-password">New Password</label>
-                    <input
-                      id="new-password"
-                      type="password"
-                      value={newPassword}
-                      onChange={(e) => setNewPassword(e.target.value)}
-                      autoComplete="new-password"
-                      minLength={8}
-                      required
-                    />
-                  </div>
-                  <div className="form-field">
-                    <label htmlFor="confirm-password">
-                      Confirm New Password
-                    </label>
-                    <input
-                      id="confirm-password"
-                      type="password"
-                      value={confirmPassword}
-                      onChange={(e) => setConfirmPassword(e.target.value)}
-                      autoComplete="new-password"
-                      minLength={8}
-                      required
-                    />
-                  </div>
-                  {passwordError && (
-                    <p className="form-error">{passwordError}</p>
-                  )}
-                  {passwordSuccess && (
-                    <p className="form-success">Password changed!</p>
-                  )}
-                  <button
-                    type="submit"
-                    className="settings-button"
-                    disabled={isChangingPassword}
-                  >
-                    {isChangingPassword ? "Changing..." : "Update Password"}
-                  </button>
-                </form>
-              </div>
-            )}
-
             <div className="settings-item">
               <div className="settings-item-info">
                 <strong>Logout</strong>
