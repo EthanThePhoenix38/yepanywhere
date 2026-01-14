@@ -233,6 +233,7 @@ export class ClaudeProvider implements AgentProvider {
       abort: () => abortController.abort(),
       setMaxThinkingTokens: (tokens: number | null) =>
         sdkQuery.setMaxThinkingTokens(tokens),
+      interrupt: () => sdkQuery.interrupt(),
     };
   }
 

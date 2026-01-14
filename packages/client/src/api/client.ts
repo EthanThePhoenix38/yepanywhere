@@ -428,6 +428,12 @@ export const api = {
       method: "POST",
     }),
 
+  interruptProcess: (processId: string) =>
+    fetchJSON<{ interrupted: boolean; supported: boolean }>(
+      `/processes/${processId}/interrupt`,
+      { method: "POST" },
+    ),
+
   respondToInput: (
     sessionId: string,
     requestId: string,

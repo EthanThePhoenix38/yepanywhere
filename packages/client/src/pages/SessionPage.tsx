@@ -356,6 +356,18 @@ function SessionPageContent({
 
   const handleAbort = async () => {
     if (status.state === "owned" && status.processId) {
+      // Try interrupt first (graceful stop), fall back to abort if not supported
+      try {
+        const result = await api.interruptProcess(status.processId);
+        if (result.interrupted) {
+          // Successfully interrupted - process is still alive
+          return;
+        }
+        // Interrupt not supported or failed, fall back to abort
+      } catch {
+        // Interrupt endpoint failed (404 = old server, or other error)
+      }
+      // Fall back to abort (kills the process)
       await api.abortProcess(status.processId);
     }
   };

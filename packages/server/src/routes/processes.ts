@@ -131,5 +131,25 @@ export function createProcessesRoutes(deps: ProcessesDeps): Hono {
     return c.json({ aborted: true });
   });
 
+  // POST /api/processes/:processId/interrupt - Interrupt current turn gracefully
+  // Unlike abort, this stops the current turn but keeps the process alive.
+  routes.post("/:processId/interrupt", async (c) => {
+    const processId = c.req.param("processId");
+
+    const result = await deps.supervisor.interruptProcess(processId);
+    if (!result.success && !result.supported) {
+      // Process not found or doesn't support interrupt
+      if (
+        !deps.supervisor.getProcessInfoList().some((p) => p.id === processId)
+      ) {
+        return c.json({ error: "Process not found" }, 404);
+      }
+      // Process exists but doesn't support interrupt
+      return c.json({ error: "Interrupt not supported for this process" }, 400);
+    }
+
+    return c.json({ interrupted: result.success, supported: result.supported });
+  });
+
   return routes;
 }

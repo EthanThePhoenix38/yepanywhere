@@ -69,6 +69,12 @@ export interface AgentSession {
    * Only supported by Claude SDK 0.2.7+.
    */
   setMaxThinkingTokens?: (tokens: number | null) => Promise<void>;
+  /**
+   * Interrupt the current turn gracefully without killing the process.
+   * The query will stop processing the current turn and return control.
+   * Only supported by Claude SDK 0.2.7+.
+   */
+  interrupt?: () => Promise<void>;
 }
 
 /**

@@ -293,7 +293,7 @@ export class Supervisor {
       },
     });
 
-    const { iterator, queue, abort, setMaxThinkingTokens } = result;
+    const { iterator, queue, abort, setMaxThinkingTokens, interrupt } = result;
 
     const tempSessionId = randomUUID();
     const options: ProcessConstructorOptions = {
@@ -304,6 +304,7 @@ export class Supervisor {
       queue,
       abortFn: abort,
       setMaxThinkingTokensFn: setMaxThinkingTokens,
+      interruptFn: interrupt,
       permissionMode: effectiveMode,
       provider: "claude", // Real SDK is always Claude
       model: modelSettings?.model,
@@ -370,7 +371,7 @@ export class Supervisor {
       },
     });
 
-    const { iterator, queue, abort, setMaxThinkingTokens } = result;
+    const { iterator, queue, abort, setMaxThinkingTokens, interrupt } = result;
 
     const options: ProcessConstructorOptions = {
       projectPath,
@@ -380,6 +381,7 @@ export class Supervisor {
       queue,
       abortFn: abort,
       setMaxThinkingTokensFn: setMaxThinkingTokens,
+      interruptFn: interrupt,
       permissionMode: effectiveMode,
       provider: "claude", // Real SDK is always Claude
       model: modelSettings?.model,
@@ -440,7 +442,7 @@ export class Supervisor {
       },
     });
 
-    const { iterator, queue, abort, setMaxThinkingTokens } = result;
+    const { iterator, queue, abort, setMaxThinkingTokens, interrupt } = result;
 
     const tempSessionId = randomUUID();
     const options: ProcessConstructorOptions = {
@@ -451,6 +453,7 @@ export class Supervisor {
       queue,
       abortFn: abort,
       setMaxThinkingTokensFn: setMaxThinkingTokens,
+      interruptFn: interrupt,
       permissionMode: effectiveMode,
       provider: activeProvider.name,
       model: modelSettings?.model,
@@ -513,7 +516,7 @@ export class Supervisor {
       },
     });
 
-    const { iterator, queue, abort, setMaxThinkingTokens } = result;
+    const { iterator, queue, abort, setMaxThinkingTokens, interrupt } = result;
 
     const options: ProcessConstructorOptions = {
       projectPath,
@@ -523,6 +526,7 @@ export class Supervisor {
       queue,
       abortFn: abort,
       setMaxThinkingTokensFn: setMaxThinkingTokens,
+      interruptFn: interrupt,
       permissionMode: effectiveMode,
       provider: activeProvider.name,
       model: modelSettings?.model,
@@ -887,6 +891,39 @@ export class Supervisor {
     await process.abort();
     this.unregisterProcess(process);
     return true;
+  }
+
+  /**
+   * Interrupt the current turn of a running process gracefully.
+   * Unlike abort, this stops the current turn but keeps the process alive.
+   *
+   * @returns Object with success status and whether interrupt is supported
+   */
+  async interruptProcess(
+    processId: string,
+  ): Promise<{ success: boolean; supported: boolean }> {
+    const process = this.processes.get(processId);
+    if (!process) return { success: false, supported: false };
+
+    // Check if the process supports interrupt
+    if (!process.supportsInterrupt) {
+      return { success: false, supported: false };
+    }
+
+    const log = getLogger();
+    log.info(
+      {
+        event: "session_interrupt_requested",
+        sessionId: process.sessionId,
+        processId: process.id,
+        projectId: process.projectId,
+        currentState: process.state.type,
+      },
+      `Session interrupt requested: ${process.sessionId}`,
+    );
+
+    const interrupted = await process.interrupt();
+    return { success: interrupted, supported: true };
   }
 
   private emitSessionAborted(sessionId: string, projectId: UrlProjectId): void {

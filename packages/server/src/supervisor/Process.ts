@@ -57,6 +57,8 @@ export interface ProcessConstructorOptions extends ProcessOptions {
   abortFn?: () => void;
   /** Function to change max thinking tokens at runtime (SDK 0.2.7+) */
   setMaxThinkingTokensFn?: (tokens: number | null) => Promise<void>;
+  /** Function to interrupt current turn gracefully (SDK 0.2.7+) */
+  interruptFn?: () => Promise<void>;
 }
 
 export class Process {
@@ -114,6 +116,9 @@ export class Process {
     | ((tokens: number | null) => Promise<void>)
     | null;
 
+  /** Function to interrupt current turn gracefully (SDK 0.2.7+) */
+  private interruptFn: (() => Promise<void>) | null;
+
   /** Resolvers waiting for the real session ID */
   private sessionIdResolvers: Array<(id: string) => void> = [];
   private sessionIdResolved = false;
@@ -144,6 +149,7 @@ export class Process {
     this.model = options.model;
     this._maxThinkingTokens = options.maxThinkingTokens;
     this.setMaxThinkingTokensFn = options.setMaxThinkingTokensFn ?? null;
+    this.interruptFn = options.interruptFn ?? null;
 
     // Start bucket swap timer for bounded message history
     this.startBucketSwapTimer();
@@ -210,6 +216,42 @@ export class Process {
    */
   get supportsThinkingModeChange(): boolean {
     return this.setMaxThinkingTokensFn !== null;
+  }
+
+  /**
+   * Whether this process supports graceful interrupt.
+   * Only Claude SDK 0.2.7+ supports this.
+   */
+  get supportsInterrupt(): boolean {
+    return this.interruptFn !== null;
+  }
+
+  /**
+   * Interrupt the current turn gracefully without killing the process.
+   * The query will stop processing the current turn and return control.
+   * Only supported by Claude SDK 0.2.7+.
+   *
+   * @returns true if the interrupt was triggered, false if not supported
+   */
+  async interrupt(): Promise<boolean> {
+    if (!this.interruptFn) {
+      return false;
+    }
+
+    const log = getLogger();
+    log.info(
+      {
+        event: "process_interrupt",
+        sessionId: this._sessionId,
+        processId: this.id,
+        projectId: this.projectId,
+        currentState: this._state.type,
+      },
+      `Interrupting process: ${this._sessionId}`,
+    );
+
+    await this.interruptFn();
+    return true;
   }
 
   /**

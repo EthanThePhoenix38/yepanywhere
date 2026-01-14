@@ -136,6 +136,11 @@ export interface StartSessionResult {
    * Only supported by Claude SDK 0.2.7+.
    */
   setMaxThinkingTokens?: (tokens: number | null) => Promise<void>;
+  /**
+   * Interrupt the current turn gracefully without killing the process.
+   * Only supported by Claude SDK 0.2.7+.
+   */
+  interrupt?: () => Promise<void>;
 }
 
 export interface RealClaudeSDKInterface {
