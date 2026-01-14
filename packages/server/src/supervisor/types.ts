@@ -203,4 +203,6 @@ export interface ProcessOptions {
   maxThinkingTokens?: number;
   /** Model used for this session (e.g., "claude-opus-4-5-20251101") */
   model?: string;
+  /** SSH host for remote execution (undefined = local) */
+  executor?: string;
 }

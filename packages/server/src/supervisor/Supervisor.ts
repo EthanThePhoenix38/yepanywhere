@@ -64,6 +64,12 @@ export interface QueueFullResponse {
   maxQueueSize: number;
 }
 
+/** Optional callback to persist executor when session ID is received */
+export type OnSessionExecutorCallback = (
+  sessionId: string,
+  executor: string | undefined,
+) => Promise<void>;
+
 export interface SupervisorOptions {
   /** Agent provider interface (preferred for new code) */
   provider?: AgentProvider;
@@ -82,6 +88,8 @@ export interface SupervisorOptions {
   idlePreemptThresholdMs?: number;
   /** Maximum queue size. 0 = unlimited (default) */
   maxQueueSize?: number;
+  /** Callback to persist executor when session ID is received (for remote execution resume) */
+  onSessionExecutor?: OnSessionExecutorCallback;
 }
 
 export class Supervisor {
@@ -98,6 +106,7 @@ export class Supervisor {
   private maxWorkers: number;
   private idlePreemptThresholdMs: number;
   private workerQueue: WorkerQueue;
+  private onSessionExecutor?: OnSessionExecutorCallback;
 
   constructor(options: SupervisorOptions) {
     this.provider = options.provider ?? null;
@@ -113,6 +122,7 @@ export class Supervisor {
       eventBus: options.eventBus,
       maxQueueSize: options.maxQueueSize,
     });
+    this.onSessionExecutor = options.onSessionExecutor;
 
     if (!this.provider && !this.sdk && !this.realSdk) {
       throw new Error("Either provider, sdk, or realSdk must be provided");
@@ -325,6 +335,7 @@ export class Supervisor {
       provider: "claude", // Real SDK is always Claude
       model: modelSettings?.model,
       maxThinkingTokens: modelSettings?.maxThinkingTokens,
+      executor: modelSettings?.executor,
     };
 
     const process = new Process(iterator, options);
@@ -414,6 +425,7 @@ export class Supervisor {
       provider: "claude", // Real SDK is always Claude
       model: modelSettings?.model,
       maxThinkingTokens: modelSettings?.maxThinkingTokens,
+      executor: modelSettings?.executor,
     };
 
     const process = new Process(iterator, options);
@@ -500,6 +512,7 @@ export class Supervisor {
       provider: activeProvider.name,
       model: modelSettings?.model,
       maxThinkingTokens: modelSettings?.maxThinkingTokens,
+      executor: modelSettings?.executor,
     };
 
     const process = new Process(iterator, options);
@@ -587,6 +600,7 @@ export class Supervisor {
       provider: activeProvider.name,
       model: modelSettings?.model,
       maxThinkingTokens: modelSettings?.maxThinkingTokens,
+      executor: modelSettings?.executor,
     };
 
     const process = new Process(iterator, options);
@@ -1067,6 +1081,7 @@ export class Supervisor {
             newSessionId: event.newSessionId,
             processId: process.id,
             projectId: process.projectId,
+            executor: process.executor,
           },
           `Session ID mapping updated: ${event.oldSessionId} → ${event.newSessionId}`,
         );
@@ -1076,6 +1091,24 @@ export class Supervisor {
         // The old temp ID mapping is retained (no delete)
         this.sessionToProcess.set(event.newSessionId, process.id);
         this.everOwnedSessions.add(event.newSessionId);
+
+        // Persist executor for remote execution resume support
+        // This saves which SSH host was used so resume can reconnect to the same remote
+        if (this.onSessionExecutor && process.executor) {
+          this.onSessionExecutor(event.newSessionId, process.executor).catch(
+            (error) => {
+              log.warn(
+                {
+                  event: "executor_save_failed",
+                  sessionId: event.newSessionId,
+                  executor: process.executor,
+                  error: error instanceof Error ? error.message : String(error),
+                },
+                `Failed to save executor for session: ${event.newSessionId}`,
+              );
+            },
+          );
+        }
 
         // Emit status change for new session ID so clients can update
         const status: SessionStatus = {

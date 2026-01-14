@@ -80,6 +80,8 @@ export class Process {
   readonly startedAt: Date;
   readonly provider: ProviderName;
   readonly model: string | undefined;
+  /** SSH host for remote execution (undefined = local) */
+  readonly executor: string | undefined;
 
   private legacyQueue: UserMessage[] = [];
   private messageQueue: MessageQueue | null;
@@ -167,6 +169,7 @@ export class Process {
     this._permissionMode = options.permissionMode ?? "default";
     this.provider = options.provider;
     this.model = options.model;
+    this.executor = options.executor;
     this._maxThinkingTokens = options.maxThinkingTokens;
     this.setMaxThinkingTokensFn = options.setMaxThinkingTokensFn ?? null;
     this.interruptFn = options.interruptFn ?? null;

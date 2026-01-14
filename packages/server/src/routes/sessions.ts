@@ -28,6 +28,7 @@ import type { NotificationService } from "../notifications/index.js";
 import type { CodexSessionScanner } from "../projects/codex-scanner.js";
 import type { GeminiSessionScanner } from "../projects/gemini-scanner.js";
 import type { ProjectScanner } from "../projects/scanner.js";
+import { getProjectDirFromCwd, syncSessions } from "../sdk/session-sync.js";
 import type { PermissionMode, SDKMessage, UserMessage } from "../sdk/types.js";
 import { CodexSessionReader } from "../sessions/codex-reader.js";
 import { cloneClaudeSession } from "../sessions/fork.js";
@@ -938,12 +939,37 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
     const model =
       body.model && body.model !== "default" ? body.model : undefined;
 
+    // Look up saved executor for remote session resume
+    const savedExecutor = deps.sessionMetadataService?.getExecutor(sessionId);
+
+    // For remote sessions, sync local files TO remote before resuming
+    // This ensures the remote has the latest session state
+    if (savedExecutor) {
+      const projectDir = getProjectDirFromCwd(project.path);
+      const syncResult = await syncSessions({
+        host: savedExecutor,
+        projectDir,
+        direction: "to-remote",
+      });
+      if (!syncResult.success) {
+        console.warn(
+          `[resume] Failed to pre-sync session to ${savedExecutor}: ${syncResult.error}`,
+        );
+        // Continue anyway - remote may have the files from before
+      }
+    }
+
     const result = await deps.supervisor.resumeSession(
       sessionId,
       project.path,
       userMessage,
       body.mode,
-      { model, maxThinkingTokens, providerName: body.provider },
+      {
+        model,
+        maxThinkingTokens,
+        providerName: body.provider,
+        executor: savedExecutor,
+      },
     );
 
     // Check if queue is full

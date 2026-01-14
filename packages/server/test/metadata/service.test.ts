@@ -377,4 +377,134 @@ describe("SessionMetadataService", () => {
       );
     });
   });
+
+  describe("setExecutor", () => {
+    it("sets executor for a session", async () => {
+      await service.initialize();
+
+      await service.setExecutor("session-1", "my-remote-server");
+
+      expect(service.getMetadata("session-1")).toEqual({
+        executor: "my-remote-server",
+      });
+    });
+
+    it("clears executor when undefined provided", async () => {
+      await service.initialize();
+      await service.setExecutor("session-1", "my-remote-server");
+
+      await service.setExecutor("session-1", undefined);
+
+      expect(service.getMetadata("session-1")).toBeUndefined();
+    });
+
+    it("clears executor when empty string provided", async () => {
+      await service.initialize();
+      await service.setExecutor("session-1", "my-remote-server");
+
+      await service.setExecutor("session-1", "");
+
+      expect(service.getMetadata("session-1")).toBeUndefined();
+    });
+
+    it("preserves other fields when updating executor", async () => {
+      await service.initialize();
+      await service.setTitle("session-1", "My Title");
+      await service.setArchived("session-1", true);
+
+      await service.setExecutor("session-1", "remote-host");
+
+      expect(service.getMetadata("session-1")).toEqual({
+        customTitle: "My Title",
+        isArchived: true,
+        executor: "remote-host",
+      });
+    });
+
+    it("persists executor to disk", async () => {
+      await service.initialize();
+      await service.setExecutor("session-1", "persistent-executor");
+
+      const newService = new SessionMetadataService({ dataDir: testDir });
+      await newService.initialize();
+
+      expect(newService.getMetadata("session-1")?.executor).toBe(
+        "persistent-executor",
+      );
+    });
+  });
+
+  describe("getExecutor", () => {
+    it("returns executor for a session", async () => {
+      await service.initialize();
+      await service.setExecutor("session-1", "my-server");
+
+      expect(service.getExecutor("session-1")).toBe("my-server");
+    });
+
+    it("returns undefined for session without executor", async () => {
+      await service.initialize();
+      await service.setTitle("session-1", "No Executor");
+
+      expect(service.getExecutor("session-1")).toBeUndefined();
+    });
+
+    it("returns undefined for unknown session", async () => {
+      await service.initialize();
+
+      expect(service.getExecutor("nonexistent")).toBeUndefined();
+    });
+  });
+
+  describe("executor with other metadata", () => {
+    it("loads executor from existing state", async () => {
+      const existingState = {
+        version: 1,
+        sessions: {
+          "session-1": { executor: "saved-host" },
+          "session-2": { customTitle: "Title", executor: "another-host" },
+        },
+      };
+      await writeFile(
+        join(testDir, "session-metadata.json"),
+        JSON.stringify(existingState),
+      );
+
+      await service.initialize();
+
+      expect(service.getExecutor("session-1")).toBe("saved-host");
+      expect(service.getExecutor("session-2")).toBe("another-host");
+      expect(service.getMetadata("session-2")).toEqual({
+        customTitle: "Title",
+        executor: "another-host",
+      });
+    });
+
+    it("preserves executor when updating other fields", async () => {
+      await service.initialize();
+      await service.setExecutor("session-1", "my-executor");
+
+      await service.setTitle("session-1", "New Title");
+      await service.setArchived("session-1", true);
+      await service.setStarred("session-1", true);
+
+      expect(service.getMetadata("session-1")).toEqual({
+        customTitle: "New Title",
+        isArchived: true,
+        isStarred: true,
+        executor: "my-executor",
+      });
+    });
+
+    it("clears executor when session is cleared", async () => {
+      await service.initialize();
+      await service.setExecutor("session-1", "to-clear");
+      await service.setTitle("session-1", "Title");
+
+      await service.clearSession("session-1");
+
+      expect(service.getExecutor("session-1")).toBeUndefined();
+      expect(service.getMetadata("session-1")).toBeUndefined();
+    });
+  });
 });

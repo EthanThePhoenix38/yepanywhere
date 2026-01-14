@@ -20,6 +20,8 @@ export interface SessionMetadata {
   model?: string;
   /** Provider used for this session (for backward compatibility with sessions that don't have provider in JSONL) */
   provider?: ProviderName;
+  /** SSH host alias for remote execution (undefined = local) */
+  executor?: string;
 }
 
 export interface SessionMetadataState {
@@ -160,6 +162,29 @@ export class SessionMetadataService {
   }
 
   /**
+   * Set the executor (SSH host) for a session.
+   * Used to track which remote executor ran a session for resume.
+   */
+  async setExecutor(
+    sessionId: string,
+    executor: string | undefined,
+  ): Promise<void> {
+    this.updateSessionMetadata(sessionId, (metadata) => ({
+      ...metadata,
+      executor: executor || undefined,
+    }));
+    await this.save();
+  }
+
+  /**
+   * Get the executor for a session.
+   * Returns undefined if the session ran locally or executor is unknown.
+   */
+  getExecutor(sessionId: string): string | undefined {
+    return this.state.sessions[sessionId]?.executor;
+  }
+
+  /**
    * Update metadata for a session (title, archived, starred).
    */
   async updateMetadata(
@@ -207,6 +232,7 @@ export class SessionMetadataService {
     if (updated.isStarred) cleaned.isStarred = updated.isStarred;
     if (updated.model) cleaned.model = updated.model;
     if (updated.provider) cleaned.provider = updated.provider;
+    if (updated.executor) cleaned.executor = updated.executor;
 
     if (Object.keys(cleaned).length === 0) {
       // Remove the entry entirely if empty

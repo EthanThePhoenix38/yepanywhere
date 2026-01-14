@@ -223,6 +223,12 @@ export function createApp(options: AppOptions): AppResult {
     maxWorkers: options.maxWorkers,
     idlePreemptThresholdMs: options.idlePreemptThresholdMs,
     maxQueueSize: options.maxQueueSize,
+    // Save executor for remote sessions to support resume
+    onSessionExecutor: options.sessionMetadataService
+      ? (sessionId, executor) =>
+          options.sessionMetadataService?.setExecutor(sessionId, executor) ??
+          Promise.resolve()
+      : undefined,
   });
   /**
    * Create a session reader appropriate for the project's provider.
