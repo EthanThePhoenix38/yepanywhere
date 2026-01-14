@@ -5,10 +5,40 @@
  * server by username. After pairing, SRP authentication proceeds through the relay.
  */
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { YepAnywhereLogo } from "../components/YepAnywhereLogo";
 import { useRemoteConnection } from "../contexts/RemoteConnectionContext";
+
+/**
+ * Parse credentials from URL hash for auto-login via QR code.
+ * Hash format: #u=username&p=password&r=relay_url (r is optional)
+ * Clears the hash after reading for security.
+ */
+function parseHashCredentials(): {
+  username: string;
+  password: string;
+  relayUrl: string;
+} | null {
+  const hash = window.location.hash;
+  if (!hash || hash.length < 2) return null;
+
+  try {
+    const params = new URLSearchParams(hash.slice(1));
+    const username = params.get("u");
+    const password = params.get("p");
+    const relayUrl = params.get("r") ?? "";
+
+    if (username && password) {
+      // Clear hash from URL for security (don't leave password in history)
+      window.history.replaceState(null, "", window.location.pathname);
+      return { username, password, relayUrl };
+    }
+  } catch {
+    // Ignore parse errors
+  }
+  return null;
+}
 
 /** Default relay URL */
 const DEFAULT_RELAY_URL = "wss://relay.yepanywhere.com/ws";
@@ -38,6 +68,39 @@ export function RelayLoginPage() {
   // Connection state
   const [status, setStatus] = useState<ConnectionStatus>("idle");
   const [error, setError] = useState<string | null>(null);
+
+  // Auto-login from hash credentials (QR code scan)
+  const autoLoginAttempted = useRef(false);
+  useEffect(() => {
+    if (autoLoginAttempted.current || isAutoResuming) return;
+    autoLoginAttempted.current = true;
+
+    const hashCreds = parseHashCredentials();
+    if (!hashCreds) return;
+
+    const { username, password, relayUrl } = hashCreds;
+    const effectiveRelayUrl = relayUrl || DEFAULT_RELAY_URL;
+
+    setStatus("connecting_relay");
+    connectViaRelay({
+      relayUrl: effectiveRelayUrl,
+      relayUsername: username,
+      srpUsername: username,
+      srpPassword: password,
+      rememberMe: true,
+      onStatusChange: setStatus,
+    }).catch((err) => {
+      const message = err instanceof Error ? err.message : "Connection failed";
+      setError(formatRelayError(message));
+      setStatus("error");
+      // Pre-fill form with credentials from hash so user can retry
+      setRelayUsername(username);
+      if (relayUrl) {
+        setCustomRelayUrl(relayUrl);
+        setShowAdvanced(true);
+      }
+    });
+  }, [connectViaRelay, isAutoResuming]);
 
   // If auto-resume is in progress, show a loading screen
   if (isAutoResuming) {

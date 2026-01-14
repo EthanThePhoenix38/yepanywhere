@@ -6,6 +6,7 @@
 
 import { useEffect, useState } from "react";
 import { type RelayStatus, useRemoteAccess } from "../hooks/useRemoteAccess";
+import { QRCode } from "./QRCode";
 
 const DEFAULT_RELAY_URL = "wss://relay.yepanywhere.com/ws";
 const CONNECT_URL = "https://yepanywhere.com/remote/relay";
@@ -79,6 +80,9 @@ export function RemoteAccessSetup({
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
   const [hasChanges, setHasChanges] = useState(false);
+  // Password for QR code generation (kept in memory after successful save)
+  const [savedPassword, setSavedPassword] = useState<string | null>(null);
+  const [showQRCode, setShowQRCode] = useState(false);
 
   // Initialize form from existing config
   useEffect(() => {
@@ -167,6 +171,8 @@ export function RemoteAccessSetup({
       // Configure with password if provided
       if (password) {
         await configure(password);
+        // Keep password in memory for QR code generation
+        setSavedPassword(password);
       }
 
       // Clear password fields after save
@@ -250,7 +256,7 @@ export function RemoteAccessSetup({
     hasCredentials,
   );
 
-  // Build connect URL with query params
+  // Build connect URL with query params (for manual entry - no password)
   const connectUrl = (() => {
     const params = new URLSearchParams();
     if (username) {
@@ -263,6 +269,23 @@ export function RemoteAccessSetup({
     const queryString = params.toString();
     return queryString ? `${CONNECT_URL}?${queryString}` : CONNECT_URL;
   })();
+
+  // Build QR code URL with credentials in hash (for auto-login)
+  const qrCodeUrl = (() => {
+    if (!savedPassword || !username) return null;
+    const hashParams = new URLSearchParams();
+    hashParams.set("u", username);
+    hashParams.set("p", savedPassword);
+    const relayUrl = getRelayUrl();
+    if (relayUrl !== DEFAULT_RELAY_URL) {
+      hashParams.set("r", relayUrl);
+    }
+    return `${CONNECT_URL}#${hashParams.toString()}`;
+  })();
+
+  // Can show QR code when connected and we have the password in memory
+  const canShowQRCode =
+    isEnabled && relayStatus?.status === "waiting" && qrCodeUrl !== null;
 
   // Can toggle on if: has credentials OR has filled in required fields
   const canToggleOn = hasCredentials || (username && password);
@@ -390,6 +413,26 @@ export function RemoteAccessSetup({
                 {copied ? "Copied!" : "Copy"}
               </button>
             </div>
+          </div>
+        )}
+
+        {canShowQRCode && (
+          <div className="remote-access-qr">
+            <button
+              type="button"
+              className="qr-toggle-button"
+              onClick={() => setShowQRCode(!showQRCode)}
+            >
+              {showQRCode ? "Hide QR Code" : "Show QR Code"}
+            </button>
+            {showQRCode && qrCodeUrl && (
+              <div className="qr-code-container">
+                <QRCode value={qrCodeUrl} size={200} />
+                <p className="qr-code-hint">
+                  Scan to connect and auto-login from your phone
+                </p>
+              </div>
+            )}
           </div>
         )}
 
