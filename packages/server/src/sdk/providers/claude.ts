@@ -18,6 +18,7 @@ import {
 } from "../remote-spawn.js";
 import { getProjectDirFromCwd, syncSessionFile } from "../session-sync.js";
 import type { ContentBlock, SDKMessage } from "../types.js";
+import { filterEnvForChildProcess } from "./env-filter.js";
 import type {
   AgentProvider,
   AgentSession,
@@ -339,6 +340,8 @@ export class ClaudeProvider implements AgentProvider {
           // Model and thinking options
           model: options.model,
           maxThinkingTokens: options.maxThinkingTokens,
+          // Filter env to exclude npm_*, yep-anywhere specific, and other irrelevant vars
+          env: filterEnvForChildProcess(),
           // Remote execution via SSH
           spawnClaudeCodeProcess,
         },
