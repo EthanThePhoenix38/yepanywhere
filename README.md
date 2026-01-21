@@ -93,7 +93,9 @@ Open http://localhost:3400 in your browser. The app auto-detects installed CLI a
 
 ## Remote Access
 
-For accessing from your phone or another device, bring your own SSL termination (Caddy or Tailscale work well). Use `--host` and `--port` to configure the server binding. Cookie authentication is available from the in-app settings page, but only recommended with HTTPS.
+**Easiest:** Use our free public relay at `relay.yepanywhere.com` — just enable it in Settings. All traffic is end-to-end encrypted (SRP-6a + TweetNaCl) and we can't see your data. No accounts required.
+
+**Self-hosted:** Prefer to run your own infrastructure? Use Tailscale, Caddy, or any reverse proxy with SSL termination. See the [remote access docs](docs/project/remote-access.md) for details.
 
 ## Development
 

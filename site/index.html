@@ -355,6 +355,48 @@
       margin-bottom: 16px;
     }
 
+    /* Announcement Banner */
+    .announcement {
+      background: linear-gradient(90deg, var(--accent) 0%, #059669 100%);
+      padding: 12px 24px;
+      text-align: center;
+    }
+
+    .announcement-content {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+
+    .announcement-badge {
+      background: rgba(255, 255, 255, 0.2);
+      color: white;
+      padding: 4px 10px;
+      border-radius: 4px;
+      font-size: 12px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    .announcement p {
+      color: white;
+      font-size: 15px;
+      font-weight: 500;
+    }
+
+    .announcement a {
+      color: white;
+      text-decoration: underline;
+      font-weight: 600;
+    }
+
+    .announcement a:hover {
+      text-decoration: none;
+    }
+
     /* Mobile */
     @media (max-width: 600px) {
       .header-content {
@@ -399,6 +441,13 @@
       </nav>
     </div>
   </header>
+
+  <div class="announcement">
+    <div class="announcement-content">
+      <span class="announcement-badge">New</span>
+      <p>Remote relay is now live! Access your agents from anywhere with end-to-end encryption. <a href="#faq">Learn more</a></p>
+    </div>
+  </div>
 
   <main>
     <section class="hero">
@@ -503,6 +552,10 @@
             <h3>Voice input</h3>
             <p>Talk to your agents via browser speech API. Great for Linux where SuperWhisper isn't available.</p>
           </div>
+          <div class="feature-card">
+            <h3>Secure remote relay</h3>
+            <p>Access from anywhere via our free public relay. End-to-end encrypted — we can't see your data. No accounts needed.</p>
+          </div>
         </div>
       </div>
     </section>
@@ -548,7 +601,7 @@
 
         <div class="faq-item">
           <h3>How do I access it from my phone?</h3>
-          <p>We're building a secure relay system with end-to-end encryption (SRP-6a + TweetNaCl) — no accounts required. We'll provide a free public relay, or you can run your own. See the <a href="https://github.com/kzahel/yepanywhere/blob/main/docs/project/remote-access.md">remote access docs</a> for details.</p>
+          <p>Use our free public relay at <strong>relay.yepanywhere.com</strong> — just enable it in Settings. All traffic is end-to-end encrypted (SRP-6a + TweetNaCl) and we can't see your data. No accounts required. You can also <a href="https://github.com/kzahel/yepanywhere/blob/main/docs/project/remote-access.md">run your own relay</a> if you prefer.</p>
         </div>
 
         <div class="faq-item">
