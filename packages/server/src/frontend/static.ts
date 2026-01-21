@@ -73,10 +73,17 @@ export function createStaticRoutes(options: StaticServeOptions): Hono {
           ? "public, max-age=31536000, immutable"
           : "public, max-age=0, must-revalidate";
 
-        return c.body(content, 200, {
+        const headers: Record<string, string> = {
           "Content-Type": contentType,
           "Cache-Control": cacheControl,
-        });
+        };
+
+        // Add CSP frame-ancestors for HTML files (must be HTTP header, not meta tag)
+        if (ext === ".html") {
+          headers["Content-Security-Policy"] = "frame-ancestors 'none'";
+        }
+
+        return c.body(content, 200, headers);
       }
     } catch {
       // File doesn't exist, fall through to SPA fallback
@@ -84,7 +91,10 @@ export function createStaticRoutes(options: StaticServeOptions): Hono {
 
     // SPA fallback: serve index.html for all other routes
     if (indexHtml) {
-      return c.html(indexHtml);
+      return c.html(indexHtml, 200, {
+        // frame-ancestors must be set via HTTP header (not meta tag)
+        "Content-Security-Policy": "frame-ancestors 'none'",
+      });
     }
 
     return c.text(

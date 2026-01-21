@@ -80,6 +80,52 @@ export interface RemotePathCheckResult {
 }
 
 /**
+ * Get the home directory on a remote host.
+ * Caches results per host to avoid repeated SSH calls.
+ */
+const remoteHomeCache = new Map<string, string>();
+
+export async function getRemoteHome(host: string): Promise<string | null> {
+  // Check cache first
+  const cached = remoteHomeCache.get(host);
+  if (cached) {
+    return cached;
+  }
+
+  try {
+    const result = await runSSHCommand(host, "echo $HOME", 5000);
+    if (result.success && result.stdout) {
+      const remoteHome = result.stdout.trim();
+      remoteHomeCache.set(host, remoteHome);
+      return remoteHome;
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Translate a local path to a remote path by replacing the home directory.
+ *
+ * For example:
+ * - Local: /home/kgraehl/code/project, localHome: /home/kgraehl, remoteHome: /Users/kgraehl
+ * - Result: /Users/kgraehl/code/project
+ */
+export function translateHomePath(
+  localPath: string,
+  localHome: string,
+  remoteHome: string,
+): string {
+  // If the path starts with the local home directory, replace it with remote home
+  if (localPath.startsWith(localHome)) {
+    return remoteHome + localPath.slice(localHome.length);
+  }
+  // Otherwise return the path unchanged
+  return localPath;
+}
+
+/**
  * Check if a directory exists on a remote host.
  */
 export async function checkRemotePath(

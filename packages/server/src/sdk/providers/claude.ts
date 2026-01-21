@@ -14,7 +14,9 @@ import { MessageQueue } from "../messageQueue.js";
 import {
   checkRemotePath,
   createRemoteSpawn,
+  getRemoteHome,
   testSSHConnection,
+  translateHomePath,
 } from "../remote-spawn.js";
 import { getProjectDirFromCwd, syncSessionFile } from "../session-sync.js";
 import type { ContentBlock, SDKMessage } from "../types.js";
@@ -241,6 +243,9 @@ export class ClaudeProvider implements AgentProvider {
     const queue = new MessageQueue();
     const abortController = new AbortController();
 
+    // Effective cwd for the session (may be translated for remote executors)
+    let effectiveCwd = options.cwd;
+
     // If remote executor specified, test connection first
     if (options.executor) {
       log.info(
@@ -264,12 +269,33 @@ export class ClaudeProvider implements AgentProvider {
         );
       }
 
-      // Check if the working directory exists on the remote
+      // Translate the working directory path for the remote host
+      // (e.g., /home/user/... on Linux -> /Users/user/... on macOS)
       if (options.cwd) {
-        const pathCheck = await checkRemotePath(options.executor, options.cwd);
+        const remoteHome = await getRemoteHome(options.executor);
+        if (remoteHome) {
+          const localHome = homedir();
+          effectiveCwd = translateHomePath(options.cwd, localHome, remoteHome);
+          if (effectiveCwd !== options.cwd) {
+            log.info(
+              {
+                event: "remote_path_translated",
+                executor: options.executor,
+                localPath: options.cwd,
+                remotePath: effectiveCwd,
+                localHome,
+                remoteHome,
+              },
+              `Translated path for ${options.executor}: ${options.cwd} -> ${effectiveCwd}`,
+            );
+          }
+        }
+
+        // Check if the (translated) working directory exists on the remote
+        const pathCheck = await checkRemotePath(options.executor, effectiveCwd);
         if (!pathCheck.exists) {
           throw new Error(
-            `Directory does not exist on ${options.executor}: ${options.cwd}`,
+            `Directory does not exist on ${options.executor}: ${effectiveCwd}`,
           );
         }
       }
@@ -322,7 +348,7 @@ export class ClaudeProvider implements AgentProvider {
       sdkQuery = query({
         prompt: queue.generator(),
         options: {
-          cwd: options.cwd,
+          cwd: effectiveCwd,
           resume: options.resumeSessionId,
           abortController,
           // Pass permission mode to SDK for system prompt configuration.

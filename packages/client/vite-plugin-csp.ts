@@ -103,8 +103,8 @@ export function cspPlugin(options: CspPluginOptions = {}): Plugin {
         // object-src: Block plugins (Flash, etc.)
         directives.push("object-src 'none'");
 
-        // frame-ancestors: Prevent clickjacking
-        directives.push("frame-ancestors 'none'");
+        // Note: frame-ancestors cannot be set via meta tag (per CSP spec).
+        // It's set via HTTP header in the server instead.
 
         // form-action: Restrict form submissions
         directives.push("form-action 'self'");
