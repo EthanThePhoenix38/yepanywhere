@@ -366,6 +366,7 @@ export function RemoteConnectionProvider({ children }: Props) {
           srpUsername,
           srpPassword,
           rememberMe ? handleSessionEstablished : undefined,
+          { relayUrl, relayUsername },
         );
 
         // Test the connection
@@ -501,6 +502,7 @@ export function RemoteConnectionProvider({ children }: Props) {
             ws,
             storedSession,
             handleSessionEstablished,
+            { relayUrl, relayUsername },
           );
         } else {
           // Direct mode: just create connection and resume

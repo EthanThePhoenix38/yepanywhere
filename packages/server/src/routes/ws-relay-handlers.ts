@@ -1152,6 +1152,12 @@ export function isBinaryEncryptedEnvelope(
 ): boolean {
   // Must be authenticated with a session key to receive encrypted data
   if (connState.authState !== "authenticated" || !connState.sessionKey) {
+    // Debug: log when auth check fails for binary data that looks like encrypted envelope
+    if (bytes.length >= MIN_BINARY_ENVELOPE_LENGTH && bytes[0] === 0x01) {
+      console.warn(
+        `[WS Relay] Binary envelope rejected: authState=${connState.authState}, hasKey=${!!connState.sessionKey}`,
+      );
+    }
     return false;
   }
   // Must be at least minimum envelope length

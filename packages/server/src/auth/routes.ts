@@ -2,7 +2,7 @@
  * Authentication API routes
  */
 
-import { execSync } from "node:child_process";
+import { spawnSync } from "node:child_process";
 import { Hono } from "hono";
 import { deleteCookie, getCookie, setCookie } from "hono/cookie";
 import { getLogger } from "../logging/logger.js";
@@ -376,22 +376,17 @@ export function createAuthRoutes(deps: AuthRoutesDeps): Hono {
       );
     }
 
-    try {
-      // Use claude CLI to set the API key
-      // This ensures proper config file handling
-      log.info({ event: "claude_apikey_set" }, "Setting Claude API key");
-      execSync(`claude config set apiKey '${apiKey}'`, {
-        encoding: "utf-8",
-        stdio: ["pipe", "pipe", "pipe"],
-      });
+    // Use claude CLI to set the API key
+    // This ensures proper config file handling
+    // Using spawnSync with args array to prevent command injection
+    log.info({ event: "claude_apikey_set" }, "Setting Claude API key");
+    const result = spawnSync("claude", ["config", "set", "apiKey", apiKey], {
+      encoding: "utf-8",
+      stdio: ["pipe", "pipe", "pipe"],
+    });
 
-      log.info(
-        { event: "claude_apikey_success" },
-        "Claude API key set successfully",
-      );
-      return c.json({ success: true });
-    } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
+    if (result.error) {
+      const message = result.error.message;
       log.error(
         { event: "claude_apikey_error", error: message },
         "Failed to set Claude API key",
@@ -401,6 +396,28 @@ export function createAuthRoutes(deps: AuthRoutesDeps): Hono {
         500,
       );
     }
+
+    if (result.status !== 0) {
+      const stderr = result.stderr?.trim() || "Unknown error";
+      log.error(
+        {
+          event: "claude_apikey_error",
+          error: stderr,
+          exitCode: result.status,
+        },
+        "Claude config command failed",
+      );
+      return c.json(
+        { success: false, error: `Failed to set API key: ${stderr}` },
+        500,
+      );
+    }
+
+    log.info(
+      { event: "claude_apikey_success" },
+      "Claude API key set successfully",
+    );
+    return c.json({ success: true });
   });
 
   return app;

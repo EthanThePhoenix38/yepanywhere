@@ -175,6 +175,25 @@ describe("Secure WebSocket Transport E2E", () => {
   }
 
   /**
+   * Helper to close a WebSocket connection and wait for the close event.
+   * This ensures proper cleanup between tests.
+   */
+  async function closeWebSocket(ws: WebSocket): Promise<void> {
+    await new Promise<void>((resolve) => {
+      if (ws.readyState === WebSocket.CLOSED) {
+        resolve();
+        return;
+      }
+      ws.on("close", () => resolve());
+      ws.close();
+      // Fallback timeout in case close event doesn't fire
+      setTimeout(resolve, 100);
+    });
+    // Extra delay to ensure server has processed the disconnect
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  }
+
+  /**
    * Convert bigint to hex string.
    */
   function bigIntToHex(n: bigint): string {
@@ -329,6 +348,12 @@ describe("Secure WebSocket Transport E2E", () => {
     // Derive session key
     const keyBuffer = bigIntToArrayBuffer(clientStep2.S);
     const rawKey = new Uint8Array(keyBuffer);
+
+    // Wait to ensure server has fully processed the handshake before
+    // subsequent encrypted messages. This prevents a race condition where
+    // the server's message queue hasn't finished processing the auth state.
+    await new Promise((resolve) => setTimeout(resolve, 10));
+
     return deriveSecretboxKey(rawKey);
   }
 
@@ -455,7 +480,7 @@ describe("Secure WebSocket Transport E2E", () => {
         expect(sessionKey).toBeDefined();
         expect(sessionKey.length).toBe(32); // NaCl secretbox key is 32 bytes
       } finally {
-        ws.close();
+        await closeWebSocket(ws);
       }
     }, 15000);
 
@@ -467,7 +492,7 @@ describe("Secure WebSocket Transport E2E", () => {
           performSrpHandshakeV2(ws, TEST_USERNAME, "wrongpassword"),
         ).rejects.toThrow();
       } finally {
-        ws.close();
+        await closeWebSocket(ws);
       }
     }, 15000);
 
@@ -479,7 +504,7 @@ describe("Secure WebSocket Transport E2E", () => {
           performSrpHandshakeV2(ws, "unknownuser", TEST_PASSWORD),
         ).rejects.toThrow();
       } finally {
-        ws.close();
+        await closeWebSocket(ws);
       }
     }, 15000);
   });
@@ -507,7 +532,7 @@ describe("Secure WebSocket Transport E2E", () => {
         expect(response.status).toBe(200);
         expect((response.body as { status: string }).status).toBe("ok");
       } finally {
-        ws.close();
+        await closeWebSocket(ws);
       }
     }, 15000);
 
@@ -533,7 +558,7 @@ describe("Secure WebSocket Transport E2E", () => {
         expect(response.status).toBe(200);
         expect(response.body).toHaveProperty("current");
       } finally {
-        ws.close();
+        await closeWebSocket(ws);
       }
     }, 15000);
 
@@ -643,7 +668,7 @@ describe("Secure WebSocket Transport E2E", () => {
         expect(events.length).toBeGreaterThanOrEqual(1);
         expect(events[0].eventType).toBe("connected");
       } finally {
-        ws.close();
+        await closeWebSocket(ws);
       }
     }, 15000);
   });
@@ -725,7 +750,7 @@ describe("Secure WebSocket Transport E2E", () => {
         expect(response.status).toBe(200);
         expect((response.body as { status: string }).status).toBe("ok");
       } finally {
-        ws.close();
+        await closeWebSocket(ws);
       }
     }, 15000);
 
@@ -755,7 +780,7 @@ describe("Secure WebSocket Transport E2E", () => {
         expect(response.status).toBe(200);
         expect(response.body).toHaveProperty("current");
       } finally {
-        ws.close();
+        await closeWebSocket(ws);
       }
     }, 15000);
 
@@ -816,7 +841,7 @@ describe("Secure WebSocket Transport E2E", () => {
         expect(events.length).toBeGreaterThanOrEqual(1);
         expect(events[0].eventType).toBe("connected");
       } finally {
-        ws.close();
+        await closeWebSocket(ws);
       }
     }, 15000);
 
@@ -920,7 +945,7 @@ describe("Secure WebSocket Transport E2E", () => {
         );
         expect(response2.status).toBe(200);
       } finally {
-        ws.close();
+        await closeWebSocket(ws);
       }
     }, 15000);
   });
@@ -1039,7 +1064,7 @@ describe("Secure WebSocket Transport E2E", () => {
         ws.send(startEnvelope);
 
         // Wait for start to process
-        await new Promise((resolve) => setTimeout(resolve, 50));
+        await new Promise((resolve) => setTimeout(resolve, 100));
 
         // Send encrypted binary chunk (format 0x02)
         // Payload format: [16 bytes UUID][8 bytes offset][chunk data]
@@ -1074,7 +1099,7 @@ describe("Secure WebSocket Transport E2E", () => {
         expect(completeMsg.file.originalName).toBe(filename);
         expect(completeMsg.file.size).toBe(fileSize);
       } finally {
-        ws.close();
+        await closeWebSocket(ws);
       }
     }, 15000);
 
@@ -1115,7 +1140,7 @@ describe("Secure WebSocket Transport E2E", () => {
         };
         ws.send(encryptToBinaryEnvelope(JSON.stringify(startMsg), sessionKey));
 
-        await new Promise((resolve) => setTimeout(resolve, 50));
+        await new Promise((resolve) => setTimeout(resolve, 100));
 
         // Send in 64KB encrypted binary chunks
         const chunkSize = 64 * 1024;
@@ -1136,11 +1161,11 @@ describe("Secure WebSocket Transport E2E", () => {
           offset = end;
 
           // Small delay to let server process each chunk
-          await new Promise((resolve) => setTimeout(resolve, 10));
+          await new Promise((resolve) => setTimeout(resolve, 20));
         }
 
         // Small delay before sending end to ensure all chunks processed
-        await new Promise((resolve) => setTimeout(resolve, 50));
+        await new Promise((resolve) => setTimeout(resolve, 100));
 
         // Send encrypted upload_end
         const endMsg: RelayUploadEnd = {
@@ -1167,7 +1192,7 @@ describe("Secure WebSocket Transport E2E", () => {
         const completeMsg = lastMsg as RelayUploadComplete;
         expect(completeMsg.file.size).toBe(fileSize);
       } finally {
-        ws.close();
+        await closeWebSocket(ws);
       }
     }, 15000);
 
@@ -1210,7 +1235,7 @@ describe("Secure WebSocket Transport E2E", () => {
         const errorMsg = messages[0] as RelayUploadError;
         expect(errorMsg.error).toContain("Upload not found");
       } finally {
-        ws.close();
+        await closeWebSocket(ws);
       }
     }, 15000);
 
@@ -1283,7 +1308,7 @@ describe("Secure WebSocket Transport E2E", () => {
         const completeMsg = lastMsg as RelayUploadComplete;
         expect(completeMsg.file.size).toBe(fileSize);
       } finally {
-        ws.close();
+        await closeWebSocket(ws);
       }
     }, 15000);
   });

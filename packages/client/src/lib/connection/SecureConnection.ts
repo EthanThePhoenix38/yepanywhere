@@ -33,6 +33,8 @@ import {
   isBinaryData,
   isCompressionSupported,
   isEncryptedEnvelope,
+  isRelayClientConnected,
+  isRelayClientError,
   isSrpError,
   isSrpServerChallenge,
   isSrpServerVerify,
@@ -132,8 +134,12 @@ export class SecureConnection implements Connection {
   private password: string | null;
   private wsUrl: string;
 
-  // Flag indicating this connection was established via relay and cannot auto-reconnect
+  // Flag indicating this connection was established via relay
   private isRelayConnection = false;
+
+  // Relay connection details for auto-reconnect (only set for relay connections)
+  private relayUrl: string | null = null;
+  private relayUsername: string | null = null;
 
   // Stored session for resumption (optional)
   private storedSession: StoredSession | null = null;
@@ -216,12 +222,14 @@ export class SecureConnection implements Connection {
    * @param ws - Pre-connected WebSocket (already paired through relay)
    * @param storedSession - Previously stored session data
    * @param onSessionEstablished - Optional callback when session is refreshed
+   * @param relayConfig - Optional relay config for auto-reconnect on connection drop
    * @returns Promise that resolves to SecureConnection after session resume completes
    */
   static async forResumeOnlyWithSocket(
     ws: WebSocket,
     storedSession: StoredSession,
     onSessionEstablished?: (session: StoredSession) => void,
+    relayConfig?: { relayUrl: string; relayUsername: string },
   ): Promise<SecureConnection> {
     const conn = new SecureConnection(
       "", // No URL needed - socket already connected
@@ -232,7 +240,11 @@ export class SecureConnection implements Connection {
     conn.ws = ws;
     conn.storedSession = storedSession;
     conn.password = null; // Mark as resume-only
-    conn.isRelayConnection = true; // Mark as relay - cannot auto-reconnect
+    conn.isRelayConnection = true;
+    if (relayConfig) {
+      conn.relayUrl = relayConfig.relayUrl;
+      conn.relayUsername = relayConfig.relayUsername;
+    }
 
     // Resume the session on the existing socket
     await conn.resumeOnExistingSocket();
@@ -466,11 +478,27 @@ export class SecureConnection implements Connection {
    */
   private connectAndAuthenticate(): Promise<void> {
     return new Promise((resolve, reject) => {
-      // Relay connections cannot auto-reconnect at the SecureConnection level;
-      // they need to go through the relay again
+      // Relay connections need to go through the relay again
       if (this.isRelayConnection) {
+        // If we have relay config and a stored session, attempt auto-reconnect
+        if (this.relayUrl && this.relayUsername && this.storedSession) {
+          console.log(
+            "[SecureConnection] Relay connection dropped, attempting auto-reconnect",
+          );
+          this.reconnectThroughRelay()
+            .then(resolve)
+            .catch((err) => {
+              console.error(
+                "[SecureConnection] Relay auto-reconnect failed:",
+                err,
+              );
+              reject(new RelayReconnectRequiredError());
+            });
+          return;
+        }
+        // No relay config or session - can't auto-reconnect
         console.log(
-          "[SecureConnection] Cannot reconnect relay connection directly",
+          "[SecureConnection] Cannot reconnect relay connection (missing config or session)",
         );
         reject(new RelayReconnectRequiredError());
         return;
@@ -612,6 +640,90 @@ export class SecureConnection implements Connection {
           reject(err);
         });
     });
+  }
+
+  /**
+   * Reconnect through relay server and resume SRP session.
+   * Called when a relay connection drops and we have stored relay config.
+   */
+  private async reconnectThroughRelay(): Promise<void> {
+    if (!this.relayUrl || !this.relayUsername || !this.storedSession) {
+      throw new Error("Missing relay config or stored session for reconnect");
+    }
+
+    console.log("[SecureConnection] Connecting to relay:", this.relayUrl);
+    this.connectionState = "connecting";
+
+    // 1. Connect to relay server
+    const ws = new WebSocket(this.relayUrl);
+    ws.binaryType = "arraybuffer";
+
+    await new Promise<void>((resolve, reject) => {
+      const timeout = setTimeout(() => {
+        ws.close();
+        reject(new Error("Relay connection timeout"));
+      }, 15000);
+
+      ws.onopen = () => {
+        clearTimeout(timeout);
+        resolve();
+      };
+
+      ws.onerror = () => {
+        clearTimeout(timeout);
+        reject(new Error("Failed to connect to relay server"));
+      };
+    });
+
+    console.log("[SecureConnection] Relay connected, sending client_connect");
+
+    // 2. Send client_connect message
+    ws.send(
+      JSON.stringify({ type: "client_connect", username: this.relayUsername }),
+    );
+
+    // 3. Wait for client_connected or error
+    await new Promise<void>((resolve, reject) => {
+      const timeout = setTimeout(() => {
+        ws.close();
+        reject(new Error("Waiting for server timed out"));
+      }, 30000);
+
+      ws.onmessage = (event) => {
+        clearTimeout(timeout);
+        try {
+          const msg = JSON.parse(event.data as string);
+          if (isRelayClientConnected(msg)) {
+            console.log("[SecureConnection] Relay paired with server");
+            resolve();
+          } else if (isRelayClientError(msg)) {
+            ws.close();
+            reject(new Error(msg.reason));
+          } else {
+            // Unexpected message - treat as success (server might send first)
+            resolve();
+          }
+        } catch {
+          ws.close();
+          reject(new Error("Invalid relay response"));
+        }
+      };
+
+      ws.onclose = () => {
+        clearTimeout(timeout);
+        reject(new Error("Relay connection closed"));
+      };
+
+      ws.onerror = () => {
+        clearTimeout(timeout);
+        reject(new Error("Relay connection error"));
+      };
+    });
+
+    // 4. Resume SRP session on the new socket
+    console.log("[SecureConnection] Resuming SRP session on new relay socket");
+    this.ws = ws;
+    await this.resumeOnExistingSocket();
   }
 
   /**
@@ -1347,6 +1459,7 @@ export class SecureConnection implements Connection {
    * @param username - Username for SRP authentication
    * @param password - Password for SRP authentication
    * @param onSessionEstablished - Optional callback when session is established
+   * @param relayConfig - Optional relay config for auto-reconnect on connection drop
    * @returns SecureConnection instance after successful authentication
    */
   static async connectWithExistingSocket(
@@ -1354,6 +1467,7 @@ export class SecureConnection implements Connection {
     username: string,
     password: string,
     onSessionEstablished?: (session: StoredSession) => void,
+    relayConfig?: { relayUrl: string; relayUsername: string },
   ): Promise<SecureConnection> {
     const conn = new SecureConnection(
       "", // No URL needed - socket already connected
@@ -1362,7 +1476,11 @@ export class SecureConnection implements Connection {
       onSessionEstablished,
     );
     conn.ws = ws;
-    conn.isRelayConnection = true; // Mark as relay - cannot auto-reconnect
+    conn.isRelayConnection = true;
+    if (relayConfig) {
+      conn.relayUrl = relayConfig.relayUrl;
+      conn.relayUsername = relayConfig.relayUsername;
+    }
     ws.binaryType = "arraybuffer";
 
     await conn.authenticateOnExistingSocket();
