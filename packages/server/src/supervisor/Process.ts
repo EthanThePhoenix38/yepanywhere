@@ -603,6 +603,7 @@ export class Process {
       queueDepth: this.queueDepth,
       provider: this.provider,
       maxThinkingTokens: this._maxThinkingTokens,
+      executor: this.executor,
     };
 
     // Add idleSince if idle

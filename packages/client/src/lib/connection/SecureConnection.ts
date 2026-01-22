@@ -997,8 +997,9 @@ export class SecureConnection implements Connection {
     if (getRelayDebugEnabled()) {
       const duration = Date.now() - pending.startTime;
       const statusIcon = response.status >= 400 ? "\u2717" : "\u2190";
+      const responseSize = JSON.stringify(response.body).length;
       console.log(
-        `[Relay] ${statusIcon} ${pending.method} ${pending.path} ${response.status} (${duration}ms)`,
+        `[Relay] ${statusIcon} ${pending.method} ${pending.path} ${response.status} (${duration}ms, ${responseSize} bytes)`,
       );
     }
 

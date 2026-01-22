@@ -172,6 +172,8 @@ export interface ProcessInfo {
   model?: string;
   /** Context window usage from the last assistant message */
   contextUsage?: ContextUsage;
+  /** SSH host for remote execution (undefined = local) */
+  executor?: string;
 }
 
 // Claude login events for re-authentication flow

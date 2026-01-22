@@ -22,6 +22,7 @@ interface ProcessInfo {
   provider: string;
   maxThinkingTokens?: number;
   model?: string;
+  executor?: string;
 }
 
 interface ProcessInfoModalProps {
@@ -266,6 +267,7 @@ export function ProcessInfoModal({
           <Section title="Project">
             <InfoRow label="Name" value={processInfo.projectName} />
             <InfoRow label="Path" value={processInfo.projectPath} mono />
+            <InfoRow label="Remote host" value={processInfo.executor} mono />
           </Section>
         )}
       </div>
