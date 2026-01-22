@@ -1,6 +1,7 @@
 import type { ContextUsage, ProviderName } from "@yep-anywhere/shared";
 import { useEffect, useState } from "react";
 import { api } from "../api/client";
+import { useActivityBusState } from "../hooks/useActivityBusState";
 import type { ProcessState } from "../hooks/useSession";
 import type { SessionStatus } from "../types";
 import { Modal } from "./ui/Modal";
@@ -111,6 +112,7 @@ export function ProcessInfoModal({
   const [processInfo, setProcessInfo] = useState<ProcessInfo | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const { connected: streamConnected } = useActivityBusState();
 
   // Fetch process info when modal opens (if session is owned)
   useEffect(() => {
@@ -177,6 +179,14 @@ export function ProcessInfoModal({
           <InfoRow label="Provider" value={getProviderDisplay(provider)} />
           <InfoRow label="Model" value={model || "Default"} mono />
           <InfoRow label="Status" value={getStateDisplay()} />
+        </Section>
+
+        {/* Connection Info */}
+        <Section title="Connection">
+          <InfoRow
+            label="Event stream"
+            value={streamConnected ? "Connected" : "Disconnected"}
+          />
         </Section>
 
         {/* Context Usage - if available */}
