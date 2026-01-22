@@ -476,6 +476,32 @@ class ActivityBus {
   }
 
   /**
+   * Force a reconnection by closing the current connection and reconnecting.
+   * Useful when the connection may have gone stale (e.g., mobile wake from sleep).
+   */
+  forceReconnect(): void {
+    console.log("[ActivityBus] Forcing reconnection...");
+    // Close existing connections without clearing hasConnected flag
+    // so that we emit "reconnect" event when we reconnect
+    if (this.reconnectTimeout) {
+      clearTimeout(this.reconnectTimeout);
+      this.reconnectTimeout = null;
+    }
+    if (this.eventSource) {
+      this.eventSource.close();
+      this.eventSource = null;
+    }
+    if (this.wsSubscription) {
+      this.wsSubscription.close();
+      this.wsSubscription = null;
+    }
+    this._connected = false;
+
+    // Reconnect immediately
+    this.connect();
+  }
+
+  /**
    * Subscribe to an event type. Returns an unsubscribe function.
    */
   on<K extends ActivityEventType>(

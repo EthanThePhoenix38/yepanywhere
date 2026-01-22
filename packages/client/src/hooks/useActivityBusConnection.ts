@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { useAuth } from "../contexts/AuthContext";
 import { activityBus } from "../lib/activityBus";
 
@@ -9,9 +9,13 @@ import { activityBus } from "../lib/activityBus";
  * to avoid 401 errors that can trigger the browser's basic auth prompt.
  *
  * When auth is not enabled, or user is authenticated, we connect.
+ *
+ * Includes visibility change handling to force reconnection when
+ * the page becomes visible again (e.g., mobile phone waking from sleep).
  */
 export function useActivityBusConnection(): void {
   const { isAuthenticated, authEnabled, isLoading } = useAuth();
+  const lastVisibleTime = useRef<number>(Date.now());
 
   useEffect(() => {
     // Don't do anything while loading auth state
@@ -26,8 +30,30 @@ export function useActivityBusConnection(): void {
       activityBus.disconnect();
     }
 
+    // Handle visibility changes to reconnect when page becomes visible
+    // This helps recover from stale connections on mobile
+    const handleVisibilityChange = () => {
+      if (!shouldConnect) return;
+
+      if (document.visibilityState === "visible") {
+        const hiddenDuration = Date.now() - lastVisibleTime.current;
+        // If hidden for more than 5 seconds, force reconnect to ensure fresh data
+        if (hiddenDuration > 5000) {
+          console.log(
+            `[ActivityBus] Page visible after ${Math.round(hiddenDuration / 1000)}s, forcing reconnect`,
+          );
+          activityBus.forceReconnect();
+        }
+      } else {
+        lastVisibleTime.current = Date.now();
+      }
+    };
+
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+
     // Disconnect on unmount
     return () => {
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
       activityBus.disconnect();
     };
   }, [isAuthenticated, authEnabled, isLoading]);
