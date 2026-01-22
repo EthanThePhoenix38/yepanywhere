@@ -170,4 +170,11 @@ export interface Connection {
     file: File,
     options?: UploadOptions,
   ): Promise<UploadedFile>;
+
+  /**
+   * Force reconnection of the underlying transport.
+   * Useful when the connection may have gone stale (e.g., mobile wake from sleep).
+   * Optional - only SecureConnection implements this.
+   */
+  forceReconnect?(): Promise<void>;
 }

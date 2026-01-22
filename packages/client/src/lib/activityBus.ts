@@ -478,15 +478,47 @@ class ActivityBus {
   /**
    * Force a reconnection by closing the current connection and reconnecting.
    * Useful when the connection may have gone stale (e.g., mobile wake from sleep).
+   * For remote mode (SecureConnection), this reconnects the underlying WebSocket.
    */
   forceReconnect(): void {
     console.log("[ActivityBus] Forcing reconnection...");
-    // Close existing connections without clearing hasConnected flag
-    // so that we emit "reconnect" event when we reconnect
+
+    // Clear any pending reconnect timeout
     if (this.reconnectTimeout) {
       clearTimeout(this.reconnectTimeout);
       this.reconnectTimeout = null;
     }
+
+    // For remote mode with SecureConnection, force reconnect the underlying WebSocket
+    const globalConn = getGlobalConnection();
+    if (globalConn?.forceReconnect) {
+      this._connected = false;
+      // Close our subscription (will be re-established by SecureConnection.forceReconnect)
+      if (this.wsSubscription) {
+        this.wsSubscription.close();
+        this.wsSubscription = null;
+      }
+      // Force reconnect the underlying connection, then re-subscribe
+      globalConn
+        .forceReconnect()
+        .then(() => {
+          console.log(
+            "[ActivityBus] SecureConnection reconnected, re-subscribing",
+          );
+          this.connect();
+        })
+        .catch((err) => {
+          console.error("[ActivityBus] Force reconnect failed:", err);
+          // Try to reconnect anyway after a delay
+          this.reconnectTimeout = setTimeout(
+            () => this.connect(),
+            RECONNECT_DELAY_MS,
+          );
+        });
+      return;
+    }
+
+    // For SSE or WebSocket transport, just close and reconnect
     if (this.eventSource) {
       this.eventSource.close();
       this.eventSource = null;

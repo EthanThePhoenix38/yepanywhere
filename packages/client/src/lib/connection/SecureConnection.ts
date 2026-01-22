@@ -1532,6 +1532,66 @@ export class SecureConnection implements Connection {
   }
 
   /**
+   * Force reconnection of the underlying WebSocket.
+   * Useful when the connection may have gone stale (e.g., mobile wake from sleep).
+   * Returns a promise that resolves when reconnected and authenticated.
+   */
+  async forceReconnect(): Promise<void> {
+    console.log("[SecureConnection] Force reconnecting...");
+
+    // Close existing WebSocket without notifying subscriptions
+    // (we'll re-subscribe them after reconnecting)
+    if (this.ws) {
+      this.ws.onclose = null; // Prevent onclose handler from firing
+      this.ws.onerror = null;
+      this.ws.onmessage = null;
+      this.ws.close();
+      this.ws = null;
+    }
+
+    // Clear pending requests with reconnect error
+    for (const [id, pending] of this.pendingRequests) {
+      clearTimeout(pending.timeout);
+      pending.reject(new Error("Connection reconnecting"));
+    }
+    this.pendingRequests.clear();
+
+    // Reset connection state but keep session info for resumption
+    this.connectionState = "disconnected";
+    this.connectionPromise = null;
+
+    // Reconnect
+    await this.ensureConnected();
+
+    // Re-subscribe existing subscriptions by sending subscribe messages
+    for (const [subscriptionId, handlers] of this.subscriptions) {
+      const browserProfileId = getOrCreateBrowserProfileId();
+      const originMetadata = {
+        origin: window.location.origin,
+        scheme: window.location.protocol.replace(":", ""),
+        hostname: window.location.hostname,
+        port: window.location.port
+          ? Number.parseInt(window.location.port, 10)
+          : null,
+        userAgent: navigator.userAgent,
+      };
+
+      // Determine channel from subscription (activity subscriptions don't have sessionId)
+      // For now, assume all reconnected subscriptions are activity subscriptions
+      const msg: RelaySubscribe = {
+        type: "subscribe",
+        subscriptionId,
+        channel: "activity",
+        browserProfileId,
+        originMetadata,
+      };
+      this.send(msg);
+    }
+
+    console.log("[SecureConnection] Force reconnect complete");
+  }
+
+  /**
    * Check if the connection is authenticated.
    */
   isAuthenticated(): boolean {
