@@ -33,14 +33,8 @@ export function createStaticRoutes(options: StaticServeOptions): Hono {
     );
   }
 
-  // Read index.html once at startup for SPA fallback
+  // Path to index.html for SPA fallback (read fresh each request to pick up rebuilds)
   const indexPath = path.join(distPath, "index.html");
-  let indexHtml: string | null = null;
-  try {
-    indexHtml = fs.readFileSync(indexPath, "utf-8");
-  } catch {
-    // Will be handled per-request
-  }
 
   // Serve static files
   app.get("*", async (c) => {
@@ -85,22 +79,34 @@ export function createStaticRoutes(options: StaticServeOptions): Hono {
 
         return c.body(content, 200, headers);
       }
-    } catch {
-      // File doesn't exist, fall through to SPA fallback
+      // Not a file (e.g., directory), fall through to SPA fallback
+    } catch (err) {
+      // Only fall through to SPA for missing files, not for other errors
+      const isNotFound =
+        err instanceof Error &&
+        "code" in err &&
+        (err as NodeJS.ErrnoException).code === "ENOENT";
+      if (!isNotFound) {
+        console.error(`[Static] Error serving ${filePath}:`, err);
+      }
     }
 
     // SPA fallback: serve index.html for all other routes
-    if (indexHtml) {
+    // Read fresh each time to pick up rebuilds without server restart
+    try {
+      const indexHtml = await fs.promises.readFile(indexPath, "utf-8");
       return c.html(indexHtml, 200, {
         // frame-ancestors must be set via HTTP header (not meta tag)
         "Content-Security-Policy": "frame-ancestors 'none'",
+        // Don't cache index.html (hashed asset paths change on rebuild)
+        "Cache-Control": "no-cache",
       });
+    } catch {
+      return c.text(
+        "Not found. Did you run 'pnpm build' to build the client?",
+        404,
+      );
     }
-
-    return c.text(
-      "Not found. Did you run 'pnpm build' to build the client?",
-      404,
-    );
   });
 
   return app;
