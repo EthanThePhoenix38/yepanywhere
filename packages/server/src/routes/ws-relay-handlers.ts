@@ -66,6 +66,7 @@ import {
   encrypt,
   encryptToBinaryEnvelopeWithCompression,
 } from "../crypto/index.js";
+import { SRP_AUTHENTICATED } from "../middleware/internal-auth.js";
 import type {
   RemoteAccessService,
   RemoteSessionService,
@@ -345,7 +346,11 @@ export async function handleRequest(
     }
 
     const fetchRequest = new Request(url.toString(), fetchInit);
-    const response = await app.fetch(fetchRequest);
+    // Pass SRP_AUTHENTICATED symbol to bypass local password auth.
+    // Requests through the SRP tunnel have already been authenticated.
+    const response = await app.fetch(fetchRequest, {
+      [SRP_AUTHENTICATED]: true,
+    });
 
     let body: unknown;
     const contentType = response.headers.get("Content-Type") ?? "";
