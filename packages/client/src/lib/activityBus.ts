@@ -6,7 +6,9 @@ import type {
 } from "@yep-anywhere/shared";
 import { getWebsocketTransportEnabled } from "../hooks/useDeveloperMode";
 import type { SessionStatus, SessionSummary } from "../types";
+import { authEvents } from "./authEvents";
 import { getGlobalConnection, isRemoteClient } from "./connection";
+import { FetchSSE } from "./connection/FetchSSE";
 import { type Subscription, isNonRetryableError } from "./connection/types";
 import { getOrCreateBrowserProfileId } from "./storageKeys";
 
@@ -163,7 +165,7 @@ const RECONNECT_DELAY_MS = 2000;
  * Hooks subscribe via on() and receive events through callbacks.
  */
 class ActivityBus {
-  private eventSource: EventSource | null = null;
+  private eventSource: FetchSSE | null = null;
   private wsSubscription: Subscription | null = null;
   private listeners = new Map<ActivityEventType, Set<Listener<unknown>>>();
   private reconnectTimeout: ReturnType<typeof setTimeout> | null = null;
@@ -378,8 +380,15 @@ class ActivityBus {
 
   /**
    * Connect using SSE (traditional method).
+   * Uses FetchSSE instead of native EventSource to detect 401 errors.
    */
   private connectSSE(): void {
+    // Don't connect if login is already required
+    if (authEvents.loginRequired) {
+      console.log("[ActivityBus] Skipping SSE connection - login required");
+      return;
+    }
+
     // Get or create browser profile ID for connection tracking
     const browserProfileId = getOrCreateBrowserProfileId();
     const baseUrl = `${API_BASE}/activity/events`;
@@ -398,9 +407,10 @@ class ActivityBus {
     }
 
     const url = `${baseUrl}?${params.toString()}`;
-    const es = new EventSource(url);
+    // Use FetchSSE instead of EventSource to detect 401 errors
+    const sse = new FetchSSE(url);
 
-    es.onopen = () => {
+    sse.onopen = () => {
       const isReconnect = this.hasConnected;
       this.hasConnected = true;
       this._connected = true;
@@ -411,64 +421,70 @@ class ActivityBus {
     };
 
     // Set up event listeners for each event type
-    es.addEventListener("file-change", (event) =>
+    sse.addEventListener("file-change", (event) =>
       this.handleEvent("file-change", event),
     );
-    es.addEventListener("session-status-changed", (event) =>
+    sse.addEventListener("session-status-changed", (event) =>
       this.handleEvent("session-status-changed", event),
     );
-    es.addEventListener("session-created", (event) =>
+    sse.addEventListener("session-created", (event) =>
       this.handleEvent("session-created", event),
     );
-    es.addEventListener("session-updated", (event) =>
+    sse.addEventListener("session-updated", (event) =>
       this.handleEvent("session-updated", event),
     );
-    es.addEventListener("session-seen", (event) =>
+    sse.addEventListener("session-seen", (event) =>
       this.handleEvent("session-seen", event),
     );
-    es.addEventListener("process-state-changed", (event) =>
+    sse.addEventListener("process-state-changed", (event) =>
       this.handleEvent("process-state-changed", event),
     );
-    es.addEventListener("session-metadata-changed", (event) =>
+    sse.addEventListener("session-metadata-changed", (event) =>
       this.handleEvent("session-metadata-changed", event),
     );
 
     // Connection events
-    es.addEventListener("browser-tab-connected", (event) =>
+    sse.addEventListener("browser-tab-connected", (event) =>
       this.handleEvent("browser-tab-connected", event),
     );
-    es.addEventListener("browser-tab-disconnected", (event) =>
+    sse.addEventListener("browser-tab-disconnected", (event) =>
       this.handleEvent("browser-tab-disconnected", event),
     );
 
     // Dev mode events
-    es.addEventListener("source-change", (event) =>
+    sse.addEventListener("source-change", (event) =>
       this.handleEvent("source-change", event),
     );
-    es.addEventListener("backend-reloaded", () =>
+    sse.addEventListener("backend-reloaded", () =>
       this.emit("backend-reloaded", undefined),
     );
-    es.addEventListener("worker-activity-changed", (event) =>
+    sse.addEventListener("worker-activity-changed", (event) =>
       this.handleEvent("worker-activity-changed", event),
     );
 
     // Ignore these - just acknowledge receipt
-    es.addEventListener("connected", () => {});
-    es.addEventListener("heartbeat", () => {});
+    sse.addEventListener("connected", () => {});
+    sse.addEventListener("heartbeat", () => {});
 
-    es.onerror = () => {
+    sse.onerror = (error) => {
       this._connected = false;
-      es.close();
+      sse.close();
       this.eventSource = null;
 
-      // Auto-reconnect
+      // Don't reconnect for auth errors (FetchSSE handles signaling)
+      if (error.isAuthError) {
+        console.log("[ActivityBus] Auth error, not reconnecting");
+        return;
+      }
+
+      // Auto-reconnect for other errors
       this.reconnectTimeout = setTimeout(
         () => this.connect(),
         RECONNECT_DELAY_MS,
       );
     };
 
-    this.eventSource = es;
+    this.eventSource = sse;
   }
 
   /**

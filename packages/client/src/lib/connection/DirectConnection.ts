@@ -1,6 +1,8 @@
 import type { UploadedFile } from "@yep-anywhere/shared";
 import { uploadFile } from "../../api/upload";
+import { authEvents } from "../authEvents";
 import { getOrCreateBrowserProfileId } from "../storageKeys";
+import { FetchSSE } from "./FetchSSE";
 import type {
   Connection,
   StreamHandlers,
@@ -73,6 +75,14 @@ export class DirectConnection implements Connection {
     });
 
     if (!res.ok) {
+      // Signal login required for 401 errors (but not for auth endpoints)
+      if (res.status === 401 && !path.startsWith("/auth/")) {
+        console.log(
+          "[DirectConnection] 401 response, signaling login required",
+        );
+        authEvents.signalLoginRequired();
+      }
+
       const setupRequired = res.headers.get("X-Setup-Required") === "true";
       const error = new Error(
         `API error: ${res.status} ${res.statusText}`,
@@ -166,14 +176,24 @@ export class DirectConnection implements Connection {
   }
 
   /**
-   * Create an EventSource subscription with automatic event forwarding.
+   * Create an SSE subscription using FetchSSE (fetch-based EventSource replacement).
+   * FetchSSE allows us to detect HTTP status codes like 401 for auth handling.
    */
   private createEventSourceSubscription(
     url: string,
     handlers: StreamHandlers,
     eventTypes: readonly string[],
   ): Subscription {
-    const es = new EventSource(url);
+    // Don't connect if login is already required
+    if (authEvents.loginRequired) {
+      console.log(
+        "[DirectConnection] Skipping SSE connection - login required",
+      );
+      // Return a no-op subscription
+      return { close: () => {} };
+    }
+
+    const sse = new FetchSSE(url);
 
     // Track event listeners for cleanup
     const listeners = new Map<string, (event: MessageEvent) => void>();
@@ -194,26 +214,31 @@ export class DirectConnection implements Connection {
         }
       };
       listeners.set(eventType, listener);
-      es.addEventListener(eventType, listener);
+      sse.addEventListener(eventType, listener);
     }
 
-    es.onopen = () => {
+    sse.onopen = () => {
       handlers.onOpen?.();
     };
 
-    es.onerror = () => {
-      // EventSource handles reconnection automatically for recoverable errors
-      // Only call onError for informational purposes
-      handlers.onError?.(new Error("EventSource error"));
+    sse.onerror = (error) => {
+      // FetchSSE provides status codes for HTTP errors
+      if (error.isAuthError) {
+        // Auth error already signaled by FetchSSE, just inform handler
+        handlers.onError?.(error);
+        return;
+      }
+      // For other errors, FetchSSE handles reconnection internally
+      handlers.onError?.(error);
     };
 
     return {
       close: () => {
         // Remove all event listeners
         for (const [eventType, listener] of listeners) {
-          es.removeEventListener(eventType, listener);
+          sse.removeEventListener(eventType, listener);
         }
-        es.close();
+        sse.close();
         handlers.onClose?.();
       },
     };

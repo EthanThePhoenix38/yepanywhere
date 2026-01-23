@@ -65,7 +65,17 @@ export function SessionMenu({
         triggerRef.current?.blur();
       }
     };
-    const handleScroll = () => {
+    const handleScroll = (e: Event) => {
+      // Only close if scroll happens in an ancestor of the menu trigger
+      // This prevents closing when unrelated areas (like main content pane) scroll
+      const scrollTarget = e.target as Node;
+      if (
+        scrollTarget instanceof Node &&
+        wrapperRef.current &&
+        !scrollTarget.contains(wrapperRef.current)
+      ) {
+        return; // Scroll is not in an ancestor of the menu, ignore
+      }
       setIsOpen(false);
       setDropdownPosition(null);
       triggerRef.current?.blur();

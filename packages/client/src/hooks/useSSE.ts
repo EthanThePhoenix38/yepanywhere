@@ -1,10 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { authEvents } from "../lib/authEvents";
 import {
   type Subscription,
   getGlobalConnection,
   getWebSocketConnection,
   isNonRetryableError,
 } from "../lib/connection";
+import { FetchSSE } from "../lib/connection/FetchSSE";
 import { getWebsocketTransportEnabled } from "./useDeveloperMode";
 
 interface UseSSEOptions {
@@ -23,7 +25,7 @@ function extractSessionId(url: string): string | null {
 
 export function useSSE(url: string | null, options: UseSSEOptions) {
   const [connected, setConnected] = useState(false);
-  const eventSourceRef = useRef<EventSource | null>(null);
+  const eventSourceRef = useRef<FetchSSE | null>(null);
   const wsSubscriptionRef = useRef<Subscription | null>(null);
   const lastEventIdRef = useRef<string | null>(null);
   const reconnectTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(
@@ -232,13 +234,22 @@ export function useSSE(url: string | null, options: UseSSEOptions) {
 
   const connectSSE = useCallback(
     (url: string) => {
+      // Don't connect if login is already required
+      if (authEvents.loginRequired) {
+        console.log("[useSSE] Skipping SSE connection - login required");
+        return;
+      }
+
+      // FetchSSE handles lastEventId internally, but we pass it in the URL
+      // for consistency with the existing behavior
       const fullUrl = lastEventIdRef.current
         ? `${url}?lastEventId=${lastEventIdRef.current}`
         : url;
 
-      const es = new EventSource(fullUrl);
+      // Use FetchSSE instead of EventSource to detect 401 errors
+      const sse = new FetchSSE(fullUrl, { autoReconnect: false });
 
-      es.onopen = () => {
+      sse.onopen = () => {
         setConnected(true);
         optionsRef.current.onOpen?.();
       };
@@ -261,34 +272,42 @@ export function useSSE(url: string | null, options: UseSSEOptions) {
         }
       };
 
-      es.addEventListener("connected", handleEvent("connected"));
-      es.addEventListener("message", handleEvent("message"));
-      es.addEventListener("status", handleEvent("status"));
-      es.addEventListener("mode-change", handleEvent("mode-change"));
-      es.addEventListener("error", handleEvent("error"));
-      es.addEventListener("complete", handleEvent("complete"));
-      es.addEventListener("heartbeat", handleEvent("heartbeat"));
-      es.addEventListener("markdown-augment", handleEvent("markdown-augment"));
-      es.addEventListener("pending", handleEvent("pending"));
-      es.addEventListener("edit-augment", handleEvent("edit-augment"));
-      es.addEventListener("claude-login", handleEvent("claude-login"));
-      es.addEventListener(
+      sse.addEventListener("connected", handleEvent("connected"));
+      sse.addEventListener("message", handleEvent("message"));
+      sse.addEventListener("status", handleEvent("status"));
+      sse.addEventListener("mode-change", handleEvent("mode-change"));
+      sse.addEventListener("error", handleEvent("error"));
+      sse.addEventListener("complete", handleEvent("complete"));
+      sse.addEventListener("heartbeat", handleEvent("heartbeat"));
+      sse.addEventListener("markdown-augment", handleEvent("markdown-augment"));
+      sse.addEventListener("pending", handleEvent("pending"));
+      sse.addEventListener("edit-augment", handleEvent("edit-augment"));
+      sse.addEventListener("claude-login", handleEvent("claude-login"));
+      sse.addEventListener(
         "session-id-changed",
         handleEvent("session-id-changed"),
       );
 
-      es.onerror = (error) => {
+      sse.onerror = (error) => {
         setConnected(false);
-        optionsRef.current.onError?.(error);
+        optionsRef.current.onError?.(new Event("error"));
 
-        // Auto-reconnect after 2s
-        es.close();
+        // Don't reconnect for auth errors (FetchSSE handles signaling)
+        if (error.isAuthError) {
+          console.log("[useSSE] Auth error, not reconnecting");
+          sse.close();
+          eventSourceRef.current = null;
+          return;
+        }
+
+        // Auto-reconnect after 2s for other errors
+        sse.close();
         eventSourceRef.current = null;
         mountedUrlRef.current = null; // Reset so reconnect isn't blocked
         reconnectTimeoutRef.current = setTimeout(connect, 2000);
       };
 
-      eventSourceRef.current = es;
+      eventSourceRef.current = sse;
     },
     [connect],
   );

@@ -228,6 +228,12 @@ export function useSpeechRecognition(
     };
 
     recognition.onresult = (event: SpeechRecognitionEvent) => {
+      // Ignore results after stopListening() is called - prevents race condition
+      // where late results arrive after submission clears the input
+      if (isStoppingRef.current) {
+        return;
+      }
+
       // Track that we're actively receiving results
       lastResultTimeRef.current = Date.now();
       setStatus("receiving");

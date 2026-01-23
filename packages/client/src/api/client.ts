@@ -11,6 +11,7 @@ import type {
   UploadedFile,
 } from "@yep-anywhere/shared";
 import { getWebsocketTransportEnabled } from "../hooks/useDeveloperMode";
+import { authEvents } from "../lib/authEvents";
 import {
   getGlobalConnection,
   getWebSocketConnection,
@@ -180,6 +181,12 @@ export async function fetchJSON<T>(
   });
 
   if (!res.ok) {
+    // Signal login required for 401 errors (but not for auth endpoints themselves)
+    if (res.status === 401 && !path.startsWith("/auth/")) {
+      console.log("[API] 401 response, signaling login required");
+      authEvents.signalLoginRequired();
+    }
+
     // Include setup required info in error for auth handling
     const setupRequired = res.headers.get("X-Setup-Required") === "true";
     const error = new Error(

@@ -17,6 +17,7 @@ import {
 } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { api } from "../api/client";
+import { authEvents } from "../lib/authEvents";
 
 interface AuthContextValue {
   /** Whether user is authenticated */
@@ -92,6 +93,16 @@ export function AuthProvider({ children }: AuthProviderProps) {
     checkAuth();
   }, [checkAuth]);
 
+  // Subscribe to global login required events (from 401 responses)
+  useEffect(() => {
+    const unsubscribe = authEvents.onLoginRequired(() => {
+      console.log("[Auth] Login required signal received");
+      setIsAuthenticated(false);
+      // The redirect effect below will handle navigation to /login
+    });
+    return unsubscribe;
+  }, []);
+
   // Redirect to login if not authenticated and auth is enabled
   useEffect(() => {
     if (
@@ -116,6 +127,8 @@ export function AuthProvider({ children }: AuthProviderProps) {
     await api.login(password);
     setIsAuthenticated(true);
     setIsSetupMode(false);
+    // Clear the global login required flag so connections can resume
+    authEvents.clearLoginRequired();
   }, []);
 
   const logout = useCallback(async () => {
@@ -143,6 +156,8 @@ export function AuthProvider({ children }: AuthProviderProps) {
     setAuthEnabled(true);
     setIsAuthenticated(true);
     setIsSetupMode(false);
+    // Clear the global login required flag so connections can resume
+    authEvents.clearLoginRequired();
   }, []);
 
   const changePassword = useCallback(async (newPassword: string) => {
