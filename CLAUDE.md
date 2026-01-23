@@ -84,14 +84,32 @@ Never mention Claude, AI, or any AI assistant in commit messages. Write commit m
 
 ## Releasing to npm
 
-The package is published to npm as `yepanywhere` using GitHub Actions with OIDC trusted publishing (no npm tokens stored in secrets). Pushing a version tag triggers the release.
+The package is published to npm as `yepanywhere` using GitHub Actions with OIDC trusted publishing (no npm tokens stored in secrets).
 
-```bash
-git tag v0.1.10
-git push origin v0.1.10
-```
+**Before releasing:**
 
-The workflow (`.github/workflows/publish.yml`) runs lint, typecheck, and tests, then builds with `pnpm build:bundle` and publishes with `--provenance` for supply chain attestation. It also creates a GitHub Release with auto-generated notes.
+1. Update `CHANGELOG.md` with a new version section:
+   ```markdown
+   ## [0.1.11] - 2025-01-24
+
+   ### Added
+   - New feature description
+
+   ### Fixed
+   - Bug fix description
+   ```
+
+2. Commit the changelog update
+
+3. Tag and push:
+   ```bash
+   git tag v0.1.11
+   git push origin v0.1.11
+   ```
+
+The CI workflow verifies the changelog contains an entry for the version being released. If missing, the release will fail with instructions to update the changelog.
+
+The workflow runs lint, typecheck, and tests, then builds with `pnpm build:bundle` and publishes with `--provenance` for supply chain attestation. It also creates a GitHub Release with auto-generated notes.
 
 ## Server Logs
 
