@@ -38,10 +38,53 @@ export class WebSocketCloseError extends Error {
  * but it was originally connected via relay (wsUrl = "relay://").
  */
 export class RelayReconnectRequiredError extends Error {
-  constructor() {
-    super("Relay connection lost - reconnection requires going through relay");
+  /** The underlying error that caused the reconnection to fail */
+  readonly cause?: Error;
+
+  constructor(cause?: Error) {
+    // Use a user-friendly message based on the underlying cause
+    const message = formatRelayReconnectError(cause);
+    super(message);
     this.name = "RelayReconnectRequiredError";
+    this.cause = cause;
   }
+}
+
+/**
+ * Format a user-friendly error message for relay reconnection failures.
+ */
+function formatRelayReconnectError(cause?: Error): string {
+  if (!cause) {
+    return "Connection lost. Please try again.";
+  }
+
+  const msg = cause.message.toLowerCase();
+
+  // Timeout errors - server is unreachable
+  if (
+    msg.includes("timeout") ||
+    msg.includes("timed out") ||
+    msg.includes("waiting for server")
+  ) {
+    return "Couldn't reach the server. Make sure your computer is turned on and connected to the internet.";
+  }
+
+  // Connection errors - network issue
+  if (
+    msg.includes("connection error") ||
+    msg.includes("connection closed") ||
+    msg.includes("failed to connect")
+  ) {
+    return "Connection failed. Check your internet connection and try again.";
+  }
+
+  // Server offline (relay knows about the user but server isn't connected)
+  if (msg.includes("server_offline") || msg.includes("not connected")) {
+    return "Server is offline. Make sure your server is running and connected to the relay.";
+  }
+
+  // Default fallback
+  return "Connection lost. Please try again.";
 }
 
 /**

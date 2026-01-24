@@ -492,7 +492,11 @@ export class SecureConnection implements Connection {
                 "[SecureConnection] Relay auto-reconnect failed:",
                 err,
               );
-              reject(new RelayReconnectRequiredError());
+              reject(
+                new RelayReconnectRequiredError(
+                  err instanceof Error ? err : new Error(String(err)),
+                ),
+              );
             });
           return;
         }
@@ -500,7 +504,11 @@ export class SecureConnection implements Connection {
         console.log(
           "[SecureConnection] Cannot reconnect relay connection (missing config or session)",
         );
-        reject(new RelayReconnectRequiredError());
+        reject(
+          new RelayReconnectRequiredError(
+            new Error("Missing relay config or stored session"),
+          ),
+        );
         return;
       }
 
