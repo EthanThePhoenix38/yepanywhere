@@ -439,6 +439,10 @@ export class SecureConnection implements Connection {
       }
 
       console.warn("[SecureConnection] Unexpected message during resume:", msg);
+      // Reject on unexpected message to prevent auth from hanging
+      this.connectionState = "failed";
+      reject(new Error(`Unexpected message during resume: ${msg?.type ?? "unknown"}`));
+      this.ws?.close();
     } catch (err) {
       console.error("[SecureConnection] Resume response error:", err);
       this.connectionState = "failed";
@@ -759,7 +763,10 @@ export class SecureConnection implements Connection {
       }
 
       if (!isSrpServerChallenge(msg)) {
-        console.warn("[SecureConnection] Unexpected message during SRP:", msg);
+        console.warn("[SecureConnection] Unexpected message during SRP challenge:", msg);
+        this.connectionState = "failed";
+        reject(new Error(`Unexpected message during SRP challenge: ${msg?.type ?? "unknown"}`));
+        this.ws?.close();
         return;
       }
 
@@ -810,7 +817,10 @@ export class SecureConnection implements Connection {
       }
 
       if (!isSrpServerVerify(msg)) {
-        console.warn("[SecureConnection] Unexpected message during SRP:", msg);
+        console.warn("[SecureConnection] Unexpected message during SRP verify:", msg);
+        this.connectionState = "failed";
+        reject(new Error(`Unexpected message during SRP verify: ${msg?.type ?? "unknown"}`));
+        this.ws?.close();
         return;
       }
 
