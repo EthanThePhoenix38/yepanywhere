@@ -6,6 +6,7 @@ const STRICT_MODE = false;
 const Wrapper = STRICT_MODE ? StrictMode : Fragment;
 import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
 import { App } from "./App";
+import { ErrorBoundary } from "./components/ErrorBoundary";
 import { initializeFontSize } from "./hooks/useFontSize";
 import { initializeTheme } from "./hooks/useTheme";
 import { NavigationLayout } from "./layouts";
@@ -40,38 +41,40 @@ if (!rootElement) {
 
 createRoot(rootElement).render(
   <Wrapper>
-    <BrowserRouter basename={basename}>
-      <App>
-        <Routes>
-          <Route path="/" element={<Navigate to="/projects" replace />} />
-          {/* Login page (no layout wrapper) */}
-          <Route path="/login" element={<LoginPage />} />
-          {/* All pages share NavigationLayout for persistent sidebar */}
-          <Route element={<NavigationLayout />}>
-            <Route path="/projects" element={<ProjectsPage />} />
-            <Route path="/sessions" element={<GlobalSessionsPage />} />
-            <Route path="/agents" element={<AgentsPage />} />
-            <Route path="/tasks" element={<BeadsPage />} />
-            <Route path="/inbox" element={<InboxPage />} />
-            <Route path="/settings" element={<SettingsLayout />} />
-            <Route path="/settings/:category" element={<SettingsLayout />} />
-            {/* Project-scoped pages */}
-            <Route
-              path="/projects/:projectId"
-              element={<Navigate to="/sessions" replace />}
-            />
-            <Route path="/new-session" element={<NewSessionPage />} />
-            <Route
-              path="/projects/:projectId/sessions/:sessionId"
-              element={<SessionPage />}
-            />
-          </Route>
-          {/* File page has its own layout (no sidebar) */}
-          <Route path="/projects/:projectId/file" element={<FilePage />} />
-          {/* Activity page has its own layout */}
-          <Route path="/activity" element={<ActivityPage />} />
-        </Routes>
-      </App>
-    </BrowserRouter>
+    <ErrorBoundary>
+      <BrowserRouter basename={basename}>
+        <App>
+          <Routes>
+            <Route path="/" element={<Navigate to="/projects" replace />} />
+            {/* Login page (no layout wrapper) */}
+            <Route path="/login" element={<LoginPage />} />
+            {/* All pages share NavigationLayout for persistent sidebar */}
+            <Route element={<NavigationLayout />}>
+              <Route path="/projects" element={<ProjectsPage />} />
+              <Route path="/sessions" element={<GlobalSessionsPage />} />
+              <Route path="/agents" element={<AgentsPage />} />
+              <Route path="/tasks" element={<BeadsPage />} />
+              <Route path="/inbox" element={<InboxPage />} />
+              <Route path="/settings" element={<SettingsLayout />} />
+              <Route path="/settings/:category" element={<SettingsLayout />} />
+              {/* Project-scoped pages */}
+              <Route
+                path="/projects/:projectId"
+                element={<Navigate to="/sessions" replace />}
+              />
+              <Route path="/new-session" element={<NewSessionPage />} />
+              <Route
+                path="/projects/:projectId/sessions/:sessionId"
+                element={<SessionPage />}
+              />
+            </Route>
+            {/* File page has its own layout (no sidebar) */}
+            <Route path="/projects/:projectId/file" element={<FilePage />} />
+            {/* Activity page has its own layout */}
+            <Route path="/activity" element={<ActivityPage />} />
+          </Routes>
+        </App>
+      </BrowserRouter>
+    </ErrorBoundary>
   </Wrapper>,
 );
