@@ -11,6 +11,7 @@
 import type { ReactNode } from "react";
 import { Navigate, useLocation } from "react-router-dom";
 import { FloatingActionButton } from "./components/FloatingActionButton";
+import { HostOfflineModal } from "./components/HostOfflineModal";
 import { InboxProvider } from "./contexts/InboxContext";
 import {
   RemoteConnectionProvider,
@@ -55,13 +56,20 @@ function RemoteAppContent({ children }: Props) {
  * Gate component that controls access based on connection state.
  *
  * - If auto-resuming: show loading (don't redirect yet)
+ * - If auto-resume failed with host offline: show modal with retry option
  * - If not connected and on a login route: render children (login pages)
  * - If not connected and not on a login route: redirect to /login
  * - If connected and on a login route: redirect to /projects
  * - If connected and not on a login route: render children (app)
  */
 function ConnectionGate({ children }: Props) {
-  const { connection, isAutoResuming } = useRemoteConnection();
+  const {
+    connection,
+    isAutoResuming,
+    autoResumeError,
+    clearAutoResumeError,
+    retryAutoResume,
+  } = useRemoteConnection();
   const location = useLocation();
   const isLoginRoute = LOGIN_ROUTES.some(
     (route) =>
@@ -81,6 +89,17 @@ function ConnectionGate({ children }: Props) {
 
   // Not connected (and not auto-resuming)
   if (!connection) {
+    // If auto-resume failed with a connection error, show the modal
+    if (autoResumeError) {
+      return (
+        <HostOfflineModal
+          error={autoResumeError}
+          onRetry={retryAutoResume}
+          onGoToLogin={clearAutoResumeError}
+        />
+      );
+    }
+
     // If not on a login route, redirect to /login
     if (!isLoginRoute) {
       return <Navigate to="/login" replace />;

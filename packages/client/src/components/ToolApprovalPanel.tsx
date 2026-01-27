@@ -23,6 +23,9 @@ interface Props {
   onCollapsedChange?: (collapsed: boolean) => void;
 }
 
+// Delay before buttons become clickable to prevent accidental clicks
+const CLICK_PROTECTION_MS = 150;
+
 export function ToolApprovalPanel({
   request,
   sessionId,
@@ -34,11 +37,21 @@ export function ToolApprovalPanel({
   onCollapsedChange,
 }: Props) {
   const [submitting, setSubmitting] = useState(false);
+  // Prevent accidental clicks by disabling buttons briefly when panel appears
+  const [armed, setArmed] = useState(false);
   // Show feedback panel if there's already draft text from localStorage
   const [feedback, setFeedback, clearFeedback] =
     useToolApprovalFeedbackDraft(sessionId);
   const [showFeedback, setShowFeedback] = useState(() => feedback.length > 0);
   const feedbackInputRef = useRef<HTMLInputElement>(null);
+
+  // Reset armed state when request changes (new approval appears)
+  // biome-ignore lint/correctness/useExhaustiveDependencies: request.id triggers reset on new request
+  useEffect(() => {
+    setArmed(false);
+    const timer = setTimeout(() => setArmed(true), CLICK_PROTECTION_MS);
+    return () => clearTimeout(timer);
+  }, [request.id]);
 
   const isEditTool = request.toolName && EDIT_TOOLS.includes(request.toolName);
 
@@ -93,7 +106,7 @@ export function ToolApprovalPanel({
   // Keyboard shortcuts
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (submitting) return;
+      if (submitting || !armed) return;
 
       // Don't handle shortcuts when typing in feedback
       if (showFeedback) {
@@ -160,6 +173,7 @@ export function ToolApprovalPanel({
     handleDeny,
     handleDenyWithFeedback,
     submitting,
+    armed,
     showFeedback,
     feedback,
     clearFeedback,
@@ -226,7 +240,7 @@ export function ToolApprovalPanel({
                   type="button"
                   className="tool-approval-option primary"
                   onClick={handleApproveAcceptEdits}
-                  disabled={submitting || !onApproveAcceptEdits}
+                  disabled={!armed || submitting || !onApproveAcceptEdits}
                 >
                   <kbd>1</kbd>
                   <span>Yes, and auto-accept</span>
@@ -235,7 +249,7 @@ export function ToolApprovalPanel({
                   type="button"
                   className="tool-approval-option"
                   onClick={handleApprove}
-                  disabled={submitting}
+                  disabled={!armed || submitting}
                 >
                   <kbd>2</kbd>
                   <span>Yes, and manually approve edits</span>
@@ -244,7 +258,7 @@ export function ToolApprovalPanel({
                   type="button"
                   className="tool-approval-option"
                   onClick={handleDeny}
-                  disabled={submitting}
+                  disabled={!armed || submitting}
                 >
                   <kbd>3</kbd>
                   <span>No, keep planning</span>
@@ -256,7 +270,7 @@ export function ToolApprovalPanel({
                   type="button"
                   className="tool-approval-option primary"
                   onClick={handleApprove}
-                  disabled={submitting}
+                  disabled={!armed || submitting}
                 >
                   <kbd>1</kbd>
                   <span>Yes</span>
@@ -267,7 +281,7 @@ export function ToolApprovalPanel({
                     type="button"
                     className="tool-approval-option"
                     onClick={handleApproveAcceptEdits}
-                    disabled={submitting}
+                    disabled={!armed || submitting}
                   >
                     <kbd>2</kbd>
                     <span>Yes, and don't ask again</span>
@@ -278,7 +292,7 @@ export function ToolApprovalPanel({
                   type="button"
                   className="tool-approval-option"
                   onClick={handleDeny}
-                  disabled={submitting}
+                  disabled={!armed || submitting}
                 >
                   <kbd>{isEditTool && onApproveAcceptEdits ? "3" : "2"}</kbd>
                   <span>No</span>
@@ -291,7 +305,7 @@ export function ToolApprovalPanel({
                 type="button"
                 className="tool-approval-option feedback-toggle"
                 onClick={() => setShowFeedback(true)}
-                disabled={submitting}
+                disabled={!armed || submitting}
               >
                 <span>Tell Claude what to do instead</span>
               </button>
@@ -305,14 +319,14 @@ export function ToolApprovalPanel({
                   placeholder="Tell Claude what to do instead..."
                   value={feedback}
                   onChange={(e) => setFeedback(e.target.value)}
-                  disabled={submitting}
+                  disabled={!armed || submitting}
                   className="tool-approval-feedback-input"
                 />
                 <button
                   type="button"
                   className="tool-approval-feedback-submit"
                   onClick={handleDenyWithFeedback}
-                  disabled={submitting || !feedback.trim()}
+                  disabled={!armed || submitting || !feedback.trim()}
                 >
                   Send
                 </button>

@@ -52,6 +52,28 @@ export type RelayConnectionStatus =
   | "authenticating"
   | "error";
 
+/** Categorized auto-resume failure reason */
+export type AutoResumeErrorReason =
+  | "server_offline" // Server not connected to relay
+  | "unknown_username" // No server with that username on relay
+  | "relay_timeout" // Timeout waiting for relay or server
+  | "relay_unreachable" // Can't connect to relay server
+  | "direct_unreachable" // Can't reach server via direct WebSocket
+  | "auth_failed" // Session expired or auth error
+  | "other"; // Unexpected error
+
+/** Structured error from auto-resume failure */
+export interface AutoResumeError {
+  reason: AutoResumeErrorReason;
+  mode: "relay" | "direct";
+  /** Relay username (relay mode only) */
+  relayUsername?: string;
+  /** Server URL (direct mode) or relay URL (relay mode) */
+  serverUrl?: string;
+  /** Original error message */
+  message: string;
+}
+
 /** Options for connecting via relay */
 export interface ConnectViaRelayOptions {
   relayUrl: string;
@@ -71,6 +93,8 @@ interface RemoteConnectionState {
   isAutoResuming: boolean;
   /** Error from last connection attempt */
   error: string | null;
+  /** Structured error from auto-resume failure (for showing modal) */
+  autoResumeError: AutoResumeError | null;
   /** Connect to server with credentials (direct mode) */
   connect: (
     wsUrl: string,
@@ -82,6 +106,10 @@ interface RemoteConnectionState {
   connectViaRelay: (options: ConnectViaRelayOptions) => Promise<void>;
   /** Disconnect and clear credentials */
   disconnect: () => void;
+  /** Clear auto-resume error (e.g., user chose to go to login) */
+  clearAutoResumeError: () => void;
+  /** Retry auto-resume after failure */
+  retryAutoResume: () => void;
   /** Stored server URL (for pre-filling form) */
   storedUrl: string | null;
   /** Stored username (for pre-filling form) */
@@ -143,6 +171,56 @@ function clearStoredCredentials(): void {
   }
 }
 
+/** Categorize an error message into a structured AutoResumeErrorReason */
+function categorizeError(message: string): AutoResumeErrorReason {
+  const lowerMessage = message.toLowerCase();
+
+  // Relay-specific errors
+  if (lowerMessage.includes("server_offline")) {
+    return "server_offline";
+  }
+  if (lowerMessage.includes("unknown_username")) {
+    return "unknown_username";
+  }
+  if (
+    lowerMessage.includes("waiting for server timed out") ||
+    lowerMessage.includes("relay connection timeout")
+  ) {
+    return "relay_timeout";
+  }
+  if (
+    lowerMessage.includes("failed to connect to relay") ||
+    lowerMessage.includes("relay connection closed") ||
+    lowerMessage.includes("relay connection error")
+  ) {
+    return "relay_unreachable";
+  }
+
+  // Direct connection errors
+  if (
+    lowerMessage.includes("websocket") ||
+    lowerMessage.includes("econnrefused") ||
+    lowerMessage.includes("connection refused") ||
+    lowerMessage.includes("failed to connect") ||
+    lowerMessage.includes("connection failed") ||
+    lowerMessage.includes("network error")
+  ) {
+    return "direct_unreachable";
+  }
+
+  // Auth errors
+  if (
+    lowerMessage.includes("authentication") ||
+    lowerMessage.includes("session") ||
+    lowerMessage.includes("invalid_identity") ||
+    lowerMessage.includes("unauthorized")
+  ) {
+    return "auth_failed";
+  }
+
+  return "other";
+}
+
 interface Props {
   children: ReactNode;
 }
@@ -159,6 +237,8 @@ export function RemoteConnectionProvider({ children }: Props) {
     () => !!initialStored?.session,
   );
   const [error, setError] = useState<string | null>(null);
+  const [autoResumeError, setAutoResumeError] =
+    useState<AutoResumeError | null>(null);
   // Track if we've attempted auto-resume (to prevent repeated attempts)
   const [autoResumeAttempted, setAutoResumeAttempted] = useState(false);
 
@@ -396,7 +476,18 @@ export function RemoteConnectionProvider({ children }: Props) {
     }
     clearStoredCredentials();
     setError(null);
+    setAutoResumeError(null);
   }, [connection]);
+
+  const clearAutoResumeError = useCallback(() => {
+    setAutoResumeError(null);
+  }, []);
+
+  const retryAutoResume = useCallback(() => {
+    // Clear error and allow another attempt
+    setAutoResumeError(null);
+    setAutoResumeAttempted(false);
+  }, []);
 
   // Auto-resume on mount if we have a stored session
   useEffect(() => {
@@ -520,12 +611,28 @@ export function RemoteConnectionProvider({ children }: Props) {
         setGlobalConnection(conn);
         setConnection(conn);
       } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
         console.log(
           "[RemoteConnection] Auto-resume failed, user will need to re-authenticate:",
-          err instanceof Error ? err.message : err,
+          message,
         );
-        // Don't set error here - just show the login form
-        // The stored credentials will pre-fill the form
+
+        // Create structured error for the modal
+        const reason = categorizeError(message);
+        const isRelay = currentStored.mode === "relay";
+
+        // Only show the modal for connection failures, not auth failures
+        // Auth failures should go straight to login form
+        if (reason !== "auth_failed" && reason !== "other") {
+          setAutoResumeError({
+            reason,
+            mode: isRelay ? "relay" : "direct",
+            relayUsername: isRelay ? currentStored.relayUsername : undefined,
+            serverUrl: currentStored.wsUrl,
+            message,
+          });
+        }
+        // If auth_failed or other, just show login form (no modal)
       } finally {
         setIsConnecting(false);
         setIsAutoResuming(false);
@@ -555,9 +662,12 @@ export function RemoteConnectionProvider({ children }: Props) {
     isConnecting,
     isAutoResuming,
     error,
+    autoResumeError,
     connect,
     connectViaRelay,
     disconnect,
+    clearAutoResumeError,
+    retryAutoResume,
     storedUrl: storedRef.current?.wsUrl ?? null,
     storedUsername: storedRef.current?.username ?? null,
     hasStoredSession: !!storedRef.current?.session,
