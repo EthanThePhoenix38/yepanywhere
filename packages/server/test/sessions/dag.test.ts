@@ -366,9 +366,10 @@ describe("buildDag with compaction", () => {
 
     const result = buildDag(messages);
 
-    // Should stop at compact boundary since no logicalParentUuid
-    expect(result.activeBranch.map((n) => n.uuid)).toEqual(["compact-1", "c"]);
-    expect(result.tip?.uuid).toBe("c");
+    // Branch 1 (a→b) has 2 conversation messages, branch 2 (compact-1→c) has 1
+    // Algorithm prefers more conversation messages, so branch 1 is selected
+    expect(result.activeBranch.map((n) => n.uuid)).toEqual(["a", "b"]);
+    expect(result.tip?.uuid).toBe("b");
   });
 
   it("handles compact_boundary with broken logicalParentUuid", () => {

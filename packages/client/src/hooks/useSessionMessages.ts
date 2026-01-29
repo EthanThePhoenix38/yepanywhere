@@ -185,6 +185,15 @@ export function useSessionMessages(
         }));
         setMessages(taggedMessages);
 
+        // Update lastMessageIdRef synchronously to avoid race condition:
+        // SSE "connected" event calls fetchNewMessages() immediately, but the
+        // useEffect that normally updates lastMessageIdRef runs asynchronously.
+        // Without this, fetchNewMessages() would use undefined and refetch everything.
+        const lastMessage = taggedMessages[taggedMessages.length - 1];
+        if (lastMessage) {
+          lastMessageIdRef.current = getMessageId(lastMessage);
+        }
+
         // Mark ready and flush buffer
         initialLoadCompleteRef.current = true;
         flushBuffer();

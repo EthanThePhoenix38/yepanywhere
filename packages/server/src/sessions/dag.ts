@@ -47,15 +47,20 @@ export interface DagResult {
   alternateBranches: AlternateBranch[];
 }
 
+/** Message types that count as conversation (not internal/progress) */
+const CONVERSATION_TYPES = new Set(["user", "assistant"]);
+
 /**
- * Walk from a tip to root, returning the branch length.
+ * Walk from a tip to root, returning the count of conversation messages.
+ * Only counts user/assistant messages, not progress or other internal types.
+ * This ensures branch selection prefers actual conversation over progress updates.
  * Also handles compact_boundary nodes by following logicalParentUuid.
  */
 function walkBranchLength(
   tipUuid: string,
   nodeMap: Map<string, DagNode>,
 ): number {
-  let length = 0;
+  let conversationCount = 0;
   let currentUuid: string | null = tipUuid;
   const visited = new Set<string>();
 
@@ -64,7 +69,10 @@ function walkBranchLength(
     const node = nodeMap.get(currentUuid);
     if (!node) break;
 
-    length++;
+    // Only count conversation messages for branch selection
+    if (CONVERSATION_TYPES.has(node.raw.type)) {
+      conversationCount++;
+    }
 
     // Determine next node: use parentUuid, or logicalParentUuid for compact_boundary
     let nextUuid = node.parentUuid;
@@ -76,7 +84,7 @@ function walkBranchLength(
     currentUuid = nextUuid;
   }
 
-  return length;
+  return conversationCount;
 }
 
 /**
