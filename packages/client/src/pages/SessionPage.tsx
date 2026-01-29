@@ -332,27 +332,45 @@ function SessionPageContent({
       draftControlsRef.current?.clearDraft();
     } catch (err) {
       console.error("Failed to send:", err);
-      // Remove from pending queue and restore draft on error
-      removePendingMessage(tempId);
-      draftControlsRef.current?.restoreFromStorage();
-      setAttachments(currentAttachments); // Restore attachments on error
-      setProcessState("idle");
 
-      // Check if process is dead (404)
+      // Check if process is dead (404) - auto-retry with resumeSession
       const is404 =
         err instanceof Error &&
         (err.message.includes("404") ||
           err.message.includes("No active process"));
       if (is404) {
-        setStatus({ owner: "none" });
-        showToast(
-          "Session process ended. Your message has been restored.",
-          "error",
-        );
-      } else {
-        const errorMsg = err instanceof Error ? err.message : "Unknown error";
-        showToast(`Failed to send message: ${errorMsg}`, "error");
+        try {
+          const model = session?.model ?? getModelSetting();
+          const thinking = getThinkingSetting();
+          const result = await api.resumeSession(
+            projectId,
+            sessionId,
+            text,
+            {
+              mode: permissionMode,
+              model,
+              thinking,
+              provider: effectiveProvider,
+            },
+            currentAttachments.length > 0 ? currentAttachments : undefined,
+            tempId,
+          );
+          setStatus({ owner: "self", processId: result.processId });
+          draftControlsRef.current?.clearDraft();
+          return;
+        } catch (retryErr) {
+          console.error("Failed to resume session:", retryErr);
+          // Fall through to error handling below
+        }
       }
+
+      // Remove from pending queue and restore draft on error
+      removePendingMessage(tempId);
+      draftControlsRef.current?.restoreFromStorage();
+      setAttachments(currentAttachments); // Restore attachments on error
+      setProcessState("idle");
+      const errorMsg = err instanceof Error ? err.message : "Unknown error";
+      showToast(`Failed to send message: ${errorMsg}`, "error");
     }
   };
 

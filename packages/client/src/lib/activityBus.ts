@@ -36,7 +36,7 @@ export interface SessionStatusEvent {
   type: "session-status-changed";
   sessionId: string;
   projectId: UrlProjectId;
-  status: SessionStatus;
+  ownership: SessionStatus;
   timestamp: string;
 }
 

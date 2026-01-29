@@ -112,7 +112,7 @@ export function useSessionStatuses(
           const current = next.get(event.sessionId) ?? {};
 
           // When session goes to none ownership, clear activity and pendingInputType
-          if (event.status.owner === "none") {
+          if (event.ownership.owner === "none") {
             next.set(event.sessionId, {
               ...current,
               activity: undefined,

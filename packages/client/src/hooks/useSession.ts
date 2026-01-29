@@ -431,7 +431,7 @@ export function useSession(
   const handleSessionStatusChange = useCallback(
     (event: SessionStatusEvent) => {
       if (event.sessionId === sessionId) {
-        setStatus(event.status);
+        setStatus(event.ownership);
       }
     },
     [sessionId],

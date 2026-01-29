@@ -184,13 +184,13 @@ export function useGlobalSessions(options: UseGlobalSessionsOptions = {}) {
     setSessions((prev) =>
       prev.map((session) =>
         session.id === event.sessionId
-          ? { ...session, ownership: event.status }
+          ? { ...session, ownership: event.ownership }
           : session,
       ),
     );
 
     // Clear activity when session goes to none ownership
-    if (event.status.owner === "none") {
+    if (event.ownership.owner === "none") {
       setSessions((prev) =>
         prev.map((session) =>
           session.id === event.sessionId
