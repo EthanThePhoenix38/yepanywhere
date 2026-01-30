@@ -150,4 +150,14 @@ export class UsernameRegistry {
       .prepare("SELECT * FROM usernames ORDER BY username")
       .all() as UsernameRecord[];
   }
+
+  /**
+   * Get the count of registered usernames.
+   */
+  count(): number {
+    const row = this.db
+      .prepare("SELECT COUNT(*) as count FROM usernames")
+      .get() as { count: number };
+    return row.count;
+  }
 }

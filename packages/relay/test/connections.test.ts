@@ -248,11 +248,11 @@ describe("ConnectionManager", () => {
     });
   });
 
-  describe("isWaiting", () => {
+  describe("isWaitingWs", () => {
     it("returns true for waiting connection", () => {
       const ws = createMockWs();
       manager.registerServer(ws, "alice", "install-1");
-      expect(manager.isWaiting(ws)).toBe(true);
+      expect(manager.isWaitingWs(ws)).toBe(true);
     });
 
     it("returns false for paired connection", () => {
@@ -262,12 +262,34 @@ describe("ConnectionManager", () => {
       manager.registerServer(serverWs, "alice", "install-1");
       manager.connectClient(clientWs, "alice");
 
-      expect(manager.isWaiting(serverWs)).toBe(false);
+      expect(manager.isWaitingWs(serverWs)).toBe(false);
     });
 
     it("returns false for unknown connection", () => {
       const ws = createMockWs();
-      expect(manager.isWaiting(ws)).toBe(false);
+      expect(manager.isWaitingWs(ws)).toBe(false);
+    });
+  });
+
+  describe("isWaiting (by username)", () => {
+    it("returns true for username with waiting server", () => {
+      const ws = createMockWs();
+      manager.registerServer(ws, "alice", "install-1");
+      expect(manager.isWaiting("alice")).toBe(true);
+    });
+
+    it("returns false for username without waiting server", () => {
+      expect(manager.isWaiting("bob")).toBe(false);
+    });
+
+    it("returns false after server is paired", () => {
+      const serverWs = createMockWs();
+      const clientWs = createMockWs();
+
+      manager.registerServer(serverWs, "alice", "install-1");
+      manager.connectClient(clientWs, "alice");
+
+      expect(manager.isWaiting("alice")).toBe(false);
     });
   });
 

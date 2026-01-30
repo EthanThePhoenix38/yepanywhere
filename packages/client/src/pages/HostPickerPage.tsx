@@ -57,65 +57,23 @@ export function HostPickerPage() {
     }
   }, [hosts]);
 
-  // Check if a relay host's server is online via the relay
+  // Check if a relay host's server is online via the relay's HTTP API
   const checkRelayHostStatus = useCallback(
     async (host: SavedHost): Promise<HostStatus> => {
       if (!host.relayUrl || !host.relayUsername) return "unknown";
 
       try {
-        // Open WebSocket to relay and send client_connect to check if server is paired
-        const ws = new WebSocket(host.relayUrl);
-
-        return new Promise((resolve) => {
-          const timeout = setTimeout(() => {
-            ws.close();
-            resolve("offline");
-          }, 5000);
-
-          ws.onopen = () => {
-            ws.send(
-              JSON.stringify({
-                type: "client_connect",
-                username: host.relayUsername,
-              }),
-            );
-          };
-
-          ws.onmessage = (event) => {
-            try {
-              const msg = JSON.parse(event.data);
-              clearTimeout(timeout);
-              ws.close();
-
-              if (msg.type === "client_connected") {
-                resolve("online");
-              } else if (
-                msg.type === "client_error" &&
-                msg.error === "server_offline"
-              ) {
-                resolve("offline");
-              } else if (
-                msg.type === "client_error" &&
-                msg.error === "unknown_username"
-              ) {
-                resolve("offline");
-              } else {
-                resolve("unknown");
-              }
-            } catch {
-              resolve("unknown");
-            }
-          };
-
-          ws.onerror = () => {
-            clearTimeout(timeout);
-            resolve("offline");
-          };
-
-          ws.onclose = () => {
-            clearTimeout(timeout);
-          };
-        });
+        // Convert ws:// or wss:// URL to http:// or https:// and remove /ws suffix
+        const httpUrl = host.relayUrl
+          .replace(/^ws/, "http")
+          .replace(/\/ws$/, "");
+        const res = await fetch(
+          `${httpUrl}/online/${encodeURIComponent(host.relayUsername)}`,
+          { signal: AbortSignal.timeout(5000) },
+        );
+        if (!res.ok) return "offline";
+        const data = await res.json();
+        return data.online ? "online" : "offline";
       } catch {
         return "offline";
       }

@@ -70,10 +70,16 @@ app.get("/status", (c) => {
     uptime: process.uptime(),
     waiting: connectionManager.getWaitingCount(),
     pairs: connectionManager.getPairCount(),
-    waitingUsernames: connectionManager.getWaitingUsernames(),
-    registeredUsernames: registry.list().map((r) => r.username),
+    registered: registry.count(),
     memory: process.memoryUsage(),
   });
+});
+
+// Check if a specific username has a server online (waiting for client)
+app.get("/online/:username", (c) => {
+  const username = c.req.param("username");
+  const online = connectionManager.isWaiting(username);
+  return c.json({ online });
 });
 
 // Create WebSocket handler

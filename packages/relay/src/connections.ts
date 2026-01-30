@@ -190,13 +190,20 @@ export class ConnectionManager {
   /**
    * Check if a WebSocket is waiting for a client.
    */
-  isWaiting(ws: WebSocket): boolean {
+  isWaitingWs(ws: WebSocket): boolean {
     for (const waitingWs of this.waiting.values()) {
       if (waitingWs === ws) {
         return true;
       }
     }
     return false;
+  }
+
+  /**
+   * Check if a username has a server waiting for a client.
+   */
+  isWaiting(username: string): boolean {
+    return this.waiting.has(username);
   }
 
   /**
