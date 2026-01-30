@@ -56,7 +56,8 @@ type ConnectionStatus =
   | "error";
 
 export function RelayLoginPage() {
-  const { connectViaRelay, isAutoResuming } = useRemoteConnection();
+  const { connectViaRelay, isAutoResuming, setCurrentHostId } =
+    useRemoteConnection();
   const [searchParams] = useSearchParams();
 
   // Form state - relay username is also used as SRP identity
@@ -86,6 +87,19 @@ export function RelayLoginPage() {
     const { username, password, relayUrl } = hashCreds;
     const effectiveRelayUrl = relayUrl || DEFAULT_RELAY_URL;
 
+    // Get or create host BEFORE connecting so handleSessionEstablished can sync session
+    let host = getHostByRelayUsername(username);
+    if (!host) {
+      host = createRelayHost({
+        relayUrl: effectiveRelayUrl,
+        relayUsername: username,
+        srpUsername: username,
+      });
+      saveHost(host);
+    }
+    // Set currentHostId before connect so the session callback can use it
+    setCurrentHostId(host.id);
+
     setStatus("connecting_relay");
     connectViaRelay({
       relayUrl: effectiveRelayUrl,
@@ -96,16 +110,7 @@ export function RelayLoginPage() {
       onStatusChange: setStatus,
     })
       .then(() => {
-        // Save host for quick reconnect
-        const existingHost = getHostByRelayUsername(username);
-        if (!existingHost) {
-          const newHost = createRelayHost({
-            relayUrl: effectiveRelayUrl,
-            relayUsername: username,
-            srpUsername: username,
-          });
-          saveHost(newHost);
-        }
+        // Host already saved and currentHostId already set
       })
       .catch((err) => {
         const message =
@@ -119,7 +124,7 @@ export function RelayLoginPage() {
           setShowAdvanced(true);
         }
       });
-  }, [connectViaRelay, isAutoResuming]);
+  }, [connectViaRelay, isAutoResuming, setCurrentHostId]);
 
   // If auto-resume is in progress, show a loading screen
   if (isAutoResuming) {
@@ -156,6 +161,21 @@ export function RelayLoginPage() {
     const relayUrl = customRelayUrl.trim() || DEFAULT_RELAY_URL;
     const username = relayUsername.trim().toLowerCase();
 
+    // Get or create host BEFORE connecting so handleSessionEstablished can sync session
+    if (rememberMe) {
+      let host = getHostByRelayUsername(username);
+      if (!host) {
+        host = createRelayHost({
+          relayUrl,
+          relayUsername: username,
+          srpUsername: username,
+        });
+        saveHost(host);
+      }
+      // Set currentHostId before connect so the session callback can use it
+      setCurrentHostId(host.id);
+    }
+
     try {
       await connectViaRelay({
         relayUrl,
@@ -166,19 +186,6 @@ export function RelayLoginPage() {
         rememberMe,
         onStatusChange: setStatus,
       });
-
-      // Save host for quick reconnect (if rememberMe is enabled)
-      if (rememberMe) {
-        const existingHost = getHostByRelayUsername(username);
-        if (!existingHost) {
-          const newHost = createRelayHost({
-            relayUrl,
-            relayUsername: username,
-            srpUsername: username,
-          });
-          saveHost(newHost);
-        }
-      }
       // On success, the RemoteApp will render the main app instead of login
     } catch (err) {
       const message = err instanceof Error ? err.message : "Connection failed";
