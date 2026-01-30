@@ -70,12 +70,6 @@ createRoot(rootElement).render(
             element={<Navigate to="/login/relay" replace />}
           />
 
-          {/* Relay host routes with username in URL */}
-          <Route
-            path="/remote/:relayUsername/*"
-            element={<RelayHostRoutes />}
-          />
-
           {/* App routes (authenticated) - for direct mode or when no username in URL */}
           <Route path="/" element={<Navigate to="/projects" replace />} />
           {/* All pages share NavigationLayout for persistent sidebar */}
@@ -102,6 +96,10 @@ createRoot(rootElement).render(
           <Route path="/projects/:projectId/file" element={<FilePage />} />
           {/* Activity page has its own layout */}
           <Route path="/activity" element={<ActivityPage />} />
+
+          {/* Relay host routes with username in URL - MUST be last so specific routes above take precedence.
+              With base="/remote/", URL /remote/macbook/projects becomes pathname /macbook/projects */}
+          <Route path="/:relayUsername/*" element={<RelayHostRoutes />} />
         </Routes>
       </RemoteApp>
     </BrowserRouter>

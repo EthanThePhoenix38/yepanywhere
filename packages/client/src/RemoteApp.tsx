@@ -22,6 +22,7 @@ import { ToastProvider } from "./contexts/ToastContext";
 import { useNeedsAttentionBadge } from "./hooks/useNeedsAttentionBadge";
 import { useSyncNotifyInAppSetting } from "./hooks/useNotifyInApp";
 import { useRemoteActivityBusConnection } from "./hooks/useRemoteActivityBusConnection";
+import { getHostById } from "./lib/hostStorage";
 
 interface Props {
   children: ReactNode;
@@ -36,8 +37,34 @@ const LOGIN_ROUTES = [
   "/relay",
 ];
 
-/** Routes that handle their own connection logic */
-const SELF_MANAGED_ROUTES = ["/remote/"];
+/** Known route prefixes that are NOT relay host routes */
+const KNOWN_ROUTES = [
+  "/login",
+  "/direct",
+  "/relay",
+  "/projects",
+  "/sessions",
+  "/agents",
+  "/tasks",
+  "/inbox",
+  "/settings",
+  "/new-session",
+  "/activity",
+];
+
+/**
+ * Check if a pathname is a relay host route (/:relayUsername/*).
+ * With base="/remote/", URL /remote/macbook/projects becomes pathname /macbook/projects.
+ * Any path that doesn't start with a known route prefix is a relay host route.
+ */
+function isRelayHostRoute(pathname: string): boolean {
+  // Root path is not a relay host route
+  if (pathname === "/") return false;
+  // Check if it matches any known route
+  return !KNOWN_ROUTES.some(
+    (route) => pathname === route || pathname.startsWith(`${route}/`),
+  );
+}
 
 /**
  * Inner content that requires connection.
@@ -78,19 +105,17 @@ function ConnectionGate({ children }: Props) {
     autoResumeError,
     clearAutoResumeError,
     retryAutoResume,
+    currentHostId,
   } = useRemoteConnection();
   const location = useLocation();
   const isLoginRoute = LOGIN_ROUTES.some(
     (route) =>
       location.pathname === route || location.pathname.startsWith(`${route}/`),
   );
-  const isSelfManagedRoute = SELF_MANAGED_ROUTES.some((route) =>
-    location.pathname.startsWith(route),
-  );
 
-  // Self-managed routes (like /remote/:username/*) handle their own connection logic
+  // Relay host routes (/:relayUsername/*) handle their own connection logic
   // Let them through without interference
-  if (isSelfManagedRoute) {
+  if (isRelayHostRoute(location.pathname)) {
     return <>{children}</>;
   }
 
@@ -128,7 +153,16 @@ function ConnectionGate({ children }: Props) {
 
   // Connected - redirect away from login routes
   if (isLoginRoute) {
-    return <Navigate to="/projects" replace />;
+    // Determine redirect URL based on current host
+    // Note: With base="/remote/", route "/{username}/projects" becomes URL "/remote/{username}/projects"
+    let redirectUrl = "/projects";
+    if (currentHostId) {
+      const host = getHostById(currentHostId);
+      if (host?.mode === "relay" && host.relayUsername) {
+        redirectUrl = `/${encodeURIComponent(host.relayUsername)}/projects`;
+      }
+    }
+    return <Navigate to={redirectUrl} replace />;
   }
 
   // Connected and on an app route - show the app with providers

@@ -20,7 +20,8 @@ interface HostStatusMap {
 
 export function HostPickerPage() {
   const navigate = useNavigate();
-  const { isAutoResuming, connectViaRelay, connect } = useRemoteConnection();
+  const { isAutoResuming, connectViaRelay, connect, setCurrentHostId } =
+    useRemoteConnection();
   const [hosts, setHosts] = useState<SavedHost[]>([]);
   const [hostStatuses, setHostStatuses] = useState<HostStatusMap>({});
   const [connectingHostId, setConnectingHostId] = useState<string | null>(null);
@@ -137,6 +138,8 @@ export function HostPickerPage() {
           // If host has a session, try to use it for auto-resume
           // Otherwise, navigate to relay login pre-filled
           if (host.session) {
+            // Set current host ID before connecting so ConnectionGate knows where to redirect
+            setCurrentHostId(host.id);
             await connectViaRelay({
               relayUrl: host.relayUrl,
               relayUsername: host.relayUsername,
@@ -146,10 +149,7 @@ export function HostPickerPage() {
               onStatusChange: () => {},
               session: host.session,
             });
-            // Success - navigate to the host-specific URL
-            navigate(
-              `/remote/${encodeURIComponent(host.relayUsername)}/projects`,
-            );
+            // ConnectionGate will redirect to /{username}/projects (URL: /remote/{username}/projects)
           } else {
             // No session - go to relay login pre-filled
             navigate(
@@ -193,7 +193,7 @@ export function HostPickerPage() {
         setConnectingHostId(null);
       }
     },
-    [connectViaRelay, connect, navigate],
+    [connectViaRelay, connect, navigate, setCurrentHostId],
   );
 
   // Delete a host
