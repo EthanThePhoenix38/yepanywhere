@@ -59,6 +59,9 @@ interface SessionListItemProps {
 
   // For sidebar compact mode
   hasDraft?: boolean;
+
+  /** Base path prefix for relay mode (e.g., "/remote/my-server") */
+  basePath?: string;
 }
 
 /**
@@ -113,6 +116,8 @@ export function SessionListItem({
   onNavigate,
   // Sidebar
   hasDraft = false,
+  // Relay mode
+  basePath = "",
 }: SessionListItemProps) {
   const navigate = useNavigate();
 
@@ -347,7 +352,7 @@ export function SessionListItem({
         />
       ) : (
         <Link
-          to={`/projects/${projectId}/sessions/${sessionId}`}
+          to={`${basePath}/projects/${projectId}/sessions/${sessionId}`}
           onClick={(e) => {
             if (isSelectionMode) {
               e.preventDefault();
@@ -440,7 +445,9 @@ export function SessionListItem({
             setIsEditing(true);
           }}
           onClone={(newSessionId) => {
-            navigate(`/projects/${projectId}/sessions/${newSessionId}`);
+            navigate(
+              `${basePath}/projects/${projectId}/sessions/${newSessionId}`,
+            );
           }}
           useEllipsisIcon
           useFixedPositioning

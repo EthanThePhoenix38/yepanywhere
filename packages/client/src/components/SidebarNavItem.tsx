@@ -166,6 +166,8 @@ export interface SidebarNavItemProps {
   hasDraft?: boolean;
   /** Show pulsing activity indicator (e.g., for active agents) */
   hasActivityIndicator?: boolean;
+  /** Base path prefix for relay mode (e.g., "/remote/my-server") */
+  basePath?: string;
 }
 
 /**
@@ -181,13 +183,16 @@ export function SidebarNavItem({
   title,
   hasDraft,
   hasActivityIndicator,
+  basePath = "",
 }: SidebarNavItemProps) {
   const location = useLocation();
-  const isActive = location.pathname === to;
+  const fullPath = `${basePath}${to}`;
+  // Check if current path matches (with or without basePath prefix)
+  const isActive = location.pathname === fullPath || location.pathname === to;
 
   return (
     <Link
-      to={to}
+      to={fullPath}
       className={`sidebar-nav-item ${isActive ? "active" : ""}`}
       onClick={onClick}
       title={title ?? label}

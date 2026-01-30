@@ -5,6 +5,7 @@ import { PageHeader } from "../components/PageHeader";
 import { ProjectCard } from "../components/ProjectCard";
 import { useInboxContext } from "../contexts/InboxContext";
 import { useProjects } from "../hooks/useProjects";
+import { useRemoteBasePath } from "../hooks/useRemoteBasePath";
 import { useNavigationLayout } from "../layouts";
 
 export function ProjectsPage() {
@@ -15,6 +16,7 @@ export function ProjectsPage() {
   const [addError, setAddError] = useState<string | null>(null);
   const [adding, setAdding] = useState(false);
   const navigate = useNavigate();
+  const basePath = useRemoteBasePath();
 
   const { openSidebar, isWideScreen, toggleSidebar, isSidebarCollapsed } =
     useNavigationLayout();
@@ -69,7 +71,7 @@ export function ProjectsPage() {
       setNewProjectPath("");
       setShowAddForm(false);
       // Navigate to sessions filtered by the new project
-      navigate(`/sessions?project=${project.id}`);
+      navigate(`${basePath}/sessions?project=${project.id}`);
     } catch (err) {
       setAddError(err instanceof Error ? err.message : "Failed to add project");
     } finally {
@@ -193,6 +195,7 @@ export function ProjectsPage() {
                       attentionByProject.get(project.id) ?? 0
                     }
                     thinkingCount={thinkingByProject.get(project.id) ?? 0}
+                    basePath={basePath}
                   />
                 ))}
               </ul>

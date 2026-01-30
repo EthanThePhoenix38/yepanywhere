@@ -1,11 +1,22 @@
+import { Link } from "react-router-dom";
 import { RemoteAccessSetup } from "../../components/RemoteAccessSetup";
 import { useOptionalRemoteConnection } from "../../contexts/RemoteConnectionContext";
+import { getHostById } from "../../lib/hostStorage";
 
 export function RemoteAccessSettings() {
   const remoteConnection = useOptionalRemoteConnection();
 
   // When connected via relay, show connection info and logout
   if (remoteConnection) {
+    // Get current host display name from hostStorage
+    const currentHost = remoteConnection.currentHostId
+      ? getHostById(remoteConnection.currentHostId)
+      : null;
+    const displayName =
+      currentHost?.displayName ||
+      remoteConnection.storedUsername ||
+      "Remote server";
+
     return (
       <section className="settings-section">
         <h2>Remote Access</h2>
@@ -15,12 +26,12 @@ export function RemoteAccessSettings() {
         <div className="settings-group">
           <div className="settings-item">
             <div className="settings-item-info">
-              <strong>Connected to</strong>
-              <p>{remoteConnection.storedUsername || "Remote server"}</p>
+              <strong>Current Host</strong>
+              <p>{displayName}</p>
             </div>
-            <span className="settings-status-badge settings-status-detected">
-              Connected
-            </span>
+            <Link to="/login" className="settings-button">
+              Switch Host
+            </Link>
           </div>
           <div className="settings-item">
             <div className="settings-item-info">

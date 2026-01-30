@@ -10,6 +10,7 @@ import {
 import { PageHeader } from "../components/PageHeader";
 import { SessionListItem } from "../components/SessionListItem";
 import { useGlobalSessions } from "../hooks/useGlobalSessions";
+import { useRemoteBasePath } from "../hooks/useRemoteBasePath";
 import { useNavigationLayout } from "../layouts";
 import { getSessionDisplayTitle, toUrlProjectId } from "../utils";
 
@@ -37,6 +38,7 @@ const PROVIDER_COLORS: Record<ProviderName, string> = {
 export function GlobalSessionsPage() {
   const { openSidebar, isWideScreen, toggleSidebar, isSidebarCollapsed } =
     useNavigationLayout();
+  const basePath = useRemoteBasePath();
   const [searchParams, setSearchParams] = useSearchParams();
 
   // Get filter params from URL
@@ -709,6 +711,7 @@ export function GlobalSessionsPage() {
                         }
                         showProjectName={!projectFilter}
                         projectName={session.projectName}
+                        basePath={basePath}
                       />
                     </div>
                   ))}

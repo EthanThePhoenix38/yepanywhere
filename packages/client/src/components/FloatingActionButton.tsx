@@ -12,6 +12,7 @@ import {
   getRecentProjectId,
   setRecentProjectId,
 } from "../hooks/useRecentProject";
+import { useRemoteBasePath } from "../hooks/useRemoteBasePath";
 import { VoiceInputButton } from "./VoiceInputButton";
 
 const FAB_DRAFT_KEY = "fab-draft";
@@ -43,6 +44,7 @@ function setFabPrefill(text: string): void {
 export function FloatingActionButton() {
   const navigate = useNavigate();
   const location = useLocation();
+  const basePath = useRemoteBasePath();
   const fabVisibility = useFabVisibility();
   const [isExpanded, setIsExpanded] = useState(false);
   const [message, setMessage, draftControls] =
@@ -102,8 +104,10 @@ export function FloatingActionButton() {
     setIsExpanded(false);
 
     // Navigate to new session page
-    navigate(`/new-session?projectId=${encodeURIComponent(targetProjectId)}`);
-  }, [message, projectIdFromUrl, navigate, draftControls]);
+    navigate(
+      `${basePath}/new-session?projectId=${encodeURIComponent(targetProjectId)}`,
+    );
+  }, [message, projectIdFromUrl, navigate, draftControls, basePath]);
 
   const handleKeyDown = useCallback(
     (e: KeyboardEvent<HTMLTextAreaElement>) => {
@@ -123,11 +127,11 @@ export function FloatingActionButton() {
     const targetProjectId = projectIdFromUrl ?? getRecentProjectId();
     if (!targetProjectId) {
       // No project context - navigate to projects page instead
-      navigate("/projects");
+      navigate(`${basePath}/projects`);
       return;
     }
     setIsExpanded(true);
-  }, [projectIdFromUrl, navigate]);
+  }, [projectIdFromUrl, navigate, basePath]);
 
   // Voice input handlers
   const handleVoiceTranscript = useCallback(
@@ -154,7 +158,7 @@ export function FloatingActionButton() {
 
   // Hide (but don't unmount) when not visible or on new-session page
   // This preserves expanded state and draft across navigation
-  const isHidden = !fabVisibility || location.pathname === "/new-session";
+  const isHidden = !fabVisibility || location.pathname.endsWith("/new-session");
 
   const { right, bottom, maxWidth } = fabVisibility ?? {
     right: 24,
@@ -235,9 +239,11 @@ export function FloatingActionButton() {
 
 /**
  * Extract projectId from URL path.
- * Matches: /projects/:projectId, /projects/:projectId/sessions/:sessionId, etc.
+ * Matches: /projects/:projectId, /projects/:projectId/sessions/:sessionId,
+ * and relay mode paths like /remote/:username/projects/:projectId
  */
 function extractProjectIdFromPath(pathname: string): string | null {
-  const match = pathname.match(/^\/projects\/([^/]+)/);
+  // Match both direct paths and relay mode paths
+  const match = pathname.match(/\/projects\/([^/]+)/);
   return match?.[1] ? decodeURIComponent(match[1]) : null;
 }

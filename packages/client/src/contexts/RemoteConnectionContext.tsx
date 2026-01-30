@@ -31,6 +31,7 @@ import {
   type StoredSession,
 } from "../lib/connection/SecureConnection";
 import type { Connection } from "../lib/connection/types";
+import { updateHostSession } from "../lib/hostStorage";
 
 /** Stored credentials for auto-reconnect */
 interface StoredCredentials {
@@ -95,6 +96,10 @@ interface RemoteConnectionState {
   error: string | null;
   /** Structured error from auto-resume failure (for showing modal) */
   autoResumeError: AutoResumeError | null;
+  /** Current host ID from hostStorage (for multi-host tracking) */
+  currentHostId: string | null;
+  /** Set the current host ID (called by RelayHostRoutes after connect) */
+  setCurrentHostId: (hostId: string | null) => void;
   /** Connect to server with credentials (direct mode) */
   connect: (
     wsUrl: string,
@@ -239,6 +244,14 @@ export function RemoteConnectionProvider({ children }: Props) {
   const [error, setError] = useState<string | null>(null);
   const [autoResumeError, setAutoResumeError] =
     useState<AutoResumeError | null>(null);
+  // Track current host ID for multi-host support
+  const [currentHostId, setCurrentHostIdState] = useState<string | null>(null);
+  // Keep currentHostId in a ref so handleSessionEstablished always has latest value
+  const currentHostIdRef = useRef<string | null>(null);
+  const setCurrentHostId = useCallback((hostId: string | null) => {
+    currentHostIdRef.current = hostId;
+    setCurrentHostIdState(hostId);
+  }, []);
   // Track if we've attempted auto-resume (to prevent repeated attempts)
   const [autoResumeAttempted, setAutoResumeAttempted] = useState(false);
 
@@ -253,7 +266,15 @@ export function RemoteConnectionProvider({ children }: Props) {
   const handleSessionEstablished = useCallback((session: StoredSession) => {
     if (rememberMeRef.current) {
       console.log("[RemoteConnection] Storing session for resumption");
+      // Save to old storage (for backwards compatibility)
       updateStoredSession(session);
+
+      // Also save to hostStorage for multi-host support
+      const hostId = currentHostIdRef.current;
+      if (hostId) {
+        console.log("[RemoteConnection] Also updating hostStorage for", hostId);
+        updateHostSession(hostId, session);
+      }
     }
   }, []);
 
@@ -663,6 +684,8 @@ export function RemoteConnectionProvider({ children }: Props) {
     isAutoResuming,
     error,
     autoResumeError,
+    currentHostId,
+    setCurrentHostId,
     connect,
     connectViaRelay,
     disconnect,

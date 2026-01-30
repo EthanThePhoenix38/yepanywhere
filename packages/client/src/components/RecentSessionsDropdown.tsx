@@ -19,6 +19,8 @@ interface RecentSessionsDropdownProps {
   onNavigate: (sessionId: string, projectId: string) => void;
   /** Trigger element ref for positioning */
   triggerRef: React.RefObject<HTMLElement | null>;
+  /** Base path prefix for relay mode (e.g., "/remote/my-server") */
+  basePath?: string;
 }
 
 /** Format time as "Xm ago" style */
@@ -74,6 +76,7 @@ export function RecentSessionsDropdown({
   onClose,
   onNavigate,
   triggerRef,
+  basePath = "",
 }: RecentSessionsDropdownProps) {
   const dropdownRef = useRef<HTMLDivElement>(null);
 
@@ -147,7 +150,7 @@ export function RecentSessionsDropdown({
           {recentSessions.map((session) => (
             <Link
               key={session.id}
-              to={`/projects/${session.projectId}/sessions/${session.id}`}
+              to={`${basePath}/projects/${session.projectId}/sessions/${session.id}`}
               className={`recent-session-item${session.hasUnread ? " unread" : ""}`}
               onClick={() => {
                 onNavigate(session.id, session.projectId);

@@ -28,7 +28,16 @@ interface Props {
 }
 
 /** Routes that don't require authentication */
-const LOGIN_ROUTES = ["/login", "/direct", "/relay"];
+const LOGIN_ROUTES = [
+  "/login",
+  "/login/direct",
+  "/login/relay",
+  "/direct",
+  "/relay",
+];
+
+/** Routes that handle their own connection logic */
+const SELF_MANAGED_ROUTES = ["/remote/"];
 
 /**
  * Inner content that requires connection.
@@ -75,6 +84,15 @@ function ConnectionGate({ children }: Props) {
     (route) =>
       location.pathname === route || location.pathname.startsWith(`${route}/`),
   );
+  const isSelfManagedRoute = SELF_MANAGED_ROUTES.some((route) =>
+    location.pathname.startsWith(route),
+  );
+
+  // Self-managed routes (like /remote/:username/*) handle their own connection logic
+  // Let them through without interference
+  if (isSelfManagedRoute) {
+    return <>{children}</>;
+  }
 
   // During auto-resume, don't redirect - show loading state
   // This preserves the current URL so we stay on the same page after successful resume

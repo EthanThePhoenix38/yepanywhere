@@ -9,6 +9,8 @@ interface ProjectCardProps {
   needsAttentionCount: number;
   /** Number of sessions actively thinking (running, no pending input) */
   thinkingCount: number;
+  /** Base path prefix for relay mode (e.g., "/remote/my-server") */
+  basePath?: string;
 }
 
 /**
@@ -37,19 +39,20 @@ export function ProjectCard({
   project,
   needsAttentionCount,
   thinkingCount,
+  basePath = "",
 }: ProjectCardProps) {
   const navigate = useNavigate();
 
   const handleNewSession = (e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
-    navigate(`/new-session?projectId=${project.id}`);
+    navigate(`${basePath}/new-session?projectId=${project.id}`);
   };
 
   return (
     <li className="project-card">
       <Link
-        to={`/sessions?project=${project.id}`}
+        to={`${basePath}/sessions?project=${project.id}`}
         className="project-card__link"
       >
         <div className="project-card__header">

@@ -27,11 +27,12 @@ import { BeadsPage } from "./pages/BeadsPage";
 import { DirectLoginPage } from "./pages/DirectLoginPage";
 import { FilePage } from "./pages/FilePage";
 import { GlobalSessionsPage } from "./pages/GlobalSessionsPage";
+import { HostPickerPage } from "./pages/HostPickerPage";
 import { InboxPage } from "./pages/InboxPage";
 import { NewSessionPage } from "./pages/NewSessionPage";
 import { ProjectsPage } from "./pages/ProjectsPage";
+import { RelayHostRoutes } from "./pages/RelayHostRoutes";
 import { RelayLoginPage } from "./pages/RelayLoginPage";
-import { RemoteLoginModePage } from "./pages/RemoteLoginModePage";
 import { SessionPage } from "./pages/SessionPage";
 import { SettingsLayout } from "./pages/settings";
 import "./styles/index.css";
@@ -55,11 +56,27 @@ createRoot(rootElement).render(
       <RemoteApp>
         <Routes>
           {/* Login routes (unauthenticated) */}
-          <Route path="/login" element={<RemoteLoginModePage />} />
-          <Route path="/direct" element={<DirectLoginPage />} />
-          <Route path="/relay" element={<RelayLoginPage />} />
+          <Route path="/login" element={<HostPickerPage />} />
+          <Route path="/login/direct" element={<DirectLoginPage />} />
+          <Route path="/login/relay" element={<RelayLoginPage />} />
 
-          {/* App routes (authenticated) */}
+          {/* Legacy routes - redirect to new paths */}
+          <Route
+            path="/direct"
+            element={<Navigate to="/login/direct" replace />}
+          />
+          <Route
+            path="/relay"
+            element={<Navigate to="/login/relay" replace />}
+          />
+
+          {/* Relay host routes with username in URL */}
+          <Route
+            path="/remote/:relayUsername/*"
+            element={<RelayHostRoutes />}
+          />
+
+          {/* App routes (authenticated) - for direct mode or when no username in URL */}
           <Route path="/" element={<Navigate to="/projects" replace />} />
           {/* All pages share NavigationLayout for persistent sidebar */}
           <Route element={<NavigationLayout />}>

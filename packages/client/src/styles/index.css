@@ -5824,6 +5824,146 @@ a.sidebar-nav-item {
 }
 
 /* ==========================================================================
+   Host Picker Styles (Multi-host saved hosts list)
+   ========================================================================== */
+
+.host-picker-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin-bottom: var(--space-4);
+  width: 100%;
+}
+
+.host-picker-item {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  padding: var(--space-3);
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-muted);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  transition: border-color 0.15s, background-color 0.15s;
+  text-align: left;
+  width: 100%;
+  position: relative;
+}
+
+.host-picker-item:hover {
+  border-color: var(--accent-primary);
+  background: var(--bg-hover);
+}
+
+.host-picker-item:disabled {
+  opacity: 0.7;
+  cursor: wait;
+}
+
+.host-picker-item-main {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.host-picker-status {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.host-picker-status-online {
+  background: var(--color-success);
+}
+
+.host-picker-status-offline {
+  background: var(--color-error);
+}
+
+.host-picker-status-checking {
+  background: var(--text-muted);
+  animation: pulse 1.5s ease-in-out infinite;
+}
+
+.host-picker-status-unknown {
+  background: var(--text-muted);
+}
+
+@keyframes pulse {
+  0%,
+  100% {
+    opacity: 0.4;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+.host-picker-name {
+  font-weight: 500;
+  color: var(--text-primary);
+  flex: 1;
+}
+
+.host-picker-mode {
+  font-size: var(--font-size-xs);
+  color: var(--text-muted);
+  padding: 2px 6px;
+  background: var(--bg-subtle);
+  border-radius: var(--radius-sm);
+}
+
+.host-picker-item-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-left: calc(8px + var(--space-2)); /* Align with name after status dot */
+}
+
+.host-picker-last-connected {
+  font-size: var(--font-size-xs);
+  color: var(--text-muted);
+}
+
+.host-picker-delete {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: 2px 6px;
+  font-size: var(--font-size-lg);
+  line-height: 1;
+  border-radius: var(--radius-sm);
+  opacity: 0;
+  transition: opacity 0.15s, color 0.15s, background-color 0.15s;
+}
+
+.host-picker-item:hover .host-picker-delete {
+  opacity: 1;
+}
+
+.host-picker-delete:hover {
+  color: var(--color-error);
+  background: var(--bg-subtle);
+}
+
+.host-picker-connecting {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--bg-elevated);
+  border-radius: var(--radius-md);
+  opacity: 0.9;
+}
+
+.host-picker-add-title {
+  margin-top: var(--space-4);
+}
+
+/* ==========================================================================
    Settings Form Styles (Password Change, etc.)
    ========================================================================== */
 

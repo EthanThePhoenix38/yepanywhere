@@ -4,6 +4,7 @@ import type { GlobalSessionItem } from "../api/client";
 import { useGlobalSessions } from "../hooks/useGlobalSessions";
 import { useNeedsAttentionBadge } from "../hooks/useNeedsAttentionBadge";
 import { useRecentProjects } from "../hooks/useRecentProjects";
+import { useRemoteBasePath } from "../hooks/useRemoteBasePath";
 import { getSessionDisplayTitle, toUrlProjectId } from "../utils";
 import { AgentsNavItem } from "./AgentsNavItem";
 import { SessionListItem } from "./SessionListItem";
@@ -57,6 +58,9 @@ export function Sidebar({
   onResize,
   onResizeEnd,
 }: SidebarProps) {
+  // Get base path for relay mode (e.g., "/remote/my-server")
+  const basePath = useRemoteBasePath();
+
   // Fetch global sessions for sidebar (non-starred only for recent/older sections)
   const { sessions: globalSessions, loading: globalLoading } =
     useGlobalSessions({ limit: 50 });
@@ -311,6 +315,7 @@ export function Sidebar({
               icon={SidebarIcons.newSession}
               label="New Session"
               onClick={onNavigate}
+              basePath={basePath}
             />
           )}
         </div>
@@ -324,31 +329,36 @@ export function Sidebar({
               label="Inbox"
               badge={inboxCount}
               onClick={onNavigate}
+              basePath={basePath}
             />
             <SidebarNavItem
               to="/sessions"
               icon={SidebarIcons.allSessions}
               label="All Sessions"
               onClick={onNavigate}
+              basePath={basePath}
             />
             <SidebarNavItem
               to="/projects"
               icon={SidebarIcons.projects}
               label="Projects"
               onClick={onNavigate}
+              basePath={basePath}
             />
-            <AgentsNavItem onClick={onNavigate} />
+            <AgentsNavItem onClick={onNavigate} basePath={basePath} />
             <SidebarNavItem
               to="/tasks"
               icon={SidebarIcons.tasks}
               label="Tasks"
               onClick={onNavigate}
+              basePath={basePath}
             />
             <SidebarNavItem
               to="/settings"
               icon={SidebarIcons.settings}
               label="Settings"
               onClick={onNavigate}
+              basePath={basePath}
             />
           </SidebarNavSection>
 
@@ -378,6 +388,7 @@ export function Sidebar({
                       onNavigate={onNavigate}
                       showProjectName
                       projectName={session.projectName}
+                      basePath={basePath}
                     />
                   ))}
               </ul>
@@ -427,6 +438,7 @@ export function Sidebar({
                       onNavigate={onNavigate}
                       showProjectName
                       projectName={session.projectName}
+                      basePath={basePath}
                     />
                   ))}
               </ul>
@@ -474,6 +486,7 @@ export function Sidebar({
                     onNavigate={onNavigate}
                     showProjectName
                     projectName={session.projectName}
+                    basePath={basePath}
                   />
                 ))}
               </ul>

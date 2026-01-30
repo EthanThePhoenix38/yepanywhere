@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { type InboxItem, useInboxContext } from "../contexts/InboxContext";
+import { useRemoteBasePath } from "../hooks/useRemoteBasePath";
 import type { Project } from "../types";
 import { FilterDropdown, type FilterOption } from "./FilterDropdown";
 import { SessionListItem } from "./SessionListItem";
@@ -57,9 +58,16 @@ interface InboxSectionProps {
   items: InboxItem[];
   /** When true, hides project name (for single-project inbox) */
   hideProjectName?: boolean;
+  /** Base path prefix for relay mode (e.g., "/remote/my-server") */
+  basePath?: string;
 }
 
-function InboxSection({ config, items, hideProjectName }: InboxSectionProps) {
+function InboxSection({
+  config,
+  items,
+  hideProjectName,
+  basePath = "",
+}: InboxSectionProps) {
   const isEmpty = items.length === 0;
 
   return (
@@ -93,6 +101,7 @@ function InboxSection({ config, items, hideProjectName }: InboxSectionProps) {
                 showContextUsage={false}
                 showStatusBadge={false}
                 customBadge={badge}
+                basePath={basePath}
               />
             );
           })}
@@ -132,6 +141,7 @@ export function InboxContent({
   projects,
   onProjectChange,
 }: InboxContentProps) {
+  const basePath = useRemoteBasePath();
   const {
     needsAttention: allNeedsAttention,
     active: allActive,
@@ -268,6 +278,7 @@ export function InboxContent({
                 config={config}
                 items={tierData[config.key] ?? []}
                 hideProjectName={!!projectId}
+                basePath={basePath}
               />
             ))}
           </div>

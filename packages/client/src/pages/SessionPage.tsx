@@ -29,6 +29,7 @@ import { getModelSetting, getThinkingSetting } from "../hooks/useModelSettings";
 import { useProject } from "../hooks/useProjects";
 import { useProviders } from "../hooks/useProviders";
 import { recordSessionVisit } from "../hooks/useRecentSessions";
+import { useRemoteBasePath } from "../hooks/useRemoteBasePath";
 import {
   type StreamingMarkdownCallbacks,
   useSession,
@@ -70,6 +71,7 @@ function SessionPageContent({
 }) {
   const { openSidebar, isWideScreen, toggleSidebar, isSidebarCollapsed } =
     useNavigationLayout();
+  const basePath = useRemoteBasePath();
   const { project } = useProject(projectId);
   const navigate = useNavigate();
   const location = useLocation();
@@ -225,12 +227,22 @@ function SessionPageContent({
   useEffect(() => {
     if (actualSessionId && actualSessionId !== sessionId) {
       // Use replace to avoid creating a history entry for the temp ID
-      navigate(`/projects/${projectId}/sessions/${actualSessionId}`, {
-        replace: true,
-        state: location.state, // Preserve initial state for seamless transition
-      });
+      navigate(
+        `${basePath}/projects/${projectId}/sessions/${actualSessionId}`,
+        {
+          replace: true,
+          state: location.state, // Preserve initial state for seamless transition
+        },
+      );
     }
-  }, [actualSessionId, sessionId, projectId, navigate, location.state]);
+  }, [
+    actualSessionId,
+    sessionId,
+    projectId,
+    navigate,
+    location.state,
+    basePath,
+  ]);
 
   // File attachment state
   const [attachments, setAttachments] = useState<UploadedFile[]>([]);
@@ -740,7 +752,7 @@ function SessionPageContent({
               {/* Project breadcrumb */}
               {project?.name && (
                 <Link
-                  to={`/sessions?project=${projectId}`}
+                  to={`${basePath}/sessions?project=${projectId}`}
                   className="project-breadcrumb"
                   title={project.name}
                 >
@@ -810,6 +822,7 @@ function SessionPageContent({
                       onClose={() => setShowRecentSessions(false)}
                       onNavigate={() => setShowRecentSessions(false)}
                       triggerRef={titleButtonRef}
+                      basePath={basePath}
                     />
                   </>
                 )}
@@ -833,7 +846,7 @@ function SessionPageContent({
                     onRename={handleStartEditingTitle}
                     onClone={(newSessionId) => {
                       navigate(
-                        `/projects/${projectId}/sessions/${newSessionId}`,
+                        `${basePath}/projects/${projectId}/sessions/${newSessionId}`,
                       );
                     }}
                     onTerminate={handleTerminate}

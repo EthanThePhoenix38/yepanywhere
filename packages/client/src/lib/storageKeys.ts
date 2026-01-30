@@ -180,6 +180,9 @@ export const KEY_BUILDERS = {
 /** Remote connection credentials - stored per wsUrl internally */
 export const REMOTE_CREDENTIALS_KEY = "yep-anywhere-remote-credentials";
 
+/** Saved hosts for multi-host remote access */
+export const SAVED_HOSTS_KEY = "yep-anywhere-saved-hosts";
+
 // ============================================================================
 // Legacy Key Mappings (for migration from old unscoped keys)
 // ============================================================================

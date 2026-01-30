@@ -9,6 +9,7 @@ import { useState } from "react";
 import { Link } from "react-router-dom";
 import { YepAnywhereLogo } from "../components/YepAnywhereLogo";
 import { useRemoteConnection } from "../contexts/RemoteConnectionContext";
+import { createDirectHost, loadSavedHosts, saveHost } from "../lib/hostStorage";
 
 export function DirectLoginPage() {
   const {
@@ -96,6 +97,20 @@ export function DirectLoginPage() {
         await resumeSession(password);
       } else {
         await connect(wsUrl, username.trim(), password, rememberMe);
+      }
+
+      // Save host for quick reconnect (if rememberMe is enabled)
+      if (rememberMe) {
+        const existing = loadSavedHosts().hosts.find(
+          (h) => h.mode === "direct" && h.wsUrl === wsUrl,
+        );
+        if (!existing) {
+          const newHost = createDirectHost({
+            wsUrl,
+            srpUsername: username.trim(),
+          });
+          saveHost(newHost);
+        }
       }
       // On success, the RemoteApp will render the main app instead of login
     } catch {

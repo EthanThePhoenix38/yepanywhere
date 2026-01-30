@@ -9,6 +9,11 @@ import { useEffect, useRef, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { YepAnywhereLogo } from "../components/YepAnywhereLogo";
 import { useRemoteConnection } from "../contexts/RemoteConnectionContext";
+import {
+  createRelayHost,
+  getHostByRelayUsername,
+  saveHost,
+} from "../lib/hostStorage";
 
 /**
  * Parse credentials from URL hash for auto-login via QR code.
@@ -89,17 +94,31 @@ export function RelayLoginPage() {
       srpPassword: password,
       rememberMe: true,
       onStatusChange: setStatus,
-    }).catch((err) => {
-      const message = err instanceof Error ? err.message : "Connection failed";
-      setError(formatRelayError(message));
-      setStatus("error");
-      // Pre-fill form with credentials from hash so user can retry
-      setRelayUsername(username);
-      if (relayUrl) {
-        setCustomRelayUrl(relayUrl);
-        setShowAdvanced(true);
-      }
-    });
+    })
+      .then(() => {
+        // Save host for quick reconnect
+        const existingHost = getHostByRelayUsername(username);
+        if (!existingHost) {
+          const newHost = createRelayHost({
+            relayUrl: effectiveRelayUrl,
+            relayUsername: username,
+            srpUsername: username,
+          });
+          saveHost(newHost);
+        }
+      })
+      .catch((err) => {
+        const message =
+          err instanceof Error ? err.message : "Connection failed";
+        setError(formatRelayError(message));
+        setStatus("error");
+        // Pre-fill form with credentials from hash so user can retry
+        setRelayUsername(username);
+        if (relayUrl) {
+          setCustomRelayUrl(relayUrl);
+          setShowAdvanced(true);
+        }
+      });
   }, [connectViaRelay, isAutoResuming]);
 
   // If auto-resume is in progress, show a loading screen
@@ -147,6 +166,19 @@ export function RelayLoginPage() {
         rememberMe,
         onStatusChange: setStatus,
       });
+
+      // Save host for quick reconnect (if rememberMe is enabled)
+      if (rememberMe) {
+        const existingHost = getHostByRelayUsername(username);
+        if (!existingHost) {
+          const newHost = createRelayHost({
+            relayUrl,
+            relayUsername: username,
+            srpUsername: username,
+          });
+          saveHost(newHost);
+        }
+      }
       // On success, the RemoteApp will render the main app instead of login
     } catch (err) {
       const message = err instanceof Error ? err.message : "Connection failed";
