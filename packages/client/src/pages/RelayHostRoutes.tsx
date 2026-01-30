@@ -22,7 +22,7 @@ import { useNeedsAttentionBadge } from "../hooks/useNeedsAttentionBadge";
 import { useSyncNotifyInAppSetting } from "../hooks/useNotifyInApp";
 import { useRemoteActivityBusConnection } from "../hooks/useRemoteActivityBusConnection";
 import { NavigationLayout } from "../layouts";
-import { getHostByRelayUsername } from "../lib/hostStorage";
+import { getHostById, getHostByRelayUsername } from "../lib/hostStorage";
 import { ActivityPage } from "./ActivityPage";
 import { AgentsPage } from "./AgentsPage";
 import { BeadsPage } from "./BeadsPage";
@@ -154,7 +154,9 @@ export function RelayHostRoutes() {
     connectViaRelay,
     isAutoResuming,
     setCurrentHostId,
+    currentHostId,
     isIntentionalDisconnect,
+    disconnect,
   } = useRemoteConnection();
 
   const [state, setState] = useState<ConnectionState>("checking");
@@ -167,9 +169,25 @@ export function RelayHostRoutes() {
       return;
     }
 
-    // If already connected to this host, we're good
+    // If already connected, check if it's to the right host
     if (connection) {
-      setState("connected");
+      // Get the currently connected host's relay username
+      const currentHost = currentHostId ? getHostById(currentHostId) : null;
+      const connectedRelayUsername = currentHost?.relayUsername;
+
+      if (connectedRelayUsername === relayUsername) {
+        // Connected to the correct host
+        setState("connected");
+        return;
+      }
+
+      // Connected to a different host - disconnect and let the effect reconnect
+      // Use isIntentional=false so the effect will reconnect to the new host
+      console.log(
+        `[RelayHostRoutes] Host mismatch: connected to "${connectedRelayUsername}" but URL wants "${relayUsername}", switching...`,
+      );
+      disconnect(false);
+      setState("connecting");
       return;
     }
 
@@ -232,7 +250,9 @@ export function RelayHostRoutes() {
     connectViaRelay,
     isAutoResuming,
     setCurrentHostId,
+    currentHostId,
     isIntentionalDisconnect,
+    disconnect,
   ]);
 
   // Handle different states

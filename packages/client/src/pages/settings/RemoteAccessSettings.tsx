@@ -52,7 +52,7 @@ export function RemoteAccessSettings() {
             <button
               type="button"
               className="settings-button settings-button-danger"
-              onClick={remoteConnection.disconnect}
+              onClick={() => remoteConnection.disconnect()}
             >
               Logout
             </button>

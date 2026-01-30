@@ -114,8 +114,8 @@ interface RemoteConnectionState {
   ) => Promise<void>;
   /** Connect via relay server */
   connectViaRelay: (options: ConnectViaRelayOptions) => Promise<void>;
-  /** Disconnect and clear credentials */
-  disconnect: () => void;
+  /** Disconnect and clear credentials. Set isIntentional=false for programmatic host switches. */
+  disconnect: (isIntentional?: boolean) => void;
   /** Clear auto-resume error (e.g., user chose to go to login) */
   clearAutoResumeError: () => void;
   /** Retry auto-resume after failure */
@@ -510,24 +510,28 @@ export function RemoteConnectionProvider({ children }: Props) {
     [handleSessionEstablished],
   );
 
-  const disconnect = useCallback(() => {
-    // Use flushSync to ensure state updates are processed synchronously
-    // before any navigation happens. This prevents race conditions where
-    // ConnectionGate might redirect back to the host before seeing the disconnect.
-    flushSync(() => {
-      if (connection) {
-        connection.close();
-        setGlobalConnection(null);
-        setConnection(null);
-      }
-      clearStoredCredentials();
-      setError(null);
-      setAutoResumeError(null);
-      // Clear host ID and mark as intentional disconnect to prevent auto-redirect
-      setCurrentHostId(null);
-      setIsIntentionalDisconnect(true);
-    });
-  }, [connection, setCurrentHostId]);
+  const disconnect = useCallback(
+    (isIntentional = true) => {
+      // Use flushSync to ensure state updates are processed synchronously
+      // before any navigation happens. This prevents race conditions where
+      // ConnectionGate might redirect back to the host before seeing the disconnect.
+      flushSync(() => {
+        if (connection) {
+          connection.close();
+          setGlobalConnection(null);
+          setConnection(null);
+        }
+        clearStoredCredentials();
+        setError(null);
+        setAutoResumeError(null);
+        // Clear host ID and optionally mark as intentional disconnect
+        // Use isIntentional=false for programmatic host switches (e.g., browser back/forward)
+        setCurrentHostId(null);
+        setIsIntentionalDisconnect(isIntentional);
+      });
+    },
+    [connection, setCurrentHostId],
+  );
 
   const clearAutoResumeError = useCallback(() => {
     setAutoResumeError(null);
