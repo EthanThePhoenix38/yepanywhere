@@ -196,9 +196,10 @@ export function RelayHostRoutes() {
       relayUrl: host.relayUrl,
       relayUsername: host.relayUsername ?? relayUsername,
       srpUsername: host.srpUsername,
-      srpPassword: "", // Empty - use session resumption
+      srpPassword: "", // Ignored when session is provided
       rememberMe: true,
       onStatusChange: () => {},
+      session: host.session,
     })
       .then(() => {
         setCurrentHostId(host.id);
@@ -258,14 +259,15 @@ export function RelayHostRoutes() {
             setError(null);
             // Re-trigger the effect
             const host = getHostByRelayUsername(relayUsername ?? "");
-            if (host?.relayUrl && host.relayUsername) {
+            if (host?.relayUrl && host.relayUsername && host.session) {
               connectViaRelay({
                 relayUrl: host.relayUrl,
                 relayUsername: host.relayUsername,
                 srpUsername: host.srpUsername,
-                srpPassword: "",
+                srpPassword: "", // Ignored when session is provided
                 rememberMe: true,
                 onStatusChange: () => {},
+                session: host.session,
               })
                 .then(() => {
                   setCurrentHostId(host.id);

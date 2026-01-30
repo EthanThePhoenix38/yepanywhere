@@ -146,7 +146,10 @@ export function HostPickerPage() {
               onStatusChange: () => {},
               session: host.session,
             });
-            // Success - RemoteApp will redirect to /projects
+            // Success - navigate to the host-specific URL
+            navigate(
+              `/remote/${encodeURIComponent(host.relayUsername)}/projects`,
+            );
           } else {
             // No session - go to relay login pre-filled
             navigate(
@@ -161,7 +164,8 @@ export function HostPickerPage() {
 
           if (host.session) {
             await connect(host.wsUrl, host.srpUsername, "", true);
-            // Success - RemoteApp will redirect to /projects
+            // Success - navigate to projects (direct mode doesn't use username URLs)
+            navigate("/projects");
           } else {
             // No session - go to direct login pre-filled
             navigate("/login/direct");
