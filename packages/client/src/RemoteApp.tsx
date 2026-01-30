@@ -163,7 +163,7 @@ function ConnectionGate({ children }: Props) {
         redirectUrl = `/${encodeURIComponent(host.relayUsername)}/projects`;
       }
     }
-    return <Navigate to={redirectUrl} replace />;
+    return <Navigate to={redirectUrl} />;
   }
 
   // Connected and on an app route - show the app with providers
