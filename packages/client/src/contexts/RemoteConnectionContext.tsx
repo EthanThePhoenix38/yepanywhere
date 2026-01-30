@@ -25,6 +25,7 @@ import {
   useRef,
   useState,
 } from "react";
+import { flushSync } from "react-dom";
 import { setGlobalConnection } from "../lib/connection";
 import {
   SecureConnection,
@@ -510,17 +511,22 @@ export function RemoteConnectionProvider({ children }: Props) {
   );
 
   const disconnect = useCallback(() => {
-    if (connection) {
-      connection.close();
-      setGlobalConnection(null);
-      setConnection(null);
-    }
-    clearStoredCredentials();
-    setError(null);
-    setAutoResumeError(null);
-    // Clear host ID and mark as intentional disconnect to prevent auto-redirect
-    setCurrentHostId(null);
-    setIsIntentionalDisconnect(true);
+    // Use flushSync to ensure state updates are processed synchronously
+    // before any navigation happens. This prevents race conditions where
+    // ConnectionGate might redirect back to the host before seeing the disconnect.
+    flushSync(() => {
+      if (connection) {
+        connection.close();
+        setGlobalConnection(null);
+        setConnection(null);
+      }
+      clearStoredCredentials();
+      setError(null);
+      setAutoResumeError(null);
+      // Clear host ID and mark as intentional disconnect to prevent auto-redirect
+      setCurrentHostId(null);
+      setIsIntentionalDisconnect(true);
+    });
   }, [connection, setCurrentHostId]);
 
   const clearAutoResumeError = useCallback(() => {
