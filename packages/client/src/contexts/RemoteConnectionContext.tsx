@@ -83,6 +83,8 @@ export interface ConnectViaRelayOptions {
   srpPassword: string;
   rememberMe?: boolean;
   onStatusChange?: (status: RelayConnectionStatus) => void;
+  /** Optional session for resumption (if provided, srpPassword is ignored) */
+  session?: StoredSession;
 }
 
 interface RemoteConnectionState {
@@ -371,6 +373,7 @@ export function RemoteConnectionProvider({ children }: Props) {
         srpPassword,
         rememberMe = false,
         onStatusChange,
+        session,
       } = options;
 
       setIsConnecting(true);
@@ -462,13 +465,24 @@ export function RemoteConnectionProvider({ children }: Props) {
         }
 
         // Create SecureConnection using the existing WebSocket
-        const conn = await SecureConnection.connectWithExistingSocket(
-          ws,
-          srpUsername,
-          srpPassword,
-          rememberMe ? handleSessionEstablished : undefined,
-          { relayUrl, relayUsername },
-        );
+        // If session is provided, use resume-only mode; otherwise do fresh SRP auth
+        let conn: SecureConnection;
+        if (session) {
+          conn = await SecureConnection.forResumeOnlyWithSocket(
+            ws,
+            session,
+            rememberMe ? handleSessionEstablished : undefined,
+            { relayUrl, relayUsername },
+          );
+        } else {
+          conn = await SecureConnection.connectWithExistingSocket(
+            ws,
+            srpUsername,
+            srpPassword,
+            rememberMe ? handleSessionEstablished : undefined,
+            { relayUrl, relayUsername },
+          );
+        }
 
         // Test the connection
         await conn.fetch("/auth/status");

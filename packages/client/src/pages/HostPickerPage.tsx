@@ -141,9 +141,10 @@ export function HostPickerPage() {
               relayUrl: host.relayUrl,
               relayUsername: host.relayUsername,
               srpUsername: host.srpUsername,
-              srpPassword: "", // Empty - will use session resumption
+              srpPassword: "", // Ignored when session is provided
               rememberMe: true,
               onStatusChange: () => {},
+              session: host.session,
             });
             // Success - RemoteApp will redirect to /projects
           } else {
