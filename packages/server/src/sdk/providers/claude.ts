@@ -1,4 +1,4 @@
-import { existsSync, readFileSync } from "node:fs";
+import { execSync } from "node:child_process";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import {
@@ -50,19 +50,6 @@ let cachedModels: ModelInfo[] | null = null;
 let probePromise: Promise<ModelInfo[]> | null = null;
 
 /**
- * OAuth credentials from ~/.claude/.credentials.json
- */
-interface ClaudeCredentials {
-  claudeAiOauth?: {
-    accessToken?: string;
-    refreshToken?: string;
-    expiresAt?: number;
-    scopes?: string[];
-    subscriptionType?: string;
-  };
-}
-
-/**
  * Claude provider implementation using @anthropic-ai/claude-agent-sdk.
  *
  * This class wraps the SDK's query() function and provides:
@@ -96,65 +83,27 @@ export class ClaudeProvider implements AgentProvider {
 
   /**
    * Get detailed authentication status.
-   * Checks for API key env var or OAuth credentials file.
+   * If Claude CLI is installed, assume it's authenticated.
+   * The SDK handles auth internally and will error at session start if not authenticated.
    */
   async getAuthStatus(): Promise<AuthStatus> {
-    // Check for API key first
-    if (process.env.ANTHROPIC_API_KEY) {
-      return {
-        installed: true,
-        authenticated: true,
-        enabled: true,
-      };
-    }
+    const installed = await this.isClaudeCliInstalled();
+    return {
+      installed,
+      authenticated: installed,
+      enabled: installed,
+    };
+  }
 
-    // Check for OAuth credentials file
-    const credsPath = join(homedir(), ".claude", ".credentials.json");
-    if (!existsSync(credsPath)) {
-      return {
-        installed: true,
-        authenticated: false,
-        enabled: false,
-      };
-    }
-
+  /**
+   * Check if Claude CLI is installed by looking for it in PATH.
+   */
+  private async isClaudeCliInstalled(): Promise<boolean> {
     try {
-      const creds: ClaudeCredentials = JSON.parse(
-        readFileSync(credsPath, "utf-8"),
-      );
-
-      const oauth = creds.claudeAiOauth;
-      if (!oauth?.accessToken && !oauth?.refreshToken) {
-        return {
-          installed: true,
-          authenticated: false,
-          enabled: false,
-        };
-      }
-
-      // Check expiry - if expired but has refresh token, still authenticated
-      // The SDK will handle token refresh
-      let expiresAt: Date | undefined;
-      let authenticated = true;
-      if (oauth.expiresAt) {
-        expiresAt = new Date(oauth.expiresAt);
-        if (expiresAt < new Date() && !oauth.refreshToken) {
-          authenticated = false;
-        }
-      }
-
-      return {
-        installed: true,
-        authenticated,
-        enabled: authenticated,
-        expiresAt,
-      };
+      execSync("which claude", { stdio: "ignore" });
+      return true;
     } catch {
-      return {
-        installed: true,
-        authenticated: false,
-        enabled: false,
-      };
+      return false;
     }
   }
 
