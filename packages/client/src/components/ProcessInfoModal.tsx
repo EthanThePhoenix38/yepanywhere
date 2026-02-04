@@ -155,24 +155,12 @@ export function ProcessInfoModal({
       });
   }, [sessionId, status.owner]);
 
-  const getStateDisplay = () => {
-    if (status.owner === "self") {
-      switch (processState) {
-        case "in-turn":
-          return "Running";
-        case "idle":
-          return "Idle";
-        case "waiting-input":
-          return "Waiting for input";
-        case "hold":
-          return "On hold";
-        default:
-          return processState;
-      }
-    }
-    if (status.owner === "external") return "External (other process)";
-    return "Idle (no process)";
-  };
+  // Format kebab-case to Title Case (e.g., "in-turn" -> "In Turn")
+  const formatKebab = (s: string) =>
+    s
+      .split("-")
+      .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+      .join(" ");
 
   const getProviderDisplay = (p: string) => {
     switch (p) {
@@ -199,7 +187,8 @@ export function ProcessInfoModal({
           <InfoRow label="Session ID" value={sessionId} mono />
           <InfoRow label="Provider" value={getProviderDisplay(provider)} />
           <InfoRow label="Model" value={model || "Default"} mono />
-          <InfoRow label="Status" value={getStateDisplay()} />
+          <InfoRow label="Ownership" value={formatKebab(status.owner)} />
+          <InfoRow label="Activity" value={formatKebab(processState)} />
         </Section>
 
         {/* Connection Info */}
