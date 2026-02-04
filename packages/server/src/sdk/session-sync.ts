@@ -5,6 +5,7 @@
  */
 
 import { spawn } from "node:child_process";
+import { mkdirSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { getLogger } from "../logging/logger.js";
@@ -299,7 +300,6 @@ export async function syncSessionFile(
   );
 
   // Ensure local directory exists for from-remote sync
-  const { mkdirSync } = require("node:fs");
   try {
     mkdirSync(localPath, { recursive: true });
   } catch {

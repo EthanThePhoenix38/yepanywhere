@@ -712,6 +712,7 @@ export function GlobalSessionsPage() {
                         showProjectName={!projectFilter}
                         projectName={session.projectName}
                         basePath={basePath}
+                        messageCount={session.messageCount}
                       />
                     </div>
                   ))}

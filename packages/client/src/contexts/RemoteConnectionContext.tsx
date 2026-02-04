@@ -285,6 +285,33 @@ export function RemoteConnectionProvider({ children }: Props) {
     }
   }, []);
 
+  // Callback for when connection is lost unexpectedly
+  const handleDisconnect = useCallback((error: Error) => {
+    console.log("[RemoteConnection] Connection lost:", error.message);
+    // Clear the connection state so UI reflects disconnected status
+    setGlobalConnection(null);
+    setConnection(null);
+    // Set error so UI can show reconnect options
+    // Categorize the error to show appropriate UI
+    const reason = categorizeError(error.message);
+    const currentStored = storedRef.current;
+    const isRelay = currentStored?.mode === "relay";
+
+    // Show auto-resume error modal for connection failures (not auth failures)
+    if (reason !== "auth_failed" && reason !== "other") {
+      setAutoResumeError({
+        reason,
+        mode: isRelay ? "relay" : "direct",
+        relayUsername: isRelay ? currentStored?.relayUsername : undefined,
+        serverUrl: currentStored?.wsUrl,
+        message: error.message,
+      });
+    } else {
+      // For auth failures, just show a simple error
+      setError(`Connection lost: ${error.message}`);
+    }
+  }, []);
+
   const connect = useCallback(
     async (
       wsUrl: string,
@@ -311,6 +338,7 @@ export function RemoteConnectionProvider({ children }: Props) {
           username,
           password,
           rememberMe ? handleSessionEstablished : undefined,
+          handleDisconnect,
         );
 
         // Test the connection by making a simple request
@@ -330,7 +358,7 @@ export function RemoteConnectionProvider({ children }: Props) {
         setIsConnecting(false);
       }
     },
-    [handleSessionEstablished],
+    [handleSessionEstablished, handleDisconnect],
   );
 
   const resumeSession = useCallback(
@@ -350,6 +378,7 @@ export function RemoteConnectionProvider({ children }: Props) {
           currentStored.session,
           password,
           handleSessionEstablished,
+          handleDisconnect,
         );
 
         // Test the connection - this will try resume, fall back to SRP if needed
@@ -367,7 +396,7 @@ export function RemoteConnectionProvider({ children }: Props) {
         setIsConnecting(false);
       }
     },
-    [handleSessionEstablished],
+    [handleSessionEstablished, handleDisconnect],
   );
 
   const connectViaRelay = useCallback(
@@ -480,6 +509,7 @@ export function RemoteConnectionProvider({ children }: Props) {
             session,
             rememberMe ? handleSessionEstablished : undefined,
             { relayUrl, relayUsername },
+            handleDisconnect,
           );
         } else {
           conn = await SecureConnection.connectWithExistingSocket(
@@ -488,6 +518,7 @@ export function RemoteConnectionProvider({ children }: Props) {
             srpPassword,
             rememberMe ? handleSessionEstablished : undefined,
             { relayUrl, relayUsername },
+            handleDisconnect,
           );
         }
 
@@ -507,7 +538,7 @@ export function RemoteConnectionProvider({ children }: Props) {
         setIsConnecting(false);
       }
     },
-    [handleSessionEstablished],
+    [handleSessionEstablished, handleDisconnect],
   );
 
   const disconnect = useCallback(
@@ -648,12 +679,14 @@ export function RemoteConnectionProvider({ children }: Props) {
             storedSession,
             handleSessionEstablished,
             { relayUrl, relayUsername },
+            handleDisconnect,
           );
         } else {
           // Direct mode: just create connection and resume
           conn = SecureConnection.forResumeOnly(
             storedSession,
             handleSessionEstablished,
+            handleDisconnect,
           );
         }
 
@@ -694,7 +727,7 @@ export function RemoteConnectionProvider({ children }: Props) {
     };
 
     void attemptAutoResume();
-  }, [autoResumeAttempted, handleSessionEstablished]);
+  }, [autoResumeAttempted, handleSessionEstablished, handleDisconnect]);
 
   // Track connection in ref for cleanup (avoids stale closure issues)
   const connectionRef = useRef(connection);

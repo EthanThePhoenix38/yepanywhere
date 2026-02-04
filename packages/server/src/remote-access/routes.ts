@@ -160,10 +160,28 @@ export function createRemoteAccessRoutes(
         return c.json({ error: "URL and username are required" }, 400);
       }
 
+      // Get existing username before changing (to invalidate sessions on username change)
+      const existingUsername = remoteAccessService.getUsername();
+
       await remoteAccessService.setRelayConfig({
         url: body.url,
         username: body.username,
       });
+
+      // Invalidate sessions if username changed (sessions are tied to username identity)
+      if (
+        remoteSessionService &&
+        existingUsername &&
+        existingUsername !== body.username
+      ) {
+        const count =
+          await remoteSessionService.invalidateUserSessions(existingUsername);
+        if (count > 0) {
+          console.log(
+            `[RemoteAccess] Relay username changed, invalidated ${count} sessions for ${existingUsername}`,
+          );
+        }
+      }
 
       // Notify server to reconnect with new config
       await onRelayConfigChanged?.();
@@ -182,7 +200,21 @@ export function createRemoteAccessRoutes(
    */
   app.delete("/relay", async (c) => {
     try {
+      // Get username before clearing to invalidate their sessions
+      const existingUsername = remoteAccessService.getUsername();
+
       await remoteAccessService.clearRelayConfig();
+
+      // Invalidate all sessions for the user (relay identity is being removed)
+      if (remoteSessionService && existingUsername) {
+        const count =
+          await remoteSessionService.invalidateUserSessions(existingUsername);
+        if (count > 0) {
+          console.log(
+            `[RemoteAccess] Relay config cleared, invalidated ${count} sessions for ${existingUsername}`,
+          );
+        }
+      }
 
       // Notify server to disconnect
       await onRelayConfigChanged?.();

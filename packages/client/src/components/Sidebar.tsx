@@ -420,6 +420,7 @@ export function Sidebar({
                       showProjectName
                       projectName={session.projectName}
                       basePath={basePath}
+                      messageCount={session.messageCount}
                     />
                   ))}
               </ul>
@@ -470,6 +471,7 @@ export function Sidebar({
                       showProjectName
                       projectName={session.projectName}
                       basePath={basePath}
+                      messageCount={session.messageCount}
                     />
                   ))}
               </ul>
@@ -518,6 +520,7 @@ export function Sidebar({
                     showProjectName
                     projectName={session.projectName}
                     basePath={basePath}
+                    messageCount={session.messageCount}
                   />
                 ))}
               </ul>

@@ -147,6 +147,9 @@ export class SecureConnection implements Connection {
   // Callback when session is established (for storing session data)
   private onSessionEstablished?: (session: StoredSession) => void;
 
+  // Callback when connection is lost (for UI state updates)
+  private onDisconnect?: (error: Error) => void;
+
   /**
    * Create a new secure connection with password authentication.
    *
@@ -154,17 +157,20 @@ export class SecureConnection implements Connection {
    * @param username - Username for SRP authentication
    * @param password - Password for SRP authentication
    * @param onSessionEstablished - Optional callback when session is established (for storing)
+   * @param onDisconnect - Optional callback when connection is lost unexpectedly
    */
   constructor(
     wsUrl: string,
     username: string,
     password: string,
     onSessionEstablished?: (session: StoredSession) => void,
+    onDisconnect?: (error: Error) => void,
   ) {
     this.wsUrl = wsUrl;
     this.username = username;
     this.password = password;
     this.onSessionEstablished = onSessionEstablished;
+    this.onDisconnect = onDisconnect;
   }
 
   /**
@@ -174,17 +180,20 @@ export class SecureConnection implements Connection {
    * @param storedSession - Previously stored session data
    * @param password - Password (required for fallback to full SRP)
    * @param onSessionEstablished - Optional callback when a new session is established
+   * @param onDisconnect - Optional callback when connection is lost unexpectedly
    */
   static fromStoredSession(
     storedSession: StoredSession,
     password: string,
     onSessionEstablished?: (session: StoredSession) => void,
+    onDisconnect?: (error: Error) => void,
   ): SecureConnection {
     const conn = new SecureConnection(
       storedSession.wsUrl,
       storedSession.username,
       password,
       onSessionEstablished,
+      onDisconnect,
     );
     conn.storedSession = storedSession;
     return conn;
@@ -197,10 +206,12 @@ export class SecureConnection implements Connection {
    *
    * @param storedSession - Previously stored session data
    * @param onSessionEstablished - Optional callback when session is refreshed
+   * @param onDisconnect - Optional callback when connection is lost unexpectedly
    */
   static forResumeOnly(
     storedSession: StoredSession,
     onSessionEstablished?: (session: StoredSession) => void,
+    onDisconnect?: (error: Error) => void,
   ): SecureConnection {
     // Create connection with empty password (will fail if fallback is attempted)
     const conn = new SecureConnection(
@@ -208,6 +219,7 @@ export class SecureConnection implements Connection {
       storedSession.username,
       "", // No password - resume only
       onSessionEstablished,
+      onDisconnect,
     );
     conn.storedSession = storedSession;
     conn.password = null; // Mark as resume-only
@@ -223,6 +235,7 @@ export class SecureConnection implements Connection {
    * @param storedSession - Previously stored session data
    * @param onSessionEstablished - Optional callback when session is refreshed
    * @param relayConfig - Optional relay config for auto-reconnect on connection drop
+   * @param onDisconnect - Optional callback when connection is lost unexpectedly
    * @returns Promise that resolves to SecureConnection after session resume completes
    */
   static async forResumeOnlyWithSocket(
@@ -230,12 +243,14 @@ export class SecureConnection implements Connection {
     storedSession: StoredSession,
     onSessionEstablished?: (session: StoredSession) => void,
     relayConfig?: { relayUrl: string; relayUsername: string },
+    onDisconnect?: (error: Error) => void,
   ): Promise<SecureConnection> {
     const conn = new SecureConnection(
       "", // No URL needed - socket already connected
       storedSession.username,
       "", // No password - resume only
       onSessionEstablished,
+      onDisconnect,
     );
     conn.ws = ws;
     conn.storedSession = storedSession;
@@ -287,13 +302,18 @@ export class SecureConnection implements Connection {
 
       ws.onclose = (event) => {
         console.log("[SecureConnection] Closed:", event.code, event.reason);
+        const wasAuthenticated = this.connectionState === "authenticated";
         this.ws = null;
         this.sessionKey = null;
         this.srpSession = null;
 
         const closeError = new WebSocketCloseError(event.code, event.reason);
-        if (this.connectionState !== "authenticated") {
+        if (!wasAuthenticated) {
           authRejectHandler(closeError);
+        } else {
+          // Connection dropped after authentication - notify via callback
+          this.connectionState = "disconnected";
+          this.onDisconnect?.(closeError);
         }
       };
 
@@ -578,6 +598,7 @@ export class SecureConnection implements Connection {
 
       ws.onclose = (event) => {
         console.log("[SecureConnection] Closed:", event.code, event.reason);
+        const wasAuthenticated = this.connectionState === "authenticated";
         this.ws = null;
         this.sessionKey = null;
         this.srpSession = null;
@@ -585,9 +606,13 @@ export class SecureConnection implements Connection {
         // Create error with close code and reason
         const closeError = new WebSocketCloseError(event.code, event.reason);
 
-        if (this.connectionState !== "authenticated") {
+        if (!wasAuthenticated) {
           this.connectionState = "failed";
           authRejectHandler(closeError);
+        } else {
+          // Connection dropped after authentication - notify via callback
+          this.connectionState = "disconnected";
+          this.onDisconnect?.(closeError);
         }
 
         // Reject any pending requests
@@ -869,19 +894,22 @@ export class SecureConnection implements Connection {
       this.sessionId = msg.sessionId ?? null;
       this.connectionState = "authenticated";
 
-      // Notify caller of new session for storage
-      if (this.onSessionEstablished && this.sessionKey && this.sessionId) {
+      // Store session for reconnection and notify caller
+      if (this.sessionKey && this.sessionId) {
         const sessionKeyBase64 = btoa(
           Array.from(this.sessionKey)
             .map((b) => String.fromCharCode(b))
             .join(""),
         );
-        this.onSessionEstablished({
+        // Update internal storedSession for reconnection support
+        this.storedSession = {
           wsUrl: this.wsUrl,
           username: this.username,
           sessionId: this.sessionId,
           sessionKey: sessionKeyBase64,
-        });
+        };
+        // Notify caller for external storage (e.g., localStorage)
+        this.onSessionEstablished?.(this.storedSession);
       }
 
       // Send client capabilities (Phase 3) - first encrypted message after auth
@@ -1673,6 +1701,7 @@ export class SecureConnection implements Connection {
    * @param password - Password for SRP authentication
    * @param onSessionEstablished - Optional callback when session is established
    * @param relayConfig - Optional relay config for auto-reconnect on connection drop
+   * @param onDisconnect - Optional callback when connection is lost unexpectedly
    * @returns SecureConnection instance after successful authentication
    */
   static async connectWithExistingSocket(
@@ -1681,12 +1710,14 @@ export class SecureConnection implements Connection {
     password: string,
     onSessionEstablished?: (session: StoredSession) => void,
     relayConfig?: { relayUrl: string; relayUsername: string },
+    onDisconnect?: (error: Error) => void,
   ): Promise<SecureConnection> {
     const conn = new SecureConnection(
       "", // No URL needed - socket already connected
       username,
       password,
       onSessionEstablished,
+      onDisconnect,
     );
     conn.ws = ws;
     conn.isRelayConnection = true;
@@ -1731,15 +1762,20 @@ export class SecureConnection implements Connection {
 
       ws.onclose = (event) => {
         console.log("[SecureConnection] Closed:", event.code, event.reason);
+        const wasAuthenticated = this.connectionState === "authenticated";
         this.ws = null;
         this.sessionKey = null;
         this.srpSession = null;
 
         const closeError = new WebSocketCloseError(event.code, event.reason);
 
-        if (this.connectionState !== "authenticated") {
+        if (!wasAuthenticated) {
           this.connectionState = "failed";
           authRejectHandler(closeError);
+        } else {
+          // Connection dropped after authentication - notify via callback
+          this.connectionState = "disconnected";
+          this.onDisconnect?.(closeError);
         }
 
         // Reject pending requests

@@ -62,6 +62,9 @@ interface SessionListItemProps {
 
   /** Base path prefix for relay mode (e.g., "/remote/my-server") */
   basePath?: string;
+
+  /** Number of messages in session (0 indicates brand new session) */
+  messageCount?: number;
 }
 
 /**
@@ -118,6 +121,8 @@ export function SessionListItem({
   hasDraft = false,
   // Relay mode
   basePath = "",
+  // New session detection
+  messageCount,
 }: SessionListItemProps) {
   const navigate = useNavigate();
 
@@ -138,7 +143,14 @@ export function SessionListItem({
   // Computed values with optimistic fallback
   const isStarred = localIsStarred ?? isStarredProp;
   const isArchived = localIsArchived ?? isArchivedProp;
-  const displayTitle = localTitle ?? title ?? "Untitled session";
+  // Detect brand new sessions that haven't received a title yet
+  // Use messageCount === 0, or if messageCount is unknown but session is actively running
+  const isNewSession =
+    !localTitle &&
+    !title &&
+    (messageCount === 0 || (messageCount == null && activity === "in-turn"));
+  const displayTitle =
+    localTitle ?? title ?? (isNewSession ? "New session" : "Untitled session");
 
   // Focus input when entering edit mode
   useEffect(() => {
@@ -367,6 +379,7 @@ export function SessionListItem({
             <>
               <strong className="session-list-item__title">
                 {isStarred && <StarIcon filled size={12} />}
+                {isNewSession && <ThinkingIndicator />}
                 {displayTitle}
                 {isArchived && (
                   <span className="session-archived-badge">Archived</span>
@@ -411,6 +424,7 @@ export function SessionListItem({
               <span className="session-list-item__title-row">
                 {isStarred && <StarIcon filled />}
                 <span className="session-list-item__title-text">
+                  {isNewSession && <ThinkingIndicator />}
                   {displayTitle}
                 </span>
                 {hasDraft && (

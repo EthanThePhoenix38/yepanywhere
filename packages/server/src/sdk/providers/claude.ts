@@ -343,9 +343,10 @@ export class ClaudeProvider implements AgentProvider {
 
     // Wrap the iterator to convert SDK message types to our internal types
     // Pass executor info for session sync after result messages
+    // Use effectiveCwd (the translated remote path) so sync uses the correct project dir
     const wrappedIterator = this.wrapIterator(sdkQuery, {
       executor: options.executor,
-      cwd: options.cwd,
+      cwd: effectiveCwd,
       remoteEnv: options.remoteEnv,
     });
 
