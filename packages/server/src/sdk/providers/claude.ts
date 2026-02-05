@@ -1,4 +1,3 @@
-import { execSync } from "node:child_process";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import {
@@ -9,6 +8,7 @@ import {
 } from "@anthropic-ai/claude-agent-sdk";
 import type { ModelInfo, SlashCommand } from "@yep-anywhere/shared";
 import { getLogger } from "../../logging/logger.js";
+import { detectClaudeCli } from "../cli-detection.js";
 import { logSDKMessage } from "../messageLogger.js";
 import { MessageQueue } from "../messageQueue.js";
 import {
@@ -96,15 +96,12 @@ export class ClaudeProvider implements AgentProvider {
   }
 
   /**
-   * Check if Claude CLI is installed by looking for it in PATH.
+   * Check if Claude CLI is installed.
+   * Uses detectClaudeCli() which checks PATH and common installation locations.
    */
   private async isClaudeCliInstalled(): Promise<boolean> {
-    try {
-      execSync("which claude", { stdio: "ignore" });
-      return true;
-    } catch {
-      return false;
-    }
+    const cliInfo = detectClaudeCli();
+    return cliInfo.found;
   }
 
   /**
