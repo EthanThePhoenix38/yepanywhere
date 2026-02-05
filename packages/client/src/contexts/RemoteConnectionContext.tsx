@@ -26,7 +26,8 @@ import {
   useState,
 } from "react";
 import { flushSync } from "react-dom";
-import { setGlobalConnection } from "../lib/connection";
+import { activityBus } from "../lib/activityBus";
+import { getGlobalConnection, setGlobalConnection } from "../lib/connection";
 import {
   SecureConnection,
   type StoredSession,
@@ -288,8 +289,11 @@ export function RemoteConnectionProvider({ children }: Props) {
   // Callback for when connection is lost unexpectedly
   const handleDisconnect = useCallback((error: Error) => {
     console.log("[RemoteConnection] Connection lost:", error.message);
-    // Clear the connection state so UI reflects disconnected status
-    setGlobalConnection(null);
+    // Clear the React connection state so UI reflects disconnected status.
+    // NOTE: We intentionally do NOT clear globalConnection here. The SecureConnection
+    // instance is still valid and can be used for reconnection (via forceReconnect).
+    // ActivityBus will attempt to reconnect, and when it succeeds, we'll restore
+    // the React state via the reconnect event listener.
     setConnection(null);
     // Set error so UI can show reconnect options
     // Categorize the error to show appropriate UI
@@ -728,6 +732,26 @@ export function RemoteConnectionProvider({ children }: Props) {
 
     void attemptAutoResume();
   }, [autoResumeAttempted, handleSessionEstablished, handleDisconnect]);
+
+  // Listen for ActivityBus reconnect events to sync React state.
+  // When SecureConnection.forceReconnect() succeeds (called by ActivityBus),
+  // we need to restore the React state since handleDisconnect may have cleared it.
+  useEffect(() => {
+    const unsubscribe = activityBus.on("reconnect", () => {
+      const globalConn = getGlobalConnection();
+      if (globalConn && !connection) {
+        console.log(
+          "[RemoteConnection] ActivityBus reconnected, restoring React state",
+        );
+        // Restore connection state and clear any errors
+        setConnection(globalConn as SecureConnection);
+        setError(null);
+        setAutoResumeError(null);
+      }
+    });
+
+    return unsubscribe;
+  }, [connection]);
 
   // Track connection in ref for cleanup (avoids stale closure issues)
   const connectionRef = useRef(connection);
