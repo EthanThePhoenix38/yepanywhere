@@ -399,26 +399,83 @@ function EditCollapsedPreview({
     const classSuffix = getErrorClassSuffix(classification.classification);
     const isRejection = isUserRejection(classification.classification);
 
+    // For user rejections, show the proposed diff alongside the declined badge
+    const hasProposedDiff =
+      isRejection &&
+      input._structuredPatch &&
+      input._structuredPatch.length > 0;
+    const proposedDiffLines = hasProposedDiff
+      ? (input._structuredPatch?.flatMap((hunk) => hunk.lines) ?? [])
+      : [];
+    const proposedDiffTruncated = proposedDiffLines.length > MAX_VISIBLE_LINES;
+
     return (
-      <div className={`edit-collapsed-preview edit-collapsed-${classSuffix}`}>
-        {showValidationWarning && validationErrors && (
-          <SchemaWarning toolName="Edit" errors={validationErrors} />
+      <>
+        <div className={`edit-collapsed-preview edit-collapsed-${classSuffix}`}>
+          {showValidationWarning && validationErrors && (
+            <SchemaWarning toolName="Edit" errors={validationErrors} />
+          )}
+          <span className={`badge badge-${classSuffix}`}>
+            {isRejection
+              ? classification.label
+              : `Edit ${classification.label.toLowerCase()}`}
+          </span>
+          {classification.userReason ? (
+            <span className="edit-error-message">
+              {classification.userReason}
+            </span>
+          ) : classification.cleanedMessage && !isRejection ? (
+            <span className="edit-error-message">
+              {classification.cleanedMessage}
+            </span>
+          ) : null}
+          {hasProposedDiff && (
+            <div
+              className={`diff-view-container ${proposedDiffTruncated ? "truncated" : ""}`}
+            >
+              <div className="diff-view">
+                {input._diffHtml ? (
+                  <HighlightedDiff
+                    diffHtml={input._diffHtml}
+                    truncateLines={
+                      proposedDiffTruncated ? MAX_VISIBLE_LINES : undefined
+                    }
+                  />
+                ) : (
+                  <DiffLines lines={proposedDiffLines} />
+                )}
+              </div>
+              {proposedDiffTruncated && <div className="diff-fade-overlay" />}
+            </div>
+          )}
+          {hasProposedDiff && proposedDiffTruncated && (
+            <button
+              type="button"
+              className="diff-expand-button"
+              onClick={(e) => {
+                e.stopPropagation();
+                setIsModalOpen(true);
+              }}
+            >
+              Show full diff
+            </button>
+          )}
+        </div>
+        {isModalOpen && hasProposedDiff && (
+          <Modal
+            title={<span className="file-path">{fileName}</span>}
+            onClose={handleClose}
+          >
+            <DiffModalContent
+              diffHtml={diffHtml}
+              structuredPatch={structuredPatch}
+              filePath={filePath}
+              oldString={oldString}
+              newString={newString}
+            />
+          </Modal>
         )}
-        <span className={`badge badge-${classSuffix}`}>
-          {isRejection
-            ? classification.label
-            : `Edit ${classification.label.toLowerCase()}`}
-        </span>
-        {classification.userReason ? (
-          <span className="edit-error-message">
-            {classification.userReason}
-          </span>
-        ) : classification.cleanedMessage && !isRejection ? (
-          <span className="edit-error-message">
-            {classification.cleanedMessage}
-          </span>
-        ) : null}
-      </div>
+      </>
     );
   }
 
@@ -677,24 +734,89 @@ function EditToolResult({
     const classSuffix = getErrorClassSuffix(classification.classification);
     const isRejection = isUserRejection(classification.classification);
 
+    // For user rejections, show the proposed diff alongside the declined badge
+    const inputWithAugment = input as EditInputWithAugment | undefined;
+    const hasProposedDiff =
+      isRejection &&
+      inputWithAugment?._structuredPatch &&
+      inputWithAugment._structuredPatch.length > 0;
+    const proposedDiffLines = hasProposedDiff
+      ? (inputWithAugment._structuredPatch?.flatMap((hunk) => hunk.lines) ?? [])
+      : [];
+    const proposedDiffTruncated = proposedDiffLines.length > MAX_VISIBLE_LINES;
+
+    const filePath = inputWithAugment?.file_path ?? "";
+    const fileName = getFileName(filePath);
+
     return (
-      <div className={`edit-result edit-result-${classSuffix}`}>
-        {showValidationWarning && validationErrors && (
-          <SchemaWarning toolName="Edit" errors={validationErrors} />
+      <>
+        <div className={`edit-result edit-result-${classSuffix}`}>
+          {showValidationWarning && validationErrors && (
+            <SchemaWarning toolName="Edit" errors={validationErrors} />
+          )}
+          <span className={`badge badge-${classSuffix}`}>
+            {isRejection
+              ? classification.label
+              : `Edit ${classification.label.toLowerCase()}`}
+          </span>
+          {classification.userReason ? (
+            <div className="edit-error-message">
+              {classification.userReason}
+            </div>
+          ) : classification.cleanedMessage && !isRejection ? (
+            <div className="edit-error-message">
+              {classification.cleanedMessage}
+            </div>
+          ) : null}
+          {hasProposedDiff && (
+            <div
+              className={`diff-view-container ${proposedDiffTruncated ? "truncated" : ""}`}
+            >
+              <div className="diff-view">
+                {inputWithAugment?._diffHtml ? (
+                  <HighlightedDiff
+                    diffHtml={inputWithAugment._diffHtml}
+                    truncateLines={
+                      proposedDiffTruncated ? MAX_VISIBLE_LINES : undefined
+                    }
+                  />
+                ) : (
+                  <DiffLines lines={proposedDiffLines} />
+                )}
+              </div>
+              {proposedDiffTruncated && (
+                <>
+                  <div className="diff-fade-overlay" />
+                  <button
+                    type="button"
+                    className="diff-expand-button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setShowModal(true);
+                    }}
+                  >
+                    Show full diff
+                  </button>
+                </>
+              )}
+            </div>
+          )}
+        </div>
+        {showModal && hasProposedDiff && inputWithAugment && (
+          <Modal
+            title={<span className="file-path">{fileName}</span>}
+            onClose={() => setShowModal(false)}
+          >
+            <DiffModalContent
+              diffHtml={inputWithAugment._diffHtml}
+              structuredPatch={inputWithAugment._structuredPatch ?? []}
+              filePath={filePath}
+              oldString={inputWithAugment.old_string}
+              newString={inputWithAugment.new_string}
+            />
+          </Modal>
         )}
-        <span className={`badge badge-${classSuffix}`}>
-          {isRejection
-            ? classification.label
-            : `Edit ${classification.label.toLowerCase()}`}
-        </span>
-        {classification.userReason ? (
-          <div className="edit-error-message">{classification.userReason}</div>
-        ) : classification.cleanedMessage && !isRejection ? (
-          <div className="edit-error-message">
-            {classification.cleanedMessage}
-          </div>
-        ) : null}
-      </div>
+      </>
     );
   }
 
