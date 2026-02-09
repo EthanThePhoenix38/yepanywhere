@@ -1,8 +1,0 @@
-{
-  "mcpServers": {
-    "test-mcp": {
-      "command": "node",
-      "args": ["/home/kgraehl/code/yepanywhere/test-mcp-server/index.mjs"]
-    }
-  }
-}

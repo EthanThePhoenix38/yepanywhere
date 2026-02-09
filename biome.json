@@ -12,7 +12,7 @@
       "dist",
       "dist-*",
       "*.d.ts",
-      "claude-vscode-extension",
+
       "docs/tasks",
       "branding"
     ]
