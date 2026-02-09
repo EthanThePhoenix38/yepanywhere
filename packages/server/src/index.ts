@@ -134,7 +134,11 @@ if (cliInfo.found) {
 } else {
   console.warn("Warning: Claude CLI not found.");
   console.warn("Claude Code sessions will not be available.");
-  console.warn("Install: curl -fsSL https://claude.ai/install.sh | bash");
+  console.warn(
+    process.platform === "win32"
+      ? "Install: irm https://claude.ai/install.ps1 | iex"
+      : "Install: curl -fsSL https://claude.ai/install.sh | bash",
+  );
 }
 
 // Create the real SDK

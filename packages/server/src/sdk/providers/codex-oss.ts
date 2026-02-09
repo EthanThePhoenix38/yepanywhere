@@ -20,6 +20,7 @@ import { createInterface } from "node:readline";
 import { promisify } from "node:util";
 import type { ModelInfo } from "@yep-anywhere/shared";
 import { getLogger } from "../../logging/logger.js";
+import { whichCommand } from "../cli-detection.js";
 import { MessageQueue } from "../messageQueue.js";
 import type { SDKMessage } from "../types.js";
 import type {
@@ -975,7 +976,9 @@ export class CodexOSSProvider implements AgentProvider {
     }
 
     try {
-      const result = execSync("which codex", { encoding: "utf-8" }).trim();
+      const result = execSync(whichCommand("codex"), {
+        encoding: "utf-8",
+      }).trim();
       if (result && existsSync(result)) return result;
     } catch {
       // Not in PATH

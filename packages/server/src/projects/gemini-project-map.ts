@@ -1,11 +1,14 @@
 import { createHash } from "node:crypto";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
-import { dirname, join } from "node:path";
+import { dirname, join, sep } from "node:path";
 
 export const GEMINI_TMP_DIR =
   process.env.GEMINI_SESSIONS_DIR ?? join(homedir(), ".gemini", "tmp");
-export const GEMINI_DIR = GEMINI_TMP_DIR.replace(/\/tmp$/, "");
+export const GEMINI_DIR = GEMINI_TMP_DIR.replace(
+  new RegExp(`\\${sep}tmp$`),
+  "",
+);
 export const PROJECT_MAP_FILE = join(GEMINI_TMP_DIR, "project-map.json");
 
 /**

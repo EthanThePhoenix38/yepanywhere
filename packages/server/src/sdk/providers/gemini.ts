@@ -21,6 +21,7 @@ import type {
   GeminiToolUseEvent,
   ModelInfo,
 } from "@yep-anywhere/shared";
+import { whichCommand } from "../cli-detection.js";
 
 /** Standard Gemini models (always available) */
 const GEMINI_MODELS: ModelInfo[] = [
@@ -597,7 +598,9 @@ export class GeminiProvider implements AgentProvider {
 
     // Try to find in PATH using which
     try {
-      const result = execSync("which gemini", { encoding: "utf-8" }).trim();
+      const result = execSync(whichCommand("gemini"), {
+        encoding: "utf-8",
+      }).trim();
       if (result && existsSync(result)) {
         return result;
       }

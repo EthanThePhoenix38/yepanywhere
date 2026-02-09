@@ -16,6 +16,7 @@ import {
 } from "@openai/codex-sdk";
 import type { ModelInfo } from "@yep-anywhere/shared";
 import { getLogger } from "../../logging/logger.js";
+import { whichCommand } from "../cli-detection.js";
 import { MessageQueue } from "../messageQueue.js";
 import type { SDKMessage, UserMessage } from "../types.js";
 import type {
@@ -93,7 +94,7 @@ export class CodexProvider implements AgentProvider {
    */
   private isCodexCliInstalled(): boolean {
     try {
-      execSync("which codex", { stdio: "ignore" });
+      execSync(whichCommand("codex"), { stdio: "ignore" });
       return true;
     } catch {
       return false;

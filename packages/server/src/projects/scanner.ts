@@ -1,5 +1,5 @@
 import { access, readdir, stat } from "node:fs/promises";
-import { basename, join } from "node:path";
+import { basename, join, sep } from "node:path";
 import {
   DEFAULT_PROVIDER,
   type ProviderName,
@@ -13,6 +13,7 @@ import {
   CLAUDE_PROJECTS_DIR,
   decodeProjectId,
   encodeProjectId,
+  isAbsolutePath,
   readCwdFromSessionFile,
 } from "./paths.js";
 
@@ -184,7 +185,7 @@ export class ProjectScanner {
         }
 
         seenPaths.add(metadata.path);
-        const encodedPath = metadata.path.replace(/\//g, "-");
+        const encodedPath = metadata.path.replace(/[/\\:]/g, "-");
         projects.push({
           id: projectId as UrlProjectId,
           path: metadata.path,
@@ -230,7 +231,7 @@ export class ProjectScanner {
     }
 
     // Validate path is absolute
-    if (!projectPath.startsWith("/")) {
+    if (!isAbsolutePath(projectPath)) {
       return null;
     }
 
@@ -268,7 +269,7 @@ export class ProjectScanner {
 
     // Create a virtual project entry
     // The session directory will be created by the SDK when the first session starts
-    const encodedPath = projectPath.replace(/\//g, "-");
+    const encodedPath = projectPath.replace(/[/\\:]/g, "-");
 
     // Determine the session directory based on provider
     let sessionDir: string;
@@ -307,7 +308,9 @@ export class ProjectScanner {
     // Match projects where sessionDir ends with the suffix pattern
     // e.g., suffix "-home-user-project" matches "~/.claude/projects/-home-user-project"
     // e.g., suffix "hostname/-home-user-project" matches "~/.claude/projects/hostname/-home-user-project"
-    return projects.find((p) => p.sessionDir.endsWith(`/${dirSuffix}`)) ?? null;
+    return (
+      projects.find((p) => p.sessionDir.endsWith(`${sep}${dirSuffix}`)) ?? null
+    );
   }
 
   /**

@@ -24,6 +24,7 @@ import type {
 } from "@yep-anywhere/shared";
 import { parseOpenCodeSSEEvent } from "@yep-anywhere/shared";
 import { getLogger } from "../../logging/logger.js";
+import { whichCommand } from "../cli-detection.js";
 import { MessageQueue } from "../messageQueue.js";
 import type { SDKMessage } from "../types.js";
 import type {
@@ -721,7 +722,9 @@ export class OpenCodeProvider implements AgentProvider {
 
     // Try to find in PATH using which
     try {
-      const result = execSync("which opencode", { encoding: "utf-8" }).trim();
+      const result = execSync(whichCommand("opencode"), {
+        encoding: "utf-8",
+      }).trim();
       if (result && existsSync(result)) {
         return result;
       }

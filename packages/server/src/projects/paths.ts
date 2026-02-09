@@ -59,13 +59,20 @@
 
 import { readFile } from "node:fs/promises";
 import { homedir } from "node:os";
-import { basename, join } from "node:path";
+import { basename, isAbsolute, join, sep } from "node:path";
 import type { UrlProjectId } from "@yep-anywhere/shared";
+
+/** Check if a path is absolute (works for both Unix and Windows paths). */
+export function isAbsolutePath(p: string): boolean {
+  return isAbsolute(p);
+}
 
 /** The root directory where Claude stores project sessions */
 export const CLAUDE_DIR =
-  process.env.CLAUDE_SESSIONS_DIR?.replace(/\/projects$/, "") ??
-  join(homedir(), ".claude");
+  process.env.CLAUDE_SESSIONS_DIR?.replace(
+    new RegExp(`\\${sep}projects$`),
+    "",
+  ) ?? join(homedir(), ".claude");
 export const CLAUDE_PROJECTS_DIR =
   process.env.CLAUDE_SESSIONS_DIR ?? join(CLAUDE_DIR, "projects");
 
@@ -185,7 +192,11 @@ export function getFileTypeFromRelativePath(
   | "telemetry"
   | "other" {
   // Session files: projects/<encoded-path>/<session-id>.jsonl
-  if (relativePath.includes("projects/") && relativePath.endsWith(".jsonl")) {
+  if (
+    (relativePath.includes("projects/") ||
+      relativePath.includes("projects\\")) &&
+    relativePath.endsWith(".jsonl")
+  ) {
     const filename = basename(relativePath);
     if (filename.startsWith("agent-")) {
       return "agent-session";
@@ -207,7 +218,10 @@ export function getFileTypeFromRelativePath(
   }
 
   // Telemetry (statsig, analytics)
-  if (relativePath.startsWith("statsig/")) {
+  if (
+    relativePath.startsWith("statsig/") ||
+    relativePath.startsWith("statsig\\")
+  ) {
     return "telemetry";
   }
 

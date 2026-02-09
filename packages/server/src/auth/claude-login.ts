@@ -17,6 +17,7 @@
 import { exec, execSync } from "node:child_process";
 import { promisify } from "node:util";
 import { getLogger } from "../logging/logger.js";
+import { whichCommand } from "../sdk/cli-detection.js";
 
 const execAsync = promisify(exec);
 
@@ -71,7 +72,7 @@ export function createClaudeLoginService(): ClaudeLoginService {
 
   const checkTmuxAvailable = async (): Promise<boolean> => {
     try {
-      execSync("which tmux", {
+      execSync(whichCommand("tmux"), {
         encoding: "utf-8",
         stdio: ["pipe", "pipe", "pipe"],
       });

@@ -21,6 +21,7 @@ import type {
 } from "@agentclientprotocol/sdk";
 import type { ModelInfo } from "@yep-anywhere/shared";
 import { getLogger } from "../../logging/logger.js";
+import { whichCommand } from "../cli-detection.js";
 import { MessageQueue } from "../messageQueue.js";
 import type {
   CanUseTool,
@@ -910,7 +911,9 @@ export class GeminiACPProvider implements AgentProvider {
 
     // Try to find in PATH using which
     try {
-      const result = execSync("which gemini", { encoding: "utf-8" }).trim();
+      const result = execSync(whichCommand("gemini"), {
+        encoding: "utf-8",
+      }).trim();
       if (result && existsSync(result)) {
         return result;
       }

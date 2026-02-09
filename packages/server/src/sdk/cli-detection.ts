@@ -2,6 +2,16 @@ import { execSync } from "node:child_process";
 import { existsSync } from "node:fs";
 import * as os from "node:os";
 
+const isWindows = os.platform() === "win32";
+
+/**
+ * Returns the platform-appropriate command to locate an executable in PATH.
+ * Uses `where` on Windows, `which` on Unix.
+ */
+export function whichCommand(name: string): string {
+  return isWindows ? `where ${name}` : `which ${name}`;
+}
+
 /**
  * Information about the Claude CLI installation.
  */
@@ -54,12 +64,16 @@ export interface CodexCliInfo {
  * @returns Information about the CLI installation
  */
 export function detectCodexCli(): CodexCliInfo {
+  const whichCmd = whichCommand("codex");
+
   // Try to find codex in PATH
   try {
-    const codexPath = execSync("which codex", {
+    const codexPath = execSync(whichCmd, {
       encoding: "utf-8",
       stdio: ["pipe", "pipe", "pipe"],
-    }).trim();
+    })
+      .split("\n")[0]
+      ?.trim();
 
     if (codexPath) {
       const version = getCodexVersion(codexPath);
@@ -70,12 +84,21 @@ export function detectCodexCli(): CodexCliInfo {
   }
 
   // Check common installation locations
-  const commonPaths = [
-    `${os.homedir()}/.local/bin/codex`,
-    "/usr/local/bin/codex",
-    `${os.homedir()}/.cargo/bin/codex`,
-    `${os.homedir()}/.codex/bin/codex`,
-  ];
+  const home = os.homedir();
+  const ext = isWindows ? ".exe" : "";
+  const sep = isWindows ? "\\" : "/";
+  const commonPaths = isWindows
+    ? [
+        `${home}${sep}.cargo${sep}bin${sep}codex${ext}`,
+        `${home}${sep}.codex${sep}bin${sep}codex${ext}`,
+        `${home}${sep}AppData${sep}Local${sep}bin${sep}codex${ext}`,
+      ]
+    : [
+        `${home}/.local/bin/codex`,
+        "/usr/local/bin/codex",
+        `${home}/.cargo/bin/codex`,
+        `${home}/.codex/bin/codex`,
+      ];
 
   for (const path of commonPaths) {
     if (existsSync(path)) {

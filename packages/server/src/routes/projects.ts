@@ -1,3 +1,4 @@
+import { homedir } from "node:os";
 import { isUrlProjectId, toUrlProjectId } from "@yep-anywhere/shared";
 import { Hono } from "hono";
 import type { SessionIndexService } from "../indexes/index.js";
@@ -8,6 +9,7 @@ import type {
 import type { NotificationService } from "../notifications/index.js";
 import type { CodexSessionScanner } from "../projects/codex-scanner.js";
 import type { GeminiSessionScanner } from "../projects/gemini-scanner.js";
+import { isAbsolutePath } from "../projects/paths.js";
 import type { ProjectScanner } from "../projects/scanner.js";
 import { CodexSessionReader } from "../sessions/codex-reader.js";
 import { GeminiSessionReader } from "../sessions/gemini-reader.js";
@@ -280,14 +282,15 @@ export function createProjectsRoutes(deps: ProjectsDeps): Hono {
     // Normalize path (remove trailing slashes, expand ~)
     let normalizedPath = body.path.trim();
     if (normalizedPath.startsWith("~")) {
-      normalizedPath = normalizedPath.replace("~", process.env.HOME || "");
+      normalizedPath = normalizedPath.replace("~", homedir());
     }
-    if (normalizedPath.endsWith("/") && normalizedPath.length > 1) {
+    // Remove trailing slash/backslash
+    if (normalizedPath.length > 1 && /[/\\]$/.test(normalizedPath)) {
       normalizedPath = normalizedPath.slice(0, -1);
     }
 
     // Validate path is absolute
-    if (!normalizedPath.startsWith("/")) {
+    if (!isAbsolutePath(normalizedPath)) {
       return c.json({ error: "Path must be absolute" }, 400);
     }
 

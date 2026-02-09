@@ -1,6 +1,6 @@
 import type { Stats } from "node:fs";
 import { readFile, stat } from "node:fs/promises";
-import { extname, normalize, resolve } from "node:path";
+import { extname, normalize, resolve, sep } from "node:path";
 import {
   type FileContentResponse,
   type FileMetadata,
@@ -299,7 +299,7 @@ function resolveFilePath(
   // Verify the resolved path is still within project root
   const normalizedRoot = resolve(projectRoot);
   if (
-    !resolved.startsWith(`${normalizedRoot}/`) &&
+    !resolved.startsWith(`${normalizedRoot}${sep}`) &&
     resolved !== normalizedRoot
   ) {
     return null;

@@ -48,8 +48,8 @@ export interface SyncResult {
  * For example: /home/kgraehl/code/project → -home-kgraehl-code-project
  */
 export function getProjectDirFromCwd(cwd: string): string {
-  // Replace all slashes with dashes (leading slash becomes leading dash)
-  return cwd.replace(/\//g, "-");
+  // Replace all slashes (and colons on Windows, e.g. C:) with dashes
+  return cwd.replace(/[/\\:]/g, "-");
 }
 
 /**

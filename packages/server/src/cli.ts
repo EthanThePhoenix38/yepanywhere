@@ -19,8 +19,10 @@
 
 import { execSync } from "node:child_process";
 import * as fs from "node:fs";
+import * as os from "node:os";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
+import { whichCommand } from "./sdk/cli-detection.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -50,7 +52,7 @@ function checkNodeVersion(): void {
  */
 function checkClaudeCli(): void {
   try {
-    execSync("which claude", {
+    execSync(whichCommand("claude"), {
       encoding: "utf-8",
       stdio: ["pipe", "pipe", "pipe"],
     });
@@ -59,7 +61,11 @@ function checkClaudeCli(): void {
     console.warn(
       "Claude Code is the primary supported agent. Install it to use Claude sessions:",
     );
-    console.warn("  curl -fsSL https://claude.ai/install.sh | bash");
+    console.warn(
+      os.platform() === "win32"
+        ? "  irm https://claude.ai/install.ps1 | iex"
+        : "  curl -fsSL https://claude.ai/install.sh | bash",
+    );
     console.warn("");
   }
 }

@@ -12,14 +12,17 @@
 
 import { readFile, readdir, stat } from "node:fs/promises";
 import { homedir } from "node:os";
-import { basename, join } from "node:path";
+import { basename, join, sep } from "node:path";
 import type { UrlProjectId } from "@yep-anywhere/shared";
 import type { Project } from "../supervisor/types.js";
 import { encodeProjectId } from "./paths.js";
 
 export const CODEX_SESSIONS_DIR =
   process.env.CODEX_SESSIONS_DIR ?? join(homedir(), ".codex", "sessions");
-export const CODEX_DIR = CODEX_SESSIONS_DIR.replace(/\/sessions$/, "");
+export const CODEX_DIR = CODEX_SESSIONS_DIR.replace(
+  new RegExp(`\\${sep}sessions$`),
+  "",
+);
 
 interface CodexSessionMeta {
   id: string;

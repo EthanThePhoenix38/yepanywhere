@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.3] - 2025-02-09
+
+### Fixed
+- Windows support: replace Unix `which` with `where` for CLI detection
+- Windows support: accept Windows absolute paths (e.g. `C:\Users\...`) in project validation
+- Windows support: fix path traversal guard and project directory encoding for backslash paths
+- Windows support: use `os.homedir()` instead of `process.env.HOME` for tilde expansion
+- Windows support: fix path separator handling in codex/gemini directory resolution
+- Windows support: show PowerShell install command instead of curl/bash
+
 ## [0.2.2] - 2025-02-03
 
 ### Added
