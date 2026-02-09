@@ -15,7 +15,9 @@ export {
   WebSocketConnection,
   getWebSocketConnection,
 } from "./WebSocketConnection";
-export { SecureConnection } from "./SecureConnection";
+// SecureConnection is NOT re-exported here to avoid eagerly loading tssrp6a,
+// which crashes in non-secure contexts (HTTP on LAN IPs) because crypto.subtle
+// is unavailable. Import directly from "./SecureConnection" where needed.
 
 import type { Connection } from "./types";
 
