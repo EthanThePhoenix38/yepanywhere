@@ -79,7 +79,8 @@ export function Sidebar({
 
   // Global inbox count
   const inboxCount = useNeedsAttentionBadge();
-  const { recentProjects } = useRecentProjects();
+  const { recentProjects, projects } = useRecentProjects();
+  const newSessionProject = recentProjects[0] ?? projects[0];
 
   const sidebarRef = useRef<HTMLElement>(null);
   const touchStartX = useRef<number | null>(null);
@@ -319,9 +320,9 @@ export function Sidebar({
 
         <div className="sidebar-actions">
           {/* New Session: link to most recent project's new session page */}
-          {recentProjects[0] && (
+          {newSessionProject && (
             <SidebarNavItem
-              to={`/new-session?projectId=${encodeURIComponent(recentProjects[0].id)}`}
+              to={`/new-session?projectId=${encodeURIComponent(newSessionProject.id)}`}
               icon={SidebarIcons.newSession}
               label="New Session"
               onClick={onNavigate}

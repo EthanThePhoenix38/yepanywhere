@@ -27,6 +27,8 @@ export function useRecentProjects() {
   return {
     /** Recently active projects (most recent first) */
     recentProjects,
+    /** All projects (for fallback when recentProjects is empty) */
+    projects,
     /** True while loading project data */
     loading,
   };

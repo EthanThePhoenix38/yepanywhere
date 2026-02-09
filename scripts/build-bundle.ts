@@ -142,6 +142,45 @@ step("Copy server dist to staging", () => {
   log("  Server dist copied to staging");
 });
 
+// Rewrite @yep-anywhere/shared imports to relative paths into bundled/
+// This eliminates the need for a postinstall symlink, which fails with some
+// package managers (Volta) and on platforms with limited symlink support (WSL).
+step("Rewrite @yep-anywhere/shared imports", () => {
+  const stagingDist = path.join(STAGING_DIR, "dist");
+  const sharedEntry = path.join(
+    STAGING_DIR,
+    "bundled/@yep-anywhere/shared/dist/index.js",
+  );
+
+  function rewriteImports(dir: string): number {
+    let count = 0;
+    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+      const fullPath = path.join(dir, entry.name);
+      if (entry.isDirectory()) {
+        count += rewriteImports(fullPath);
+      } else if (entry.name.endsWith(".js")) {
+        const content = fs.readFileSync(fullPath, "utf-8");
+        if (!content.includes("@yep-anywhere/shared")) continue;
+
+        let relPath = path.relative(path.dirname(fullPath), sharedEntry);
+        // Ensure it starts with ./ for Node.js ESM resolution
+        if (!relPath.startsWith(".")) relPath = `./${relPath}`;
+
+        const rewritten = content.replace(
+          /(?<=(from\s+|import\(\s*))(["'])@yep-anywhere\/shared\2/g,
+          `$2${relPath}$2`,
+        );
+        fs.writeFileSync(fullPath, rewritten);
+        count++;
+      }
+    }
+    return count;
+  }
+
+  const rewritten = rewriteImports(stagingDist);
+  log(`  Rewrote imports in ${rewritten} files`);
+});
+
 // Copy shared dist into staging (for @yep-anywhere/shared imports)
 // We put it in 'bundled/' instead of 'node_modules/' because npm ignores node_modules
 step("Bundle shared into staging", () => {
@@ -199,22 +238,6 @@ step("Bundle client into staging", () => {
   log("  Client assets bundled into staging");
 });
 
-// Copy postinstall script to staging
-step("Copy postinstall script to staging", () => {
-  const srcScript = path.join(SERVER_PACKAGE, "scripts/postinstall.js");
-  const destScriptsDir = path.join(STAGING_DIR, "scripts");
-  const destScript = path.join(destScriptsDir, "postinstall.js");
-
-  log(
-    `Copying postinstall script to ${path.relative(ROOT_DIR, destScript)}...`,
-  );
-
-  fs.mkdirSync(destScriptsDir, { recursive: true });
-  fs.copyFileSync(srcScript, destScript);
-
-  log("  Postinstall script copied to staging");
-});
-
 // Generate package.json for publishing (in staging, not modifying original)
 step("Generate package.json for npm", () => {
   log("Generating package.json for npm publishing...");
@@ -237,10 +260,7 @@ step("Generate package.json for npm", () => {
     exports: {
       ".": "./dist/index.js",
     },
-    files: ["dist", "client-dist", "bundled", "scripts", "README.md"],
-    scripts: {
-      postinstall: "node scripts/postinstall.js",
-    },
+    files: ["dist", "client-dist", "bundled", "README.md"],
     // Copy dependencies from source, excluding workspace deps
     dependencies: Object.fromEntries(
       Object.entries(sourcePackageJson.dependencies || {}).filter(

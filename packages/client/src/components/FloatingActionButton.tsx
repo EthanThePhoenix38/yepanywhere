@@ -8,6 +8,7 @@ import {
 import { useLocation, useNavigate } from "react-router-dom";
 import { useDraftPersistence } from "../hooks/useDraftPersistence";
 import { useFabVisibility } from "../hooks/useFabVisibility";
+import { useProjects } from "../hooks/useProjects";
 import {
   getRecentProjectId,
   setRecentProjectId,
@@ -50,6 +51,7 @@ export function FloatingActionButton() {
   const [message, setMessage, draftControls] =
     useDraftPersistence(FAB_DRAFT_KEY);
   const [interimTranscript, setInterimTranscript] = useState("");
+  const { projects } = useProjects();
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
 
@@ -91,8 +93,9 @@ export function FloatingActionButton() {
     const trimmed = message.trim();
     if (!trimmed) return;
 
-    // Get project to navigate to
-    const targetProjectId = projectIdFromUrl ?? getRecentProjectId();
+    // Get project to navigate to (prefer recent, fall back to any project)
+    const targetProjectId =
+      projectIdFromUrl ?? getRecentProjectId() ?? projects[0]?.id;
     if (!targetProjectId) {
       // No project context - can't proceed
       return;
@@ -107,7 +110,7 @@ export function FloatingActionButton() {
     navigate(
       `${basePath}/new-session?projectId=${encodeURIComponent(targetProjectId)}`,
     );
-  }, [message, projectIdFromUrl, navigate, draftControls, basePath]);
+  }, [message, projectIdFromUrl, navigate, draftControls, basePath, projects]);
 
   const handleKeyDown = useCallback(
     (e: KeyboardEvent<HTMLTextAreaElement>) => {
@@ -123,15 +126,16 @@ export function FloatingActionButton() {
   );
 
   const handleButtonClick = useCallback(() => {
-    // Check if we have a valid project target
-    const targetProjectId = projectIdFromUrl ?? getRecentProjectId();
+    // Check if we have a valid project target (prefer recent, fall back to any)
+    const targetProjectId =
+      projectIdFromUrl ?? getRecentProjectId() ?? projects[0]?.id;
     if (!targetProjectId) {
       // No project context - navigate to projects page instead
       navigate(`${basePath}/projects`);
       return;
     }
     setIsExpanded(true);
-  }, [projectIdFromUrl, navigate, basePath]);
+  }, [projectIdFromUrl, navigate, basePath, projects]);
 
   // Voice input handlers
   const handleVoiceTranscript = useCallback(

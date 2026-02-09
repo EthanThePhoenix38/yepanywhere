@@ -1,4 +1,5 @@
 import { access, readdir, stat } from "node:fs/promises";
+import { homedir } from "node:os";
 import { basename, join, sep } from "node:path";
 import {
   DEFAULT_PROVIDER,
@@ -200,6 +201,24 @@ export class ProjectScanner {
           provider: "claude",
         });
       }
+    }
+
+    // Fallback: if no projects were found from any source, include the user's
+    // home directory so sessions can always be created even if detection is broken
+    if (projects.length === 0) {
+      const home = homedir();
+      const encodedPath = home.replace(/[/\\:]/g, "-");
+      projects.push({
+        id: encodeProjectId(home),
+        path: home,
+        name: basename(home) || "Home",
+        sessionCount: 0,
+        sessionDir: join(this.projectsDir, encodedPath),
+        activeOwnedCount: 0,
+        activeExternalCount: 0,
+        lastActivity: null,
+        provider: "claude",
+      });
     }
 
     return projects;
