@@ -958,13 +958,17 @@ describe("Secure WebSocket Transport E2E", () => {
       ws: WebSocket,
       sessionKey: Uint8Array,
       uploadId: string,
-      timeoutMs = 5000,
+      timeoutMs = 10000,
     ): Promise<YepMessage[]> {
-      return new Promise((resolve) => {
+      return new Promise((resolve, reject) => {
         const messages: YepMessage[] = [];
         const timeout = setTimeout(() => {
           ws.off("message", handler);
-          resolve(messages);
+          reject(
+            new Error(
+              `Timed out waiting for upload_complete after ${timeoutMs}ms. Got ${messages.length} messages: [${messages.map((m) => m.type).join(", ")}]`,
+            ),
+          );
         }, timeoutMs);
 
         const handler = (data: WebSocket.RawData) => {
