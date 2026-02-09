@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.5] - 2025-02-09
+
+### Fixed
+- Windows support: fix project directory detection for Windows drive-letter encoded paths (e.g. `c--Users-kaa-project`)
+- Windows support: fix session index path encoding for backslash separators
+
 ## [0.2.4] - 2025-02-09
 
 ### Fixed

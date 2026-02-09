@@ -83,8 +83,10 @@ export class ProjectScanner {
     for (const dir of dirs) {
       const dirPath = join(this.projectsDir, dir);
 
-      // Check if this is a project directory (starts with -)
-      if (dir.startsWith("-")) {
+      // Check if this is a project directory
+      // On Unix/macOS: /home/user/project → -home-user-project (starts with -)
+      // On Windows: C:\Users\kaa\project → c--Users-kaa-project (drive letter + --)
+      if (dir.startsWith("-") || /^[a-zA-Z]--/.test(dir)) {
         const projectPath = await this.getProjectPathFromSessions(dirPath);
         if (projectPath && !seenPaths.has(projectPath)) {
           seenPaths.add(projectPath);

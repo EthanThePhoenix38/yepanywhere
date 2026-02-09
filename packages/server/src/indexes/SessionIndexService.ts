@@ -109,7 +109,7 @@ export class SessionIndexService implements ISessionIndexService {
    */
   getIndexPath(sessionDir: string): string {
     const relative = path.relative(this.projectsDir, sessionDir);
-    const encoded = relative.replace(/\//g, "%2F");
+    const encoded = relative.replace(/[/\\]/g, "%2F");
     return path.join(this.dataDir, `${encoded}.json`);
   }
 
