@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.6] - 2025-02-09
+
+### Fixed
+- Fix page crash on LAN IPs due to eager tssrp6a loading
+- Fall back to any project for new sessions; replace postinstall symlink with import rewriting
+
 ## [0.2.5] - 2025-02-09
 
 ### Fixed
