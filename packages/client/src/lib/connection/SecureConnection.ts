@@ -5,21 +5,13 @@
  * an encrypted WebSocket channel. Uses:
  * - SRP-6a for zero-knowledge password authentication
  * - NaCl secretbox (XSalsa20-Poly1305) for message encryption
+ *
+ * Protocol logic (request correlation, subscriptions, uploads) is delegated
+ * to RelayProtocol. This class owns transport (encrypt/decrypt) and SRP auth.
  */
 import type {
   ClientCapabilities,
-  EncryptedEnvelope,
   OriginMetadata,
-  RelayEvent,
-  RelayRequest,
-  RelayResponse,
-  RelaySubscribe,
-  RelayUnsubscribe,
-  RelayUploadComplete,
-  RelayUploadEnd,
-  RelayUploadError,
-  RelayUploadProgress,
-  RelayUploadStart,
   RemoteClientMessage,
   SrpClientHello,
   SrpClientProof,
@@ -43,6 +35,7 @@ import {
 } from "@yep-anywhere/shared";
 import { getRelayDebugEnabled } from "../../hooks/useDeveloperMode";
 import { getOrCreateBrowserProfileId } from "../storageKeys";
+import { RelayProtocol } from "./RelayProtocol";
 import {
   decrypt,
   decryptBinaryEnvelopeWithDecompression,
@@ -60,16 +53,6 @@ import {
   type UploadOptions,
   WebSocketCloseError,
 } from "./types";
-
-/**
- * Generate a unique ID for request correlation.
- */
-function generateId(): string {
-  return crypto.randomUUID();
-}
-
-/** Default chunk size for file uploads (64KB) */
-const DEFAULT_CHUNK_SIZE = 64 * 1024;
 
 /** Connection authentication state */
 type ConnectionState =
@@ -90,13 +73,6 @@ export interface StoredSession {
   sessionKey: string;
 }
 
-/** Handlers for pending uploads */
-interface PendingUpload {
-  resolve: (file: UploadedFile) => void;
-  reject: (error: Error) => void;
-  onProgress?: (bytesUploaded: number) => void;
-}
-
 /**
  * Secure connection to yepanywhere server using SRP + NaCl encryption.
  *
@@ -114,20 +90,8 @@ export class SecureConnection implements Connection {
   private sessionKey: Uint8Array | null = null;
   private sessionId: string | null = null;
   private connectionState: ConnectionState = "disconnected";
-  private pendingRequests = new Map<
-    string,
-    {
-      resolve: (response: RelayResponse) => void;
-      reject: (error: Error) => void;
-      timeout: ReturnType<typeof setTimeout>;
-      startTime: number;
-      method: string;
-      path: string;
-    }
-  >();
-  private pendingUploads = new Map<string, PendingUpload>();
-  private subscriptions = new Map<string, StreamHandlers>();
   private connectionPromise: Promise<void> | null = null;
+  private protocol: RelayProtocol;
 
   // Credentials for authentication
   private username: string;
@@ -152,12 +116,6 @@ export class SecureConnection implements Connection {
 
   /**
    * Create a new secure connection with password authentication.
-   *
-   * @param wsUrl - WebSocket URL to connect to
-   * @param username - Username for SRP authentication
-   * @param password - Password for SRP authentication
-   * @param onSessionEstablished - Optional callback when session is established (for storing)
-   * @param onDisconnect - Optional callback when connection is lost unexpectedly
    */
   constructor(
     wsUrl: string,
@@ -171,16 +129,40 @@ export class SecureConnection implements Connection {
     this.password = password;
     this.onSessionEstablished = onSessionEstablished;
     this.onDisconnect = onDisconnect;
+
+    this.protocol = new RelayProtocol(
+      {
+        sendMessage: (msg) => this.send(msg),
+        sendUploadChunk: (id, offset, chunk) => {
+          const payload = encodeUploadChunkPayload(id, offset, chunk);
+          if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
+            throw new Error("WebSocket not connected");
+          }
+          if (!this.sessionKey) {
+            throw new Error("Not authenticated");
+          }
+          const envelope = encryptBytesToBinaryEnvelope(
+            payload,
+            BinaryFormat.BINARY_UPLOAD,
+            this.sessionKey,
+          );
+          this.ws.send(envelope);
+        },
+        ensureConnected: () => this.ensureConnected(),
+        isConnected: () =>
+          this.connectionState === "authenticated" &&
+          this.ws?.readyState === WebSocket.OPEN,
+      },
+      {
+        debugEnabled: () => getRelayDebugEnabled(),
+        logPrefix: "[SecureConnection]",
+      },
+    );
   }
 
   /**
    * Create a secure connection from a stored session.
    * Will attempt to resume the session, falling back to full SRP if the session is invalid.
-   *
-   * @param storedSession - Previously stored session data
-   * @param password - Password (required for fallback to full SRP)
-   * @param onSessionEstablished - Optional callback when a new session is established
-   * @param onDisconnect - Optional callback when connection is lost unexpectedly
    */
   static fromStoredSession(
     storedSession: StoredSession,
@@ -203,17 +185,12 @@ export class SecureConnection implements Connection {
    * Create a secure connection for resume-only mode (no password fallback).
    * Will attempt to resume the session and fail if the session is invalid.
    * Use this for automatic reconnection on page load.
-   *
-   * @param storedSession - Previously stored session data
-   * @param onSessionEstablished - Optional callback when session is refreshed
-   * @param onDisconnect - Optional callback when connection is lost unexpectedly
    */
   static forResumeOnly(
     storedSession: StoredSession,
     onSessionEstablished?: (session: StoredSession) => void,
     onDisconnect?: (error: Error) => void,
   ): SecureConnection {
-    // Create connection with empty password (will fail if fallback is attempted)
     const conn = new SecureConnection(
       storedSession.wsUrl,
       storedSession.username,
@@ -230,13 +207,6 @@ export class SecureConnection implements Connection {
    * Create a secure connection for resume-only mode using an existing WebSocket.
    * Used for relay connections where we need to reconnect through the relay first,
    * then resume the SRP session on the paired socket.
-   *
-   * @param ws - Pre-connected WebSocket (already paired through relay)
-   * @param storedSession - Previously stored session data
-   * @param onSessionEstablished - Optional callback when session is refreshed
-   * @param relayConfig - Optional relay config for auto-reconnect on connection drop
-   * @param onDisconnect - Optional callback when connection is lost unexpectedly
-   * @returns Promise that resolves to SecureConnection after session resume completes
    */
   static async forResumeOnlyWithSocket(
     ws: WebSocket,
@@ -285,7 +255,6 @@ export class SecureConnection implements Connection {
       console.log("[SecureConnection] Resuming session on existing socket");
       this.connectionState = "connecting";
 
-      // Create auth handlers
       let authResolveHandler: () => void = () => {};
       let authRejectHandler: (err: Error) => void = () => {};
 
@@ -301,20 +270,7 @@ export class SecureConnection implements Connection {
       };
 
       ws.onclose = (event) => {
-        console.log("[SecureConnection] Closed:", event.code, event.reason);
-        const wasAuthenticated = this.connectionState === "authenticated";
-        this.ws = null;
-        this.sessionKey = null;
-        this.srpSession = null;
-
-        const closeError = new WebSocketCloseError(event.code, event.reason);
-        if (!wasAuthenticated) {
-          authRejectHandler(closeError);
-        } else {
-          // Connection dropped after authentication - notify via callback
-          this.connectionState = "disconnected";
-          this.onDisconnect?.(closeError);
-        }
+        this.handleSocketClose(event, authRejectHandler);
       };
 
       ws.onmessage = (event) => {
@@ -333,7 +289,6 @@ export class SecureConnection implements Connection {
       this.connectionState = "srp_resume_sent";
       console.log("[SecureConnection] SRP resume sent");
 
-      // Wait for auth to complete
       authPromise.then(resolve).catch(reject);
     });
   }
@@ -365,7 +320,6 @@ export class SecureConnection implements Connection {
     this.srpSession = new SrpClientSession();
     await this.srpSession.generateHello(this.username, this.password);
 
-    // Collect connection metadata for session tracking
     const browserProfileId = getOrCreateBrowserProfileId();
     const originMetadata: OriginMetadata = {
       origin: window.location.origin,
@@ -377,7 +331,6 @@ export class SecureConnection implements Connection {
       userAgent: navigator.userAgent,
     };
 
-    // Send hello with connection metadata
     const hello: SrpClientHello = {
       type: "srp_hello",
       identity: this.username,
@@ -401,7 +354,6 @@ export class SecureConnection implements Connection {
       const msg = JSON.parse(data);
 
       if (isSrpSessionResumed(msg)) {
-        // Session resumed successfully - restore session key from stored session
         console.log("[SecureConnection] Session resumed successfully");
         if (!this.storedSession) {
           reject(new Error("No stored session for resumption"));
@@ -414,20 +366,16 @@ export class SecureConnection implements Connection {
         this.sessionId = msg.sessionId;
         this.connectionState = "authenticated";
 
-        // Switch to encrypted message handler now that we're authenticated
         if (this.ws) {
           this.ws.onmessage = (event) => this.handleMessage(event.data);
         }
 
-        // Send client capabilities (Phase 3) - first encrypted message after auth
         this.sendCapabilities();
-
         resolve();
         return;
       }
 
       if (isSrpSessionInvalid(msg)) {
-        // If no password available (resume-only mode), fail
         if (!this.password) {
           console.log(
             `[SecureConnection] Session resume failed: ${msg.reason} (no password for fallback)`,
@@ -441,7 +389,6 @@ export class SecureConnection implements Connection {
         console.log(
           `[SecureConnection] Session resume failed: ${msg.reason}, falling back to SRP`,
         );
-        // Clear stored session and fall back to full SRP
         this.storedSession = null;
         await this.startFullSrpHandshake(reject);
         return;
@@ -459,7 +406,6 @@ export class SecureConnection implements Connection {
       }
 
       console.warn("[SecureConnection] Unexpected message during resume:", msg);
-      // Reject on unexpected message to prevent auth from hanging
       this.connectionState = "failed";
       reject(
         new Error(
@@ -479,7 +425,6 @@ export class SecureConnection implements Connection {
    * Ensure connection is authenticated, reconnecting if necessary.
    */
   private async ensureConnected(): Promise<void> {
-    // If already authenticated, return immediately
     if (
       this.ws?.readyState === WebSocket.OPEN &&
       this.connectionState === "authenticated"
@@ -487,12 +432,10 @@ export class SecureConnection implements Connection {
       return;
     }
 
-    // If connection is in progress, wait for it
     if (this.connectionPromise) {
       return this.connectionPromise;
     }
 
-    // Start new connection
     this.connectionPromise = this.connectAndAuthenticate();
     try {
       await this.connectionPromise;
@@ -502,13 +445,40 @@ export class SecureConnection implements Connection {
   }
 
   /**
+   * Handle WebSocket close events. Extracted to avoid duplication across
+   * connectAndAuthenticate, resumeOnExistingSocket, and authenticateOnExistingSocket.
+   */
+  private handleSocketClose(
+    event: CloseEvent,
+    authRejectHandler?: (err: Error) => void,
+  ): void {
+    console.log("[SecureConnection] Closed:", event.code, event.reason);
+    const wasAuthenticated = this.connectionState === "authenticated";
+    this.ws = null;
+    this.sessionKey = null;
+    this.srpSession = null;
+
+    const closeError = new WebSocketCloseError(event.code, event.reason);
+
+    if (!wasAuthenticated) {
+      this.connectionState = "failed";
+      authRejectHandler?.(closeError);
+    } else {
+      this.connectionState = "disconnected";
+      this.onDisconnect?.(closeError);
+    }
+
+    this.protocol.rejectAllPending(closeError);
+    this.protocol.notifySubscriptionsClosed(closeError);
+  }
+
+  /**
    * Connect to the WebSocket server and perform SRP authentication.
    */
   private connectAndAuthenticate(): Promise<void> {
     return new Promise((resolve, reject) => {
       // Relay connections need to go through the relay again
       if (this.isRelayConnection) {
-        // If we have relay config and a stored session, attempt auto-reconnect
         if (this.relayUrl && this.relayUsername && this.storedSession) {
           console.log(
             "[SecureConnection] Relay connection dropped, attempting auto-reconnect",
@@ -528,7 +498,6 @@ export class SecureConnection implements Connection {
             });
           return;
         }
-        // No relay config or session - can't auto-reconnect
         console.log(
           "[SecureConnection] Cannot reconnect relay connection (missing config or session)",
         );
@@ -544,11 +513,8 @@ export class SecureConnection implements Connection {
       this.connectionState = "connecting";
 
       const ws = new WebSocket(this.wsUrl);
-      // Set binaryType to receive ArrayBuffer instead of Blob for binary frames
       ws.binaryType = "arraybuffer";
 
-      // Create auth handlers that will be set by the Promise executor
-      // These are guaranteed to be set before any callbacks fire
       let authResolveHandler: () => void = () => {};
       let authRejectHandler: (err: Error) => void = () => {};
 
@@ -562,7 +528,6 @@ export class SecureConnection implements Connection {
         this.ws = ws;
 
         try {
-          // Try session resumption first if we have a stored session
           if (this.storedSession) {
             console.log("[SecureConnection] Attempting session resumption");
             const proof = this.generateResumeProof(
@@ -580,7 +545,6 @@ export class SecureConnection implements Connection {
             return;
           }
 
-          // No stored session, do full SRP handshake
           await this.startFullSrpHandshake(authRejectHandler);
         } catch (err) {
           console.error("[SecureConnection] Connection error:", err);
@@ -597,47 +561,10 @@ export class SecureConnection implements Connection {
       };
 
       ws.onclose = (event) => {
-        console.log("[SecureConnection] Closed:", event.code, event.reason);
-        const wasAuthenticated = this.connectionState === "authenticated";
-        this.ws = null;
-        this.sessionKey = null;
-        this.srpSession = null;
-
-        // Create error with close code and reason
-        const closeError = new WebSocketCloseError(event.code, event.reason);
-
-        if (!wasAuthenticated) {
-          this.connectionState = "failed";
-          authRejectHandler(closeError);
-        } else {
-          // Connection dropped after authentication - notify via callback
-          this.connectionState = "disconnected";
-          this.onDisconnect?.(closeError);
-        }
-
-        // Reject any pending requests
-        for (const [id, pending] of this.pendingRequests) {
-          clearTimeout(pending.timeout);
-          pending.reject(closeError);
-          this.pendingRequests.delete(id);
-        }
-
-        // Reject any pending uploads
-        for (const [id, pending] of this.pendingUploads) {
-          pending.reject(closeError);
-          this.pendingUploads.delete(id);
-        }
-
-        // Notify all subscriptions of closure
-        for (const handlers of this.subscriptions.values()) {
-          handlers.onError?.(closeError);
-          handlers.onClose?.();
-        }
-        this.subscriptions.clear();
+        this.handleSocketClose(event, authRejectHandler);
       };
 
       ws.onmessage = async (event) => {
-        // During SRP handshake, handle SRP messages
         if (this.connectionState === "srp_resume_sent") {
           await this.handleSrpResumeResponse(
             event.data,
@@ -661,7 +588,6 @@ export class SecureConnection implements Connection {
         }
       };
 
-      // Handle initial connection failure
       const timeout = setTimeout(() => {
         if (this.connectionState !== "authenticated") {
           ws.close();
@@ -670,7 +596,6 @@ export class SecureConnection implements Connection {
         }
       }, 30000);
 
-      // Wait for auth to complete
       authPromise
         .then(() => {
           clearTimeout(timeout);
@@ -685,7 +610,6 @@ export class SecureConnection implements Connection {
 
   /**
    * Reconnect through relay server and resume SRP session.
-   * Called when a relay connection drops and we have stored relay config.
    */
   private async reconnectThroughRelay(): Promise<void> {
     if (!this.relayUrl || !this.relayUsername || !this.storedSession) {
@@ -695,7 +619,6 @@ export class SecureConnection implements Connection {
     console.log("[SecureConnection] Connecting to relay:", this.relayUrl);
     this.connectionState = "connecting";
 
-    // 1. Connect to relay server
     const ws = new WebSocket(this.relayUrl);
     ws.binaryType = "arraybuffer";
 
@@ -718,12 +641,10 @@ export class SecureConnection implements Connection {
 
     console.log("[SecureConnection] Relay connected, sending client_connect");
 
-    // 2. Send client_connect message
     ws.send(
       JSON.stringify({ type: "client_connect", username: this.relayUsername }),
     );
 
-    // 3. Wait for client_connected or error
     await new Promise<void>((resolve, reject) => {
       const timeout = setTimeout(() => {
         ws.close();
@@ -741,7 +662,6 @@ export class SecureConnection implements Connection {
             ws.close();
             reject(new Error(msg.reason));
           } else {
-            // Unexpected message - treat as success (server might send first)
             resolve();
           }
         } catch {
@@ -761,10 +681,7 @@ export class SecureConnection implements Connection {
       };
     });
 
-    // 4. Resume SRP session on the new socket
     console.log("[SecureConnection] Resuming SRP session on new relay socket");
-    // Clear relay handshake handlers before transitioning to SRP phase
-    // to prevent messages from being routed to the wrong handler
     ws.onmessage = null;
     ws.onclose = null;
     ws.onerror = null;
@@ -813,10 +730,8 @@ export class SecureConnection implements Connection {
 
       console.log("[SecureConnection] Received SRP challenge");
 
-      // Process challenge and generate proof
       const { A, M1 } = await this.srpSession.processChallenge(msg.salt, msg.B);
 
-      // Send proof with A
       const proof: SrpClientProof = {
         type: "srp_proof",
         A,
@@ -874,7 +789,6 @@ export class SecureConnection implements Connection {
 
       console.log("[SecureConnection] Received SRP verify");
 
-      // Verify server and derive session key
       const valid = await this.srpSession.verifyServer(msg.M2);
       if (!valid) {
         console.error("[SecureConnection] Server verification failed");
@@ -884,7 +798,6 @@ export class SecureConnection implements Connection {
         return;
       }
 
-      // Derive secretbox key from SRP session key
       const rawKey = this.srpSession.getSessionKey();
       if (!rawKey) {
         reject(new Error("No session key"));
@@ -894,25 +807,21 @@ export class SecureConnection implements Connection {
       this.sessionId = msg.sessionId ?? null;
       this.connectionState = "authenticated";
 
-      // Store session for reconnection and notify caller
       if (this.sessionKey && this.sessionId) {
         const sessionKeyBase64 = btoa(
           Array.from(this.sessionKey)
             .map((b) => String.fromCharCode(b))
             .join(""),
         );
-        // Update internal storedSession for reconnection support
         this.storedSession = {
           wsUrl: this.wsUrl,
           username: this.username,
           sessionId: this.sessionId,
           sessionKey: sessionKeyBase64,
         };
-        // Notify caller for external storage (e.g., localStorage)
         this.onSessionEstablished?.(this.storedSession);
       }
 
-      // Send client capabilities (Phase 3) - first encrypted message after auth
       this.sendCapabilities();
 
       console.log("[SecureConnection] Authentication complete");
@@ -927,11 +836,8 @@ export class SecureConnection implements Connection {
 
   /**
    * Handle incoming WebSocket messages (after authentication).
-   * Supports both binary envelope (Phase 1/3) and JSON envelope (legacy) formats.
-   * Phase 3 adds support for compressed JSON (format 0x03).
    */
   private async handleMessage(data: unknown): Promise<void> {
-    // Decrypt the message
     if (!this.sessionKey) {
       console.warn("[SecureConnection] No session key for decryption");
       return;
@@ -939,10 +845,8 @@ export class SecureConnection implements Connection {
 
     let decrypted: string | null = null;
 
-    // Handle binary data (Phase 1/3 binary envelope)
     if (isBinaryData(data)) {
       try {
-        // Use async decryption with decompression support (Phase 3)
         decrypted = await decryptBinaryEnvelopeWithDecompression(
           data,
           this.sessionKey,
@@ -956,7 +860,6 @@ export class SecureConnection implements Connection {
         return;
       }
     } else if (typeof data === "string") {
-      // Handle text data (JSON envelope - legacy format)
       let parsed: unknown;
       try {
         parsed = JSON.parse(data);
@@ -965,7 +868,6 @@ export class SecureConnection implements Connection {
         return;
       }
 
-      // All messages after auth should be encrypted
       if (!isEncryptedEnvelope(parsed)) {
         console.warn(
           "[SecureConnection] Received unencrypted message after auth",
@@ -973,7 +875,6 @@ export class SecureConnection implements Connection {
         return;
       }
 
-      // Decrypt the legacy JSON envelope
       decrypted = decrypt(parsed.nonce, parsed.ciphertext, this.sessionKey);
       if (!decrypted) {
         console.warn("[SecureConnection] Failed to decrypt JSON envelope");
@@ -995,141 +896,11 @@ export class SecureConnection implements Connection {
       return;
     }
 
-    switch (msg.type) {
-      case "response":
-        this.handleResponse(msg);
-        break;
-
-      case "event":
-        this.handleEvent(msg);
-        break;
-
-      case "upload_progress":
-        this.handleUploadProgress(msg);
-        break;
-
-      case "upload_complete":
-        this.handleUploadComplete(msg);
-        break;
-
-      case "upload_error":
-        this.handleUploadError(msg);
-        break;
-
-      default:
-        console.warn(
-          "[SecureConnection] Unknown message type:",
-          (msg as { type?: string }).type,
-        );
-    }
-  }
-
-  /**
-   * Handle an event message by routing to subscription handlers.
-   */
-  private handleEvent(event: RelayEvent): void {
-    const handlers = this.subscriptions.get(event.subscriptionId);
-    if (!handlers) {
-      console.warn(
-        "[SecureConnection] Received event for unknown subscription:",
-        event.subscriptionId,
-      );
-      return;
-    }
-
-    // Route special events
-    if (event.eventType === "connected") {
-      handlers.onOpen?.();
-    }
-
-    // Forward all events (including connected) to the handler
-    handlers.onEvent(event.eventType, event.eventId, event.data);
-  }
-
-  /**
-   * Handle a response message.
-   */
-  private handleResponse(response: RelayResponse): void {
-    // First check if this is a subscription error response
-    // When a session subscription fails (e.g., 404 for no active process),
-    // the server sends a response with id=subscriptionId
-    const subscriptionHandlers = this.subscriptions.get(response.id);
-    if (subscriptionHandlers && response.status >= 400) {
-      // Subscription failed - notify via onError and clean up
-      const errorMessage =
-        typeof response.body === "object" &&
-        response.body !== null &&
-        "error" in response.body
-          ? String((response.body as { error: unknown }).error)
-          : `Subscription failed with status ${response.status}`;
-      console.log(
-        `[SecureConnection] Subscription ${response.id} failed: ${errorMessage}`,
-      );
-      this.subscriptions.delete(response.id);
-      subscriptionHandlers.onError?.(new Error(errorMessage));
-      return;
-    }
-
-    const pending = this.pendingRequests.get(response.id);
-    if (!pending) {
-      console.warn(
-        "[SecureConnection] Received response for unknown request:",
-        response.id,
-      );
-      return;
-    }
-
-    clearTimeout(pending.timeout);
-    this.pendingRequests.delete(response.id);
-
-    // Log response if relay debug is enabled
-    if (getRelayDebugEnabled()) {
-      const duration = Date.now() - pending.startTime;
-      const statusIcon = response.status >= 400 ? "\u2717" : "\u2190";
-      const responseSize = JSON.stringify(response.body).length;
-      console.log(
-        `[Relay] ${statusIcon} ${pending.method} ${pending.path} ${response.status} (${duration}ms, ${responseSize} bytes)`,
-      );
-    }
-
-    pending.resolve(response);
-  }
-
-  /**
-   * Handle upload progress message.
-   */
-  private handleUploadProgress(msg: RelayUploadProgress): void {
-    const pending = this.pendingUploads.get(msg.uploadId);
-    if (pending?.onProgress) {
-      pending.onProgress(msg.bytesReceived);
-    }
-  }
-
-  /**
-   * Handle upload complete message.
-   */
-  private handleUploadComplete(msg: RelayUploadComplete): void {
-    const pending = this.pendingUploads.get(msg.uploadId);
-    if (pending) {
-      this.pendingUploads.delete(msg.uploadId);
-      pending.resolve(msg.file);
-    }
-  }
-
-  /**
-   * Handle upload error message.
-   */
-  private handleUploadError(msg: RelayUploadError): void {
-    const pending = this.pendingUploads.get(msg.uploadId);
-    if (pending) {
-      this.pendingUploads.delete(msg.uploadId);
-      pending.reject(new Error(msg.error));
-    }
+    this.protocol.routeMessage(msg);
   }
 
   /**
    * Send an encrypted message over the WebSocket.
-   * Uses binary envelope format (Phase 1) for improved efficiency.
    */
   private send(msg: RemoteClientMessage): void {
     if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
@@ -1140,22 +911,17 @@ export class SecureConnection implements Connection {
     }
 
     const plaintext = JSON.stringify(msg);
-    // Use binary envelope format: [version][nonce][ciphertext]
-    // where ciphertext decrypts to [format byte][payload]
     const envelope = encryptToBinaryEnvelope(plaintext, this.sessionKey);
     this.ws.send(envelope);
   }
 
   /**
-   * Send client capabilities to the server (Phase 3).
+   * Send client capabilities to the server.
    * Called immediately after SRP authentication completes.
-   * Tells server which binary formats this client supports.
    */
   private sendCapabilities(): void {
-    // Build list of supported formats
     const formats: number[] = [BinaryFormat.JSON, BinaryFormat.BINARY_UPLOAD];
 
-    // Add compressed JSON if browser supports CompressionStream
     if (isCompressionSupported()) {
       formats.push(BinaryFormat.COMPRESSED_JSON);
     }
@@ -1176,439 +942,45 @@ export class SecureConnection implements Connection {
     }
   }
 
-  /**
-   * Make a JSON API request over encrypted WebSocket.
-   */
   async fetch<T>(path: string, init?: RequestInit): Promise<T> {
-    await this.ensureConnected();
-
-    const id = generateId();
-    const method = (init?.method ?? "GET") as RelayRequest["method"];
-
-    // Parse body if present
-    let body: unknown;
-    if (init?.body) {
-      if (typeof init.body === "string") {
-        try {
-          body = JSON.parse(init.body);
-        } catch {
-          body = init.body;
-        }
-      } else {
-        body = init.body;
-      }
-    }
-
-    // Build headers
-    const headers: Record<string, string> = {};
-    if (init?.headers) {
-      if (init.headers instanceof Headers) {
-        init.headers.forEach((value, key) => {
-          headers[key] = value;
-        });
-      } else if (Array.isArray(init.headers)) {
-        for (const [key, value] of init.headers) {
-          headers[key] = value;
-        }
-      } else {
-        Object.assign(headers, init.headers);
-      }
-    }
-
-    // Add default headers
-    headers["Content-Type"] = "application/json";
-    headers["X-Yep-Anywhere"] = "true";
-
-    const request: RelayRequest = {
-      type: "request",
-      id,
-      method,
-      path: path.startsWith("/api") ? path : `/api${path}`,
-      headers,
-      body,
-    };
-
-    const startTime = Date.now();
-
-    // Log outgoing request if relay debug is enabled
-    if (getRelayDebugEnabled()) {
-      console.log(`[Relay] \u2192 ${method} ${request.path}`);
-    }
-
-    return new Promise<T>((resolve, reject) => {
-      // Set up timeout
-      const timeout = setTimeout(() => {
-        // Log timeout if relay debug is enabled
-        if (getRelayDebugEnabled()) {
-          const duration = Date.now() - startTime;
-          console.log(
-            `[Relay] \u2717 ${method} ${request.path} TIMEOUT (${duration}ms)`,
-          );
-        }
-        this.pendingRequests.delete(id);
-        reject(new Error("Request timeout"));
-      }, 30000);
-
-      // Store pending request
-      this.pendingRequests.set(id, {
-        resolve: (response: RelayResponse) => {
-          if (response.status >= 400) {
-            const error = new Error(
-              `API error: ${response.status}`,
-            ) as Error & { status: number; setupRequired?: boolean };
-            error.status = response.status;
-            if (response.headers?.["X-Setup-Required"] === "true") {
-              error.setupRequired = true;
-            }
-            reject(error);
-          } else {
-            resolve(response.body as T);
-          }
-        },
-        reject,
-        timeout,
-        startTime,
-        method,
-        path: request.path,
-      });
-
-      // Send encrypted request
-      try {
-        this.send(request);
-      } catch (err) {
-        clearTimeout(timeout);
-        this.pendingRequests.delete(id);
-        reject(err);
-      }
-    });
+    return this.protocol.fetch<T>(path, init);
   }
 
-  /**
-   * Fetch binary data (images, files) and return as Blob.
-   * Handles base64-encoded binary responses from the relay.
-   */
   async fetchBlob(path: string): Promise<Blob> {
-    // Use internal fetch-like logic but handle binary response
-    await this.ensureConnected();
-
-    const id = generateId();
-    const method = "GET";
-
-    const request: RelayRequest = {
-      type: "request",
-      id,
-      method,
-      path: path.startsWith("/api") ? path : `/api${path}`,
-      headers: { "X-Yep-Anywhere": "true" },
-    };
-
-    const startTime = Date.now();
-
-    if (getRelayDebugEnabled()) {
-      console.log(`[Relay] → ${method} ${request.path} (blob)`);
-    }
-
-    return new Promise<Blob>((resolve, reject) => {
-      const timeout = setTimeout(() => {
-        if (getRelayDebugEnabled()) {
-          const duration = Date.now() - startTime;
-          console.log(
-            `[Relay] ✗ ${method} ${request.path} TIMEOUT (${duration}ms)`,
-          );
-        }
-        this.pendingRequests.delete(id);
-        reject(new Error("Request timeout"));
-      }, 30000);
-
-      this.pendingRequests.set(id, {
-        resolve: (response: RelayResponse) => {
-          if (response.status >= 400) {
-            reject(new Error(`API error: ${response.status}`));
-            return;
-          }
-
-          // Handle binary response format: { _binary: true, data: "base64..." }
-          const body = response.body as { _binary?: boolean; data?: string };
-          if (body?._binary && typeof body.data === "string") {
-            // Decode base64 to binary
-            const binary = atob(body.data);
-            const bytes = new Uint8Array(binary.length);
-            for (let i = 0; i < binary.length; i++) {
-              bytes[i] = binary.charCodeAt(i);
-            }
-            // Get content type from response headers
-            const contentType =
-              response.headers?.["content-type"] ||
-              response.headers?.["Content-Type"] ||
-              "application/octet-stream";
-            resolve(new Blob([bytes], { type: contentType }));
-          } else {
-            // Fallback for non-binary responses (shouldn't happen for images)
-            reject(new Error("Expected binary response"));
-          }
-        },
-        reject,
-        timeout,
-        startTime,
-        method,
-        path: request.path,
-      });
-
-      try {
-        this.send(request);
-      } catch (err) {
-        clearTimeout(timeout);
-        this.pendingRequests.delete(id);
-        reject(err);
-      }
-    });
+    return this.protocol.fetchBlob(path);
   }
 
-  /**
-   * Subscribe to session events.
-   */
   subscribeSession(
     sessionId: string,
     handlers: StreamHandlers,
     lastEventId?: string,
   ): Subscription {
-    const subscriptionId = generateId();
-
-    // Store handlers for routing events
-    this.subscriptions.set(subscriptionId, handlers);
-
-    // Send subscribe message (async, but we return synchronously)
-    this.ensureConnected()
-      .then(() => {
-        const msg: RelaySubscribe = {
-          type: "subscribe",
-          subscriptionId,
-          channel: "session",
-          sessionId,
-          lastEventId,
-        };
-        this.send(msg);
-      })
-      .catch((err) => {
-        handlers.onError?.(err);
-        this.subscriptions.delete(subscriptionId);
-      });
-
-    return {
-      close: () => {
-        this.subscriptions.delete(subscriptionId);
-        // Send unsubscribe message if connected
-        if (
-          this.ws?.readyState === WebSocket.OPEN &&
-          this.connectionState === "authenticated"
-        ) {
-          const msg: RelayUnsubscribe = {
-            type: "unsubscribe",
-            subscriptionId,
-          };
-          try {
-            this.send(msg);
-          } catch {
-            // Ignore send errors on close
-          }
-        }
-        handlers.onClose?.();
-      },
-    };
+    return this.protocol.subscribeSession(sessionId, handlers, lastEventId);
   }
 
-  /**
-   * Subscribe to activity events.
-   */
   subscribeActivity(handlers: StreamHandlers): Subscription {
-    const subscriptionId = generateId();
-    // Get or create browser profile ID for connection tracking
-    const browserProfileId = getOrCreateBrowserProfileId();
-
-    // Collect origin metadata
-    const originMetadata = {
-      origin: window.location.origin,
-      scheme: window.location.protocol.replace(":", ""),
-      hostname: window.location.hostname,
-      port: window.location.port
-        ? Number.parseInt(window.location.port, 10)
-        : null,
-      userAgent: navigator.userAgent,
-    };
-
-    // Store handlers for routing events
-    this.subscriptions.set(subscriptionId, handlers);
-
-    // Send subscribe message (async, but we return synchronously)
-    this.ensureConnected()
-      .then(() => {
-        const msg: RelaySubscribe = {
-          type: "subscribe",
-          subscriptionId,
-          channel: "activity",
-          browserProfileId,
-          originMetadata,
-        };
-        this.send(msg);
-      })
-      .catch((err) => {
-        handlers.onError?.(err);
-        this.subscriptions.delete(subscriptionId);
-      });
-
-    return {
-      close: () => {
-        this.subscriptions.delete(subscriptionId);
-        // Send unsubscribe message if connected
-        if (
-          this.ws?.readyState === WebSocket.OPEN &&
-          this.connectionState === "authenticated"
-        ) {
-          const msg: RelayUnsubscribe = {
-            type: "unsubscribe",
-            subscriptionId,
-          };
-          try {
-            this.send(msg);
-          } catch {
-            // Ignore send errors on close
-          }
-        }
-        handlers.onClose?.();
-      },
-    };
+    return this.protocol.subscribeActivity(handlers);
   }
 
-  /**
-   * Upload a file to a session via encrypted WebSocket relay protocol.
-   */
   async upload(
     projectId: string,
     sessionId: string,
     file: File,
     options?: UploadOptions,
   ): Promise<UploadedFile> {
-    await this.ensureConnected();
-
-    const uploadId = generateId();
-    const chunkSize = options?.chunkSize ?? DEFAULT_CHUNK_SIZE;
-
-    // Create promise that will resolve when upload completes
-    const uploadPromise = new Promise<UploadedFile>((resolve, reject) => {
-      this.pendingUploads.set(uploadId, {
-        resolve,
-        reject,
-        onProgress: options?.onProgress,
-      });
-
-      // Handle abort signal
-      if (options?.signal) {
-        options.signal.addEventListener("abort", () => {
-          this.pendingUploads.delete(uploadId);
-          reject(new Error("Upload aborted"));
-        });
-      }
-    });
-
-    try {
-      // Send upload_start
-      const startMsg: RelayUploadStart = {
-        type: "upload_start",
-        uploadId,
-        projectId,
-        sessionId,
-        filename: file.name,
-        size: file.size,
-        mimeType: file.type || "application/octet-stream",
-      };
-      this.send(startMsg);
-
-      // Read and send chunks
-      let offset = 0;
-      const reader = file.stream().getReader();
-
-      while (true) {
-        // Check if aborted
-        if (options?.signal?.aborted) {
-          reader.cancel();
-          throw new Error("Upload aborted");
-        }
-
-        const { done, value } = await reader.read();
-        if (done) break;
-
-        // Process the chunk (may be larger than chunkSize, so we split it)
-        let chunkOffset = 0;
-        while (chunkOffset < value.length) {
-          const chunkEnd = Math.min(chunkOffset + chunkSize, value.length);
-          const chunk = value.slice(chunkOffset, chunkEnd);
-
-          // Send binary chunk (format 0x02) encrypted
-          // Payload format: [16 bytes UUID][8 bytes offset][chunk data]
-          const payload = encodeUploadChunkPayload(uploadId, offset, chunk);
-          if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
-            throw new Error("WebSocket not connected");
-          }
-          if (!this.sessionKey) {
-            throw new Error("Not authenticated");
-          }
-          const envelope = encryptBytesToBinaryEnvelope(
-            payload,
-            BinaryFormat.BINARY_UPLOAD,
-            this.sessionKey,
-          );
-          this.ws.send(envelope);
-
-          offset += chunk.length;
-          chunkOffset = chunkEnd;
-        }
-      }
-
-      // Send upload_end
-      const endMsg: RelayUploadEnd = {
-        type: "upload_end",
-        uploadId,
-      };
-      this.send(endMsg);
-
-      // Wait for completion
-      return await uploadPromise;
-    } catch (err) {
-      // Clean up pending upload on error
-      this.pendingUploads.delete(uploadId);
-      throw err;
-    }
+    return this.protocol.upload(projectId, sessionId, file, options);
   }
 
   /**
    * Close the secure connection.
    */
   close(): void {
-    // Notify and clear subscriptions
-    for (const handlers of this.subscriptions.values()) {
-      handlers.onClose?.();
-    }
-    this.subscriptions.clear();
+    this.protocol.close();
 
-    // Clear pending requests
-    for (const [id, pending] of this.pendingRequests) {
-      clearTimeout(pending.timeout);
-      pending.reject(new Error("Connection closed"));
-    }
-    this.pendingRequests.clear();
-
-    // Clear pending uploads
-    for (const pending of this.pendingUploads.values()) {
-      pending.reject(new Error("Connection closed"));
-    }
-    this.pendingUploads.clear();
-
-    // Clear session key
     this.sessionKey = null;
     this.srpSession = null;
     this.connectionState = "disconnected";
 
-    // Close WebSocket
     if (this.ws) {
       this.ws.close();
       this.ws = null;
@@ -1618,23 +990,21 @@ export class SecureConnection implements Connection {
   /**
    * Force reconnection of the underlying WebSocket.
    * Useful when the connection may have gone stale (e.g., mobile wake from sleep).
-   * Returns a promise that resolves when reconnected and authenticated.
    */
   async forceReconnect(): Promise<void> {
     console.log(
-      `[SecureConnection] Force reconnecting... wsState=${this.ws?.readyState}, connState=${this.connectionState}, isRelay=${this.isRelayConnection}, subscriptions=${this.subscriptions.size}`,
+      `[SecureConnection] Force reconnecting... wsState=${this.ws?.readyState}, connState=${this.connectionState}, isRelay=${this.isRelayConnection}, subscriptions=${this.protocol.subscriptions.size}`,
     );
 
     // Save subscriptions to notify them after reconnect
-    // We'll call onClose on each to trigger their reconnect logic
-    const savedSubscriptions = new Map(this.subscriptions);
+    const savedSubscriptions = new Map(this.protocol.subscriptions);
 
     // Close existing WebSocket without notifying subscriptions yet
     if (this.ws) {
       console.log(
         `[SecureConnection] Closing existing WebSocket (readyState=${this.ws.readyState})`,
       );
-      this.ws.onclose = null; // Prevent onclose handler from firing
+      this.ws.onclose = null;
       this.ws.onerror = null;
       this.ws.onmessage = null;
       this.ws.close();
@@ -1642,19 +1012,15 @@ export class SecureConnection implements Connection {
     }
 
     // Clear pending requests with reconnect error
-    if (this.pendingRequests.size > 0) {
+    if (this.protocol.pendingRequests.size > 0) {
       console.log(
-        `[SecureConnection] Clearing ${this.pendingRequests.size} pending requests`,
+        `[SecureConnection] Clearing ${this.protocol.pendingRequests.size} pending requests`,
       );
     }
-    for (const [id, pending] of this.pendingRequests) {
-      clearTimeout(pending.timeout);
-      pending.reject(new Error("Connection reconnecting"));
-    }
-    this.pendingRequests.clear();
+    this.protocol.rejectAllPending(new Error("Connection reconnecting"));
 
     // Clear subscriptions - they'll re-subscribe when we notify onClose
-    this.subscriptions.clear();
+    this.protocol.subscriptions.clear();
 
     // Reset connection state but keep session info for resumption
     this.connectionState = "disconnected";
@@ -1663,15 +1029,12 @@ export class SecureConnection implements Connection {
     // Reconnect the WebSocket
     console.log("[SecureConnection] Calling ensureConnected...");
     await this.ensureConnected();
-    // Use type assertion because TS doesn't know ensureConnected sets this.ws
     const wsState = (this.ws as WebSocket | null)?.readyState;
     console.log(
       `[SecureConnection] ensureConnected complete, wsState=${wsState}, connState=${this.connectionState}`,
     );
 
     // Notify all subscriptions via onClose so they can re-subscribe themselves
-    // This is better than trying to re-subscribe here because each subscription
-    // knows its own channel (activity vs session) and sessionId
     console.log(
       `[SecureConnection] Notifying ${savedSubscriptions.size} subscriptions to reconnect`,
     );
@@ -1695,14 +1058,6 @@ export class SecureConnection implements Connection {
   /**
    * Connect using an existing WebSocket that's already connected through a relay.
    * Skips WebSocket creation and goes straight to SRP authentication.
-   *
-   * @param ws - Pre-connected WebSocket (already open)
-   * @param username - Username for SRP authentication
-   * @param password - Password for SRP authentication
-   * @param onSessionEstablished - Optional callback when session is established
-   * @param relayConfig - Optional relay config for auto-reconnect on connection drop
-   * @param onDisconnect - Optional callback when connection is lost unexpectedly
-   * @returns SecureConnection instance after successful authentication
    */
   static async connectWithExistingSocket(
     ws: WebSocket,
@@ -1733,7 +1088,6 @@ export class SecureConnection implements Connection {
 
   /**
    * Perform SRP authentication on an already-connected WebSocket.
-   * Used by connectWithExistingSocket for relay connections.
    */
   private authenticateOnExistingSocket(): Promise<void> {
     return new Promise((resolve, reject) => {
@@ -1745,7 +1099,6 @@ export class SecureConnection implements Connection {
       console.log("[SecureConnection] Authenticating on existing socket");
       this.connectionState = "connecting";
 
-      // Create auth handlers
       let authResolveHandler: () => void = () => {};
       let authRejectHandler: (err: Error) => void = () => {};
 
@@ -1761,42 +1114,7 @@ export class SecureConnection implements Connection {
       };
 
       ws.onclose = (event) => {
-        console.log("[SecureConnection] Closed:", event.code, event.reason);
-        const wasAuthenticated = this.connectionState === "authenticated";
-        this.ws = null;
-        this.sessionKey = null;
-        this.srpSession = null;
-
-        const closeError = new WebSocketCloseError(event.code, event.reason);
-
-        if (!wasAuthenticated) {
-          this.connectionState = "failed";
-          authRejectHandler(closeError);
-        } else {
-          // Connection dropped after authentication - notify via callback
-          this.connectionState = "disconnected";
-          this.onDisconnect?.(closeError);
-        }
-
-        // Reject pending requests
-        for (const [id, pending] of this.pendingRequests) {
-          clearTimeout(pending.timeout);
-          pending.reject(closeError);
-          this.pendingRequests.delete(id);
-        }
-
-        // Reject pending uploads
-        for (const [id, pending] of this.pendingUploads) {
-          pending.reject(closeError);
-          this.pendingUploads.delete(id);
-        }
-
-        // Notify subscriptions
-        for (const handlers of this.subscriptions.values()) {
-          handlers.onError?.(closeError);
-          handlers.onClose?.();
-        }
-        this.subscriptions.clear();
+        this.handleSocketClose(event, authRejectHandler);
       };
 
       ws.onmessage = async (event) => {
@@ -1825,7 +1143,6 @@ export class SecureConnection implements Connection {
         ws.close();
       });
 
-      // Set up timeout
       const timeout = setTimeout(() => {
         if (this.connectionState !== "authenticated") {
           ws.close();
@@ -1834,7 +1151,6 @@ export class SecureConnection implements Connection {
         }
       }, 30000);
 
-      // Wait for auth to complete
       authPromise
         .then(() => {
           clearTimeout(timeout);
