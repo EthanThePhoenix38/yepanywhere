@@ -311,6 +311,21 @@ describe("ConnectionManager integration", () => {
     expect(states).toContain("connected");
   });
 
+  it("successful reconnectFn transitions to connected without external markConnected", async () => {
+    const { cm, reconnectFn, timers } = setup();
+
+    cm.handleClose();
+    expect(cm.state).toBe("reconnecting");
+
+    timers.advance(1000);
+    await flush();
+
+    // reconnectFn resolved — should auto-transition to connected
+    expect(cm.state).toBe("connected");
+    expect(reconnectFn).toHaveBeenCalledTimes(1);
+    expect(cm.reconnectAttempts).toBe(0);
+  });
+
   it("stop during reconnecting cleans up properly", async () => {
     const { cm, reconnectFn, timers } = setup();
     reconnectFn.mockRejectedValue(new Error("fail"));

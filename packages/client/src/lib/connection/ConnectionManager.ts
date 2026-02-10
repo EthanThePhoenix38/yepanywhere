@@ -320,10 +320,10 @@ export class ConnectionManager {
     const fn = this._reconnectFn;
     this._reconnectPromise = fn()
       .then(() => {
-        // Success — markConnected() will be called by the consumer's onOpen handler
-        // If markConnected() hasn't been called after reconnectFn resolves,
-        // that's fine — the consumer will call it when events start flowing.
-        this._reconnectPromise = null;
+        // Transport reconnected — transition to connected so consumers
+        // (e.g. ActivityBus stateChange listener) can re-subscribe.
+        // The new subscription's onOpen will call markConnected() again (no-op).
+        this.markConnected();
       })
       .catch((error: unknown) => {
         this._reconnectPromise = null;
