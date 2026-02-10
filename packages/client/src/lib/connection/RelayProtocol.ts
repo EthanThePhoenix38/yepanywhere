@@ -15,6 +15,7 @@ import type {
 } from "@yep-anywhere/shared";
 import { getOrCreateBrowserProfileId } from "../storageKeys";
 import type { StreamHandlers, Subscription, UploadOptions } from "./types";
+import { SubscriptionError } from "./types";
 
 /**
  * Transport callbacks injected by the owning connection class.
@@ -143,7 +144,9 @@ export class RelayProtocol {
         `${this.logPrefix} Subscription ${response.id} failed: ${errorMessage}`,
       );
       this.subscriptions.delete(response.id);
-      subscriptionHandlers.onError?.(new Error(errorMessage));
+      subscriptionHandlers.onError?.(
+        new SubscriptionError(response.status, errorMessage),
+      );
       return;
     }
 

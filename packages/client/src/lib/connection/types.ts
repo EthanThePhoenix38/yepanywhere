@@ -88,12 +88,35 @@ function formatRelayReconnectError(cause?: Error): string {
 }
 
 /**
- * Check if an error is a non-retryable WebSocket close error.
+ * Error for subscription-level failures (e.g., 404 "No active process for session").
+ * Distinguished from transport-level errors so callers can decide whether to retry.
+ */
+export class SubscriptionError extends Error {
+  readonly status: number;
+
+  constructor(status: number, message: string) {
+    super(message);
+    this.name = "SubscriptionError";
+    this.status = status;
+  }
+}
+
+/**
+ * Check if an error is non-retryable (retrying won't help).
  */
 export function isNonRetryableError(error: unknown): boolean {
   // Relay reconnect required is non-retryable at the SecureConnection level
   // The RemoteConnectionContext handles relay reconnection
   if (error instanceof RelayReconnectRequiredError) {
+    return true;
+  }
+  // Subscription 4xx errors (e.g., 404 "No active process") won't resolve by retrying.
+  // The activity stream will trigger a fresh subscription when the process starts.
+  if (
+    error instanceof SubscriptionError &&
+    error.status >= 400 &&
+    error.status < 500
+  ) {
     return true;
   }
   return error instanceof WebSocketCloseError && error.isNonRetryable();
