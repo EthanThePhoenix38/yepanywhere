@@ -16,21 +16,16 @@ const STALE_CHECK_INTERVAL_MS = 10_000;
 /** How long page must be hidden before forcing reconnect on visibility change */
 const VISIBILITY_RECONNECT_THRESHOLD_MS = 5_000;
 
-interface UseSSEOptions {
+interface UseSessionStreamOptions {
   onMessage: (data: { eventType: string; [key: string]: unknown }) => void;
   onError?: (error: Event) => void;
   onOpen?: () => void;
 }
 
-/**
- * Extract sessionId from a session stream URL like /api/sessions/{id}/stream
- */
-function extractSessionId(url: string): string | null {
-  const match = url.match(/\/api\/sessions\/([^/]+)\/stream/);
-  return match?.[1] ?? null;
-}
-
-export function useSSE(url: string | null, options: UseSSEOptions) {
+export function useSessionStream(
+  sessionId: string | null,
+  options: UseSessionStreamOptions,
+) {
   const [connected, setConnected] = useState(false);
   const wsSubscriptionRef = useRef<Subscription | null>(null);
   const lastEventIdRef = useRef<string | null>(null);
@@ -39,8 +34,8 @@ export function useSSE(url: string | null, options: UseSSEOptions) {
   );
   const optionsRef = useRef(options);
   optionsRef.current = options;
-  // Track connected URL to skip StrictMode double-mount (not reset in cleanup)
-  const mountedUrlRef = useRef<string | null>(null);
+  // Track connected sessionId to skip StrictMode double-mount (not reset in cleanup)
+  const mountedSessionIdRef = useRef<string | null>(null);
   // Track last event time for stale connection detection
   const lastEventTimeRef = useRef<number | null>(null);
   const staleCheckIntervalRef = useRef<ReturnType<typeof setInterval> | null>(
@@ -63,7 +58,7 @@ export function useSSE(url: string | null, options: UseSSEOptions) {
       const timeSinceLastEvent = Date.now() - lastEventTimeRef.current;
       if (timeSinceLastEvent > STALE_THRESHOLD_MS) {
         console.warn(
-          `[useSSE] Connection stale (no events in ${Math.round(timeSinceLastEvent / 1000)}s), forcing reconnect`,
+          `[useSessionStream] Connection stale (no events in ${Math.round(timeSinceLastEvent / 1000)}s), forcing reconnect`,
         );
         // Stop the interval first to prevent multiple reconnects
         if (staleCheckIntervalRef.current) {
@@ -76,7 +71,7 @@ export function useSSE(url: string | null, options: UseSSEOptions) {
           wsSubscriptionRef.current = null;
         }
         setConnected(false);
-        mountedUrlRef.current = null;
+        mountedSessionIdRef.current = null;
 
         // For remote mode, force reconnect the underlying WebSocket first
         // This handles half-open sockets where readyState is OPEN but the connection is dead
@@ -88,7 +83,7 @@ export function useSSE(url: string | null, options: UseSSEOptions) {
               reconnectTimeoutRef.current = setTimeout(connectFn, 100);
             })
             .catch((err) => {
-              console.error("[useSSE] Force reconnect failed:", err);
+              console.error("[useSessionStream] Force reconnect failed:", err);
               reconnectTimeoutRef.current = setTimeout(connectFn, 2000);
             });
         } else {
@@ -108,22 +103,19 @@ export function useSSE(url: string | null, options: UseSSEOptions) {
   }, []);
 
   const connect = useCallback(() => {
-    if (!url) {
-      // Reset tracking when URL becomes null so we can reconnect later
+    if (!sessionId) {
+      // Reset tracking when sessionId becomes null so we can reconnect later
       // (e.g., when status goes idle → owned again for the same session)
-      mountedUrlRef.current = null;
+      mountedSessionIdRef.current = null;
       return;
     }
 
     // Don't create duplicate connections
     if (wsSubscriptionRef.current) return;
 
-    // Skip StrictMode double-mount (same URL, already connected once)
-    if (mountedUrlRef.current === url) return;
-    mountedUrlRef.current = url;
-
-    const sessionId = extractSessionId(url);
-    if (!sessionId) return;
+    // Skip StrictMode double-mount (same sessionId, already connected once)
+    if (mountedSessionIdRef.current === sessionId) return;
+    mountedSessionIdRef.current = sessionId;
 
     // Check for global connection first (remote mode with SecureConnection)
     const globalConn = getGlobalConnection();
@@ -134,7 +126,7 @@ export function useSSE(url: string | null, options: UseSSEOptions) {
 
     // Local mode: always use WebSocket
     connectWithConnection(sessionId, getWebSocketConnection());
-  }, [url]);
+  }, [sessionId]);
 
   /**
    * Connect using a provided connection (remote or local WebSocket).
@@ -197,7 +189,7 @@ export function useSSE(url: string | null, options: UseSSEOptions) {
           // Don't reconnect for non-retryable errors (e.g., auth required)
           if (isNonRetryableError(error)) {
             console.warn(
-              "[useSSE] Non-retryable error, not reconnecting:",
+              "[useSessionStream] Non-retryable error, not reconnecting:",
               error.message,
             );
             wsSubscriptionRef.current?.close();
@@ -208,7 +200,7 @@ export function useSSE(url: string | null, options: UseSSEOptions) {
           // Auto-reconnect after 2s
           wsSubscriptionRef.current?.close();
           wsSubscriptionRef.current = null;
-          mountedUrlRef.current = null;
+          mountedSessionIdRef.current = null;
           reconnectTimeoutRef.current = setTimeout(connect, 2000);
         },
         onClose: () => {
@@ -216,7 +208,7 @@ export function useSSE(url: string | null, options: UseSSEOptions) {
           setConnected(false);
           stopStaleCheck();
           wsSubscriptionRef.current = null;
-          mountedUrlRef.current = null;
+          mountedSessionIdRef.current = null;
           reconnectTimeoutRef.current = setTimeout(connect, 2000);
         },
       };
@@ -240,7 +232,7 @@ export function useSSE(url: string | null, options: UseSSEOptions) {
         const hiddenDuration = Date.now() - lastVisibleTimeRef.current;
         if (hiddenDuration > VISIBILITY_RECONNECT_THRESHOLD_MS) {
           console.log(
-            `[useSSE] Page visible after ${Math.round(hiddenDuration / 1000)}s, forcing reconnect`,
+            `[useSessionStream] Page visible after ${Math.round(hiddenDuration / 1000)}s, forcing reconnect`,
           );
           // Clear current connections
           stopStaleCheck();
@@ -249,7 +241,7 @@ export function useSSE(url: string | null, options: UseSSEOptions) {
             wsSubscriptionRef.current = null;
           }
           setConnected(false);
-          mountedUrlRef.current = null;
+          mountedSessionIdRef.current = null;
 
           // For remote mode, force reconnect the underlying WebSocket first
           // This handles half-open sockets where readyState is OPEN but the connection is dead
@@ -261,7 +253,10 @@ export function useSSE(url: string | null, options: UseSSEOptions) {
                 connect();
               })
               .catch((err) => {
-                console.error("[useSSE] Force reconnect failed:", err);
+                console.error(
+                  "[useSessionStream] Force reconnect failed:",
+                  err,
+                );
                 reconnectTimeoutRef.current = setTimeout(connect, 2000);
               });
           } else {
@@ -285,9 +280,9 @@ export function useSSE(url: string | null, options: UseSSEOptions) {
       }
       wsSubscriptionRef.current?.close();
       wsSubscriptionRef.current = null;
-      // Reset mountedUrlRef so the next mount can connect
+      // Reset mountedSessionIdRef so the next mount can connect
       // This is needed for StrictMode where cleanup runs between mounts
-      mountedUrlRef.current = null;
+      mountedSessionIdRef.current = null;
     };
   }, [connect, stopStaleCheck]);
 

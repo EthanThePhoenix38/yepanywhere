@@ -796,8 +796,8 @@ describe("Process", () => {
       // Queue a user message
       process.queueMessage({ text: "test message" });
 
-      // User message SHOULD be in history for SSE replay to late-joining clients.
-      // Client-side deduplication (mergeSSEMessage, mergeJSONLMessages) handles
+      // User message SHOULD be in history for replay to late-joining clients.
+      // Client-side deduplication (mergeStreamMessage, mergeJSONLMessages) handles
       // any duplicates when JSONL is eventually fetched.
       const userMessages = process
         .getMessageHistory()
@@ -830,7 +830,7 @@ describe("Process", () => {
       expect(userMessages[0]?.message?.content).toBe("test message");
     });
 
-    it("should always emit user messages via SSE regardless of SDK type", async () => {
+    it("should always emit user messages via stream regardless of SDK type", async () => {
       const iterator = createMockIterator([
         { type: "system", subtype: "init", session_id: "sess-1" },
       ]);
@@ -854,7 +854,7 @@ describe("Process", () => {
       // Queue a user message
       process.queueMessage({ text: "test message" });
 
-      // Message should still be emitted for live SSE subscribers
+      // Message should still be emitted for live stream subscribers
       const userEmits = emittedMessages.filter((m) => m.type === "user");
       expect(userEmits).toHaveLength(1);
     });

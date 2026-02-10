@@ -17,12 +17,12 @@ import {
   type SessionUpdatedEvent,
   useFileActivity,
 } from "./useFileActivity";
-import { useSSE } from "./useSSE";
 import {
   type AgentContentMap,
   type SessionLoadResult,
   useSessionMessages,
 } from "./useSessionMessages";
+import { useSessionStream } from "./useSessionStream";
 import {
   type StreamingMarkdownCallbacks,
   useStreamingContent,
@@ -51,7 +51,7 @@ export function useSession(
   initialStatus?: { owner: "self"; processId: string },
   streamingMarkdownCallbacks?: StreamingMarkdownCallbacks,
 ) {
-  // Use initial status if provided (from navigation state) to connect SSE immediately
+  // Use initial status if provided (from navigation state) to connect stream immediately
   const [status, setStatus] = useState<SessionStatus>(
     initialStatus ?? { owner: "none" },
   );
@@ -67,13 +67,13 @@ export function useSession(
   // This happens when createSession returns before the SDK sends the real session ID
   const [actualSessionId, setActualSessionId] = useState<string>(sessionId);
 
-  // Track last SSE activity timestamp for engagement tracking
+  // Track last stream activity timestamp for engagement tracking
   // This includes both main session and subagent messages, so we can properly
   // mark sessions as "seen" even when subagent content arrives (which doesn't
   // update the parent session file's mtime until completion)
-  const [lastSSEActivityAt, setLastSSEActivityAt] = useState<string | null>(
-    null,
-  );
+  const [lastStreamActivityAt, setLastStreamActivityAt] = useState<
+    string | null
+  >(null);
 
   // Pending messages queue - messages waiting for server confirmation
   // These are displayed separately from the main message list
@@ -123,10 +123,10 @@ export function useSession(
       // Only update status from REST if we don't already have an owned status from navigation.
       // This prevents a race condition where:
       // 1. Session created with initialStatus = {owner: "self"}
-      // 2. SSE connects because status.owner === "self"
+      // 2. stream connects because status.owner === "self"
       // 3. REST API returns status = {owner: "none"} (stale)
-      // 4. setStatus({owner: "none"}) disconnects SSE before it receives events
-      // The owned status from initialStatus should only be changed by SSE events.
+      // 4. setStatus({owner: "none"}) disconnects stream before it receives events
+      // The owned status from initialStatus should only be changed by stream events.
       setStatus((prev) => {
         // If we already have owned status (from initialStatus), keep it unless REST also says owned
         if (prev.owner === "self" && result.status.owner !== "self") {
@@ -147,7 +147,7 @@ export function useSession(
         );
       }
       // Set pending input request from API response immediately
-      // This fixes race condition where SSE connection is delayed but tool approval is pending
+      // This fixes race condition where stream connection is delayed but tool approval is pending
       if (result.pendingInputRequest) {
         setPendingInputRequest(result.pendingInputRequest as InputRequest);
       }
@@ -160,7 +160,7 @@ export function useSession(
     setError(err);
   }, []);
 
-  // Use the session messages hook for message state and SSE buffering
+  // Use the session messages hook for message state and stream buffering
   const {
     messages,
     agentContent,
@@ -169,8 +169,8 @@ export function useSession(
     session,
     setSession,
     handleStreamingUpdate,
-    handleSSEMessageEvent,
-    handleSSESubagentMessage,
+    handleStreamMessageEvent,
+    handleStreamSubagentMessage,
     registerToolUseAgent,
     setAgentContent,
     setToolUseToAgent,
@@ -219,7 +219,7 @@ export function useSession(
 
       try {
         const result = await api.setHold(sessionId, hold);
-        // Process state will be updated via SSE state-change event
+        // Process state will be updated via stream state-change event
         // but we can optimistically update if needed
         if (result.state === "hold") {
           setProcessState("hold");
@@ -240,7 +240,7 @@ export function useSession(
   }>({ timer: null, pending: false });
 
   // Add a message to the pending queue
-  // Generates a tempId that will be sent to the server and echoed back in SSE
+  // Generates a tempId that will be sent to the server and echoed back in stream
   const addPendingMessage = useCallback((content: string): string => {
     const tempId = `temp-${Date.now()}`;
     setPendingMessages((prev) => [
@@ -309,7 +309,7 @@ export function useSession(
             setAgentContent((prev) => {
               const existing = prev[agentId];
               if (existing && existing.messages.length > 0) {
-                // Already have content (maybe from SSE), merge without duplicates
+                // Already have content (maybe from stream), merge without duplicates
                 const existingIds = new Set(
                   existing.messages.map((m) => getMessageId(m)),
                 );
@@ -373,7 +373,7 @@ export function useSession(
   }, [fetchNewMessages]);
 
   // Handle file changes - for non-owned sessions only
-  // For owned sessions, SSE provides real-time messages and session-updated events
+  // For owned sessions, stream provides real-time messages and session-updated events
   // provide metadata (title, messageCount), so we don't need to poll the API
   const handleFileChange = useCallback(
     (event: FileChangeEvent) => {
@@ -389,7 +389,7 @@ export function useSession(
         return;
       }
 
-      // For owned sessions: messages come via SSE stream, metadata via session-updated event
+      // For owned sessions: messages come via stream stream, metadata via session-updated event
       // No API call needed - skip file change processing entirely
       if (status.owner === "self") {
         return;
@@ -401,12 +401,12 @@ export function useSession(
     [sessionId, status.owner, throttledFetch],
   );
 
-  // Handle session content updates via SSE (title, messageCount, updatedAt, contextUsage)
+  // Handle session content updates via stream (title, messageCount, updatedAt, contextUsage)
   const handleSessionUpdated = useCallback(
     (event: SessionUpdatedEvent) => {
       if (event.sessionId !== sessionId) return;
 
-      // Update session metadata from SSE event (no API call needed)
+      // Update session metadata from stream event (no API call needed)
       setSession((prev) => {
         if (!prev) return prev;
         return {
@@ -427,7 +427,7 @@ export function useSession(
     [sessionId, setSession],
   );
 
-  // Listen for session status changes via SSE
+  // Listen for session status changes via stream
   const handleSessionStatusChange = useCallback(
     (event: SessionStatusEvent) => {
       if (event.sessionId === sessionId) {
@@ -437,8 +437,8 @@ export function useSession(
     [sessionId],
   );
 
-  // Listen for process state changes via activity bus as a backup for session SSE
-  // This handles the race condition where the session SSE might miss a status event
+  // Listen for process state changes via activity bus as a backup for session stream
+  // This handles the race condition where the session stream might miss a status event
   // (e.g., when backgrounding the tab quickly after starting a session)
   const handleProcessStateChange = useCallback(
     async (event: ProcessStateEvent) => {
@@ -507,7 +507,7 @@ export function useSession(
     [setAgentContent],
   );
 
-  // Use streaming content hook for handling stream_event SSE messages
+  // Use streaming content hook for handling stream_event stream messages
   const {
     handleStreamEvent,
     clearStreaming,
@@ -527,13 +527,13 @@ export function useSession(
   }, [cleanupStreaming]);
 
   // Subscribe to live updates
-  const handleSSEMessage = useCallback(
+  const handleStreamMessage = useCallback(
     (data: { eventType: string; [key: string]: unknown }) => {
       if (data.eventType === "message") {
-        // Track SSE activity for engagement tracking
+        // Track stream activity for engagement tracking
         // This ensures sessions are marked as "seen" even when receiving
         // subagent content (which doesn't update parent session file mtime)
-        setLastSSEActivityAt(new Date().toISOString());
+        setLastStreamActivityAt(new Date().toISOString());
 
         // The message event contains the SDK message directly
         // Pass through all fields without stripping
@@ -607,7 +607,7 @@ export function useSession(
               : undefined),
         };
 
-        // Remove eventType from the message (it's SSE envelope, not message data)
+        // Remove eventType from the message (it's stream envelope, not message data)
         (incoming as { eventType?: string }).eventType = undefined;
 
         // Extract slash_commands, tools, and mcp_servers from init messages
@@ -658,11 +658,11 @@ export function useSession(
           // Note: Since agentId === parentToolUseId === toolUseId, the mapping is identity
           registerToolUseAgent(agentId, agentId);
 
-          handleSSESubagentMessage(incoming, agentId);
+          handleStreamSubagentMessage(incoming, agentId);
           return; // Don't add to main messages
         }
 
-        handleSSEMessageEvent(incoming);
+        handleStreamMessageEvent(incoming);
       } else if (data.eventType === "status") {
         const statusData = data as {
           eventType: string;
@@ -756,7 +756,7 @@ export function useSession(
           setSession((prev) => {
             // Can only update if we have an existing session object
             if (!prev) return prev;
-            // If session already has provider/model, don't override with SSE data
+            // If session already has provider/model, don't override with stream data
             if (prev.provider) return prev;
             // Add provider/model to existing session
             return {
@@ -854,8 +854,8 @@ export function useSession(
       clearStreaming,
       removePendingMessage,
       streamingMarkdownCallbacks,
-      handleSSEMessageEvent,
-      handleSSESubagentMessage,
+      handleStreamMessageEvent,
+      handleStreamSubagentMessage,
       registerToolUseAgent,
       setAgentContent,
       setMessages,
@@ -864,10 +864,10 @@ export function useSession(
     ],
   );
 
-  // Handle SSE errors by checking if process is still alive
+  // Handle stream errors by checking if process is still alive
   // If process died (idle timeout), transition to idle state
   // Uses lightweight metadata endpoint to avoid re-fetching all messages
-  const handleSSEError = useCallback(async () => {
+  const handleStreamError = useCallback(async () => {
     try {
       const data = await api.getSessionMetadata(projectId, sessionId);
       if (data.ownership.owner !== "self") {
@@ -883,9 +883,9 @@ export function useSession(
 
   // Only connect to session stream when we own the session
   // External sessions are tracked via the activity stream instead
-  const { connected } = useSSE(
-    status.owner === "self" ? `/api/sessions/${sessionId}/stream` : null,
-    { onMessage: handleSSEMessage, onError: handleSSEError },
+  const { connected } = useSessionStream(
+    status.owner === "self" ? sessionId : null,
+    { onMessage: handleStreamMessage, onError: handleStreamError },
   );
 
   return {
@@ -907,7 +907,7 @@ export function useSession(
     loading,
     error,
     connected,
-    lastSSEActivityAt, // Last SSE message timestamp for engagement tracking
+    lastStreamActivityAt, // Last stream message timestamp for engagement tracking
     setStatus,
     setProcessState,
     setPermissionMode,

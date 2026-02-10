@@ -5,7 +5,7 @@ import {
   getMessageId,
   mergeJSONLMessages,
   mergeMessage,
-  mergeSSEMessage,
+  mergeStreamMessage,
 } from "../mergeMessages";
 
 describe("getMessageId", () => {
@@ -300,7 +300,7 @@ describe("mergeJSONLMessages", () => {
   });
 });
 
-describe("mergeSSEMessage", () => {
+describe("mergeStreamMessage", () => {
   describe("same ID merge", () => {
     it("merges with existing message by ID", () => {
       const existing: Message[] = [
@@ -308,7 +308,7 @@ describe("mergeSSEMessage", () => {
       ];
       const incoming: Message = { id: "msg-1", content: "new" };
 
-      const result = mergeSSEMessage(existing, incoming);
+      const result = mergeStreamMessage(existing, incoming);
 
       expect(result.messages).toHaveLength(1);
       expect(result.messages[0]?.content).toBe("new");
@@ -321,7 +321,7 @@ describe("mergeSSEMessage", () => {
       ];
       const incoming: Message = { id: "msg-1", content: "different" };
 
-      const result = mergeSSEMessage(existing, incoming);
+      const result = mergeStreamMessage(existing, incoming);
 
       // JSONL is authoritative, so SDK doesn't overwrite
       expect(result.messages).toBe(existing);
@@ -333,7 +333,7 @@ describe("mergeSSEMessage", () => {
       const existing: Message[] = [{ id: "msg-1", content: "first" }];
       const incoming: Message = { id: "msg-2", content: "second" };
 
-      const result = mergeSSEMessage(existing, incoming);
+      const result = mergeStreamMessage(existing, incoming);
 
       expect(result.messages).toHaveLength(2);
       expect(result.messages[1]?.id).toBe("msg-2");
@@ -348,7 +348,7 @@ describe("mergeSSEMessage", () => {
       ];
       const incoming: Message = { id: "msg-3", content: "third" };
 
-      const result = mergeSSEMessage(existing, incoming);
+      const result = mergeStreamMessage(existing, incoming);
 
       expect(result.messages).toHaveLength(3);
       expect(result.messages[0]?.id).toBe("msg-1");
@@ -368,7 +368,7 @@ describe("mergeSSEMessage", () => {
         content: "new",
       };
 
-      const result = mergeSSEMessage(existing, incoming);
+      const result = mergeStreamMessage(existing, incoming);
 
       // Should merge because uuid matches
       expect(result.messages).toHaveLength(1);

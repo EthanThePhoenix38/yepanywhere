@@ -42,7 +42,7 @@ export function mergeMessage(
     // SDK messages have extra streaming metadata not persisted to JSONL:
     // - session_id: routing/tracking for the streaming session
     // - parent_tool_use_id: tracks which tool spawned a sub-agent message
-    // - eventType: SSE envelope type (message, status, etc.)
+    // - eventType: stream envelope type (message, status, etc.)
     // This is expected - JSONL stores conversation content, SDK includes transient fields.
     // The merge preserves SDK-only fields while using JSONL as authoritative base.
     return {
@@ -74,7 +74,7 @@ export interface MergeJSONLResult {
  * - Adding new messages at end
  *
  * Note: Temp message deduplication is no longer needed since pending messages
- * are tracked separately via tempId echoed from SSE.
+ * are tracked separately via tempId echoed from stream.
  */
 export function mergeJSONLMessages(
   existing: Message[],
@@ -115,33 +115,33 @@ export function mergeJSONLMessages(
   }
 
   // Reorder messages by parentUuid chain to fix race conditions
-  // where SSE messages arrived before their parent (e.g., agent response before user message)
+  // where stream messages arrived before their parent (e.g., agent response before user message)
   if (options?.skipDagOrdering) {
     return { messages: result };
   }
   return { messages: orderByParentChain(result) };
 }
 
-export interface MergeSSEResult {
+export interface MergeStreamResult {
   messages: Message[];
   /** Index where the message was inserted/updated */
   index: number;
 }
 
 /**
- * Merge an incoming SSE message with existing messages.
+ * Merge an incoming stream message with existing messages.
  *
  * Handles:
  * - Merging with existing message if same ID
  * - Adding new messages at end
  *
  * Note: Temp message replacement is no longer needed since pending messages
- * are tracked separately via tempId echoed from SSE.
+ * are tracked separately via tempId echoed from stream.
  */
-export function mergeSSEMessage(
+export function mergeStreamMessage(
   existing: Message[],
   incoming: Message,
-): MergeSSEResult {
+): MergeStreamResult {
   const incomingId = getMessageId(incoming);
   // Check for existing message with same ID
   const existingIdx = existing.findIndex((m) => getMessageId(m) === incomingId);

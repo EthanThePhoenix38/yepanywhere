@@ -181,7 +181,7 @@ export interface BrowserTabConnectedEvent {
   type: "browser-tab-connected";
   browserProfileId: string;
   connectionId: number;
-  transport: "sse" | "ws";
+  transport: "ws";
   /** Total tabs connected for this browserProfileId */
   tabCount: number;
   /** Total tabs connected across all browser profiles */

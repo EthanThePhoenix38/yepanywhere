@@ -1,5 +1,5 @@
 /**
- * Tracks which browser tabs have active SSE/WebSocket connections to the server.
+ * Tracks which browser tabs have active WebSocket connections to the server.
  * This enables:
  * - Skipping push notifications for already-connected browser profiles
  * - Showing "X active sessions" in Settings > Remote Access
@@ -12,7 +12,7 @@
 import type { EventBus } from "../watcher/index.js";
 
 /** Transport type for the connection */
-export type BrowserConnectionTransport = "sse" | "ws";
+export type BrowserConnectionTransport = "ws";
 
 /** Information about a single browser tab connection */
 export interface BrowserTabConnection {

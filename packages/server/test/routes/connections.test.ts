@@ -42,7 +42,7 @@ describe("Connections Routes", () => {
           connectionId: 1,
           browserProfileId: "profile-1",
           connectedAt: "2024-01-01T10:00:00.000Z",
-          transport: "sse",
+          transport: "ws",
         },
       ]);
 
@@ -63,7 +63,7 @@ describe("Connections Routes", () => {
           connectionId: 1,
           browserProfileId: "profile-1",
           connectedAt: "2024-01-01T10:00:00.000Z",
-          transport: "sse",
+          transport: "ws",
         },
         {
           connectionId: 2,
@@ -75,7 +75,7 @@ describe("Connections Routes", () => {
           connectionId: 3,
           browserProfileId: "profile-1",
           connectedAt: "2024-01-01T09:55:00.000Z",
-          transport: "sse",
+          transport: "ws",
         },
       ]);
 
@@ -96,7 +96,7 @@ describe("Connections Routes", () => {
           connectionId: 1,
           browserProfileId: "profile-1",
           connectedAt: "2024-01-01T10:00:00.000Z",
-          transport: "sse",
+          transport: "ws",
         },
         {
           connectionId: 2,
@@ -120,7 +120,7 @@ describe("Connections Routes", () => {
           connectionId: 1,
           browserProfileId: "profile-1",
           connectedAt: "2024-01-01T10:00:00.000Z",
-          transport: "sse",
+          transport: "ws",
         },
       ]);
 
@@ -147,7 +147,7 @@ describe("Connections Routes", () => {
           connectionId: 1,
           browserProfileId: "profile-1",
           connectedAt: "2024-01-01T10:00:00.000Z",
-          transport: "sse",
+          transport: "ws",
         },
       ]);
 
@@ -164,13 +164,13 @@ describe("Connections Routes", () => {
           connectionId: 1,
           browserProfileId: "profile-1",
           connectedAt: "2024-01-01T10:00:00.000Z",
-          transport: "sse",
+          transport: "ws",
         },
         {
           connectionId: 2,
           browserProfileId: "profile-2",
           connectedAt: "2024-01-01T11:00:00.000Z",
-          transport: "sse",
+          transport: "ws",
         },
       ]);
 

@@ -123,7 +123,7 @@ function SessionPageContent({
     loading,
     error,
     connected,
-    lastSSEActivityAt,
+    lastStreamActivityAt,
     setStatus,
     setProcessState,
     setPermissionMode,
@@ -266,14 +266,14 @@ function SessionPageContent({
   // never become unread again after viewing.
   const sessionUpdatedAt = session?.updatedAt ?? null;
   const activityAt = useMemo(() => {
-    if (!sessionUpdatedAt && !lastSSEActivityAt) return null;
-    if (!sessionUpdatedAt) return lastSSEActivityAt;
-    if (!lastSSEActivityAt) return sessionUpdatedAt;
+    if (!sessionUpdatedAt && !lastStreamActivityAt) return null;
+    if (!sessionUpdatedAt) return lastStreamActivityAt;
+    if (!lastStreamActivityAt) return sessionUpdatedAt;
     // Return the more recent timestamp
-    return sessionUpdatedAt > lastSSEActivityAt
+    return sessionUpdatedAt > lastStreamActivityAt
       ? sessionUpdatedAt
-      : lastSSEActivityAt;
-  }, [sessionUpdatedAt, lastSSEActivityAt]);
+      : lastStreamActivityAt;
+  }, [sessionUpdatedAt, lastStreamActivityAt]);
 
   useEngagementTracking({
     sessionId,
@@ -885,7 +885,7 @@ function SessionPageContent({
             processState={processState}
             contextUsage={session.contextUsage}
             sessionStreamConnected={connected}
-            lastSessionEventAt={lastSSEActivityAt}
+            lastSessionEventAt={lastStreamActivityAt}
             onClose={() => setShowProcessInfoModal(false)}
           />
         )}

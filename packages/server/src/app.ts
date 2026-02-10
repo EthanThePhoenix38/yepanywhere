@@ -47,7 +47,7 @@ import { createRecentsRoutes } from "./routes/recents.js";
 import { createServerInfoRoutes } from "./routes/server-info.js";
 import { createSessionsRoutes } from "./routes/sessions.js";
 import { createSettingsRoutes } from "./routes/settings.js";
-import { createStreamRoutes } from "./routes/stream.js";
+
 import { type UploadDeps, createUploadRoutes } from "./routes/upload.js";
 import { version } from "./routes/version.js";
 import type {
@@ -386,7 +386,6 @@ export function createApp(options: AppOptions): AppResult {
       sessionIndexService: options.sessionIndexService,
     }),
   );
-  app.route("/api", createStreamRoutes({ supervisor }));
 
   // Inbox routes (cross-project session aggregation)
   app.route(

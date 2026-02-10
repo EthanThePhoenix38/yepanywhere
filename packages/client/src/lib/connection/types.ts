@@ -140,11 +140,12 @@ export interface UploadOptions {
 /**
  * Connection abstraction for client-server communication.
  *
- * Two implementations:
- * - DirectConnection: Uses native fetch, EventSource, WebSocket (direct to server)
- * - SecureConnection: Multiplexes everything over encrypted WebSocket (via relay)
+ * Implementations:
+ * - DirectConnection: Uses native fetch for REST, WebSocket for uploads (localhost)
+ * - WebSocketConnection: Multiplexes everything over a single WebSocket (localhost subscriptions)
+ * - SecureConnection: Multiplexes everything over encrypted WebSocket (remote/relay)
  *
- * The interface abstracts HTTP requests, SSE subscriptions, and file uploads
+ * The interface abstracts HTTP requests, WebSocket subscriptions, and file uploads
  * so they can be routed through different transports.
  */
 export interface Connection {
@@ -171,7 +172,7 @@ export interface Connection {
   fetchBlob(path: string): Promise<Blob>;
 
   /**
-   * Subscribe to session events (replaces SSE to /api/sessions/:id/stream).
+   * Subscribe to session events via WebSocket.
    *
    * Events include: message, status, connected, error, complete, heartbeat,
    * markdown-augment, pending, edit-augment, session-id-changed, etc.
@@ -188,7 +189,7 @@ export interface Connection {
   ): Subscription;
 
   /**
-   * Subscribe to activity events (replaces SSE to /api/activity/events).
+   * Subscribe to activity events via WebSocket.
    *
    * Events include: file-change, session-status-changed, session-created,
    * session-updated, session-seen, process-state-changed, etc.

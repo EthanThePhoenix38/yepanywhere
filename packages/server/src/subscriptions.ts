@@ -1,8 +1,8 @@
 /**
  * Shared subscription handlers for session and activity streams.
  *
- * Both SSE routes and WebSocket relay handlers call these functions,
- * providing their own `emit` implementation for the transport layer.
+ * WebSocket relay handlers call these functions, providing their own
+ * `emit` implementation for the transport layer.
  */
 
 import {

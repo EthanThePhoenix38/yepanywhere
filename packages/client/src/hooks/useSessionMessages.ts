@@ -3,7 +3,7 @@ import { api } from "../api/client";
 import {
   getMessageId,
   mergeJSONLMessages,
-  mergeSSEMessage,
+  mergeStreamMessage,
 } from "../lib/mergeMessages";
 import { getProvider } from "../providers/registry";
 import type { Message, Session, SessionStatus } from "../types";
@@ -51,14 +51,14 @@ export interface UseSessionMessagesResult {
   loading: boolean;
   /** Session data from initial load */
   session: Session | null;
-  /** Set session data (for SSE connected event) */
+  /** Set session data (for stream connected event) */
   setSession: React.Dispatch<React.SetStateAction<Session | null>>;
   /** Handle streaming content updates (for useStreamingContent) */
   handleStreamingUpdate: (message: Message, agentId?: string) => void;
-  /** Handle SSE message event (buffered until initial load completes) */
-  handleSSEMessageEvent: (incoming: Message) => void;
-  /** Handle SSE subagent message event */
-  handleSSESubagentMessage: (incoming: Message, agentId: string) => void;
+  /** Handle stream message event (buffered until initial load completes) */
+  handleStreamMessageEvent: (incoming: Message) => void;
+  /** Handle stream subagent message event */
+  handleStreamSubagentMessage: (incoming: Message, agentId: string) => void;
   /** Register toolUse → agent mapping */
   registerToolUseAgent: (toolUseId: string, agentId: string) => void;
   /** Update agent content (for lazy loading) */
@@ -74,12 +74,12 @@ export interface UseSessionMessagesResult {
 }
 
 /**
- * Hook for managing session messages with SSE buffering.
+ * Hook for managing session messages with stream buffering.
  *
  * Handles:
  * - Initial REST load of messages
- * - Buffering SSE messages until initial load completes
- * - Merging SSE and JSONL messages
+ * - Buffering stream messages until initial load completes
+ * - Merging stream and JSONL messages
  * - Routing subagent messages to agentContent
  */
 export function useSessionMessages(
@@ -96,8 +96,8 @@ export function useSessionMessages(
   const [loading, setLoading] = useState(true);
   const [session, setSession] = useState<Session | null>(null);
 
-  // Buffering: queue SSE messages until initial load completes
-  const sseBufferRef = useRef<
+  // Buffering: queue stream messages until initial load completes
+  const streamBufferRef = useRef<
     Array<
       | { type: "message"; msg: Message }
       | { type: "subagent"; msg: Message; agentId: string }
@@ -119,16 +119,16 @@ export function useSessionMessages(
     }
   }, [messages]);
 
-  // Process a buffered SSE message event
-  const processSSEMessage = useCallback((incoming: Message) => {
+  // Process a buffered stream message event
+  const processStreamMessage = useCallback((incoming: Message) => {
     setMessages((prev) => {
-      const result = mergeSSEMessage(prev, incoming);
+      const result = mergeStreamMessage(prev, incoming);
       return result.messages;
     });
   }, []);
 
-  // Process a buffered SSE subagent message
-  const processSSESubagentMessage = useCallback(
+  // Process a buffered stream subagent message
+  const processStreamSubagentMessage = useCallback(
     (incoming: Message, agentId: string) => {
       setAgentContent((prev) => {
         const existing = prev[agentId] ?? {
@@ -152,23 +152,23 @@ export function useSessionMessages(
     [],
   );
 
-  // Flush buffered SSE messages after initial load
+  // Flush buffered stream messages after initial load
   const flushBuffer = useCallback(() => {
-    const buffer = sseBufferRef.current;
-    sseBufferRef.current = [];
+    const buffer = streamBufferRef.current;
+    streamBufferRef.current = [];
     for (const item of buffer) {
       if (item.type === "message") {
-        processSSEMessage(item.msg);
+        processStreamMessage(item.msg);
       } else {
-        processSSESubagentMessage(item.msg, item.agentId);
+        processStreamSubagentMessage(item.msg, item.agentId);
       }
     }
-  }, [processSSEMessage, processSSESubagentMessage]);
+  }, [processStreamMessage, processStreamSubagentMessage]);
 
   // Initial load
   useEffect(() => {
     initialLoadCompleteRef.current = false;
-    sseBufferRef.current = [];
+    streamBufferRef.current = [];
     setLoading(true);
     setAgentContent({});
 
@@ -186,7 +186,7 @@ export function useSessionMessages(
         setMessages(taggedMessages);
 
         // Update lastMessageIdRef synchronously to avoid race condition:
-        // SSE "connected" event calls fetchNewMessages() immediately, but the
+        // stream "connected" event calls fetchNewMessages() immediately, but the
         // useEffect that normally updates lastMessageIdRef runs asynchronously.
         // Without this, fetchNewMessages() would use undefined and refetch everything.
         const lastMessage = taggedMessages[taggedMessages.length - 1];
@@ -262,28 +262,32 @@ export function useSessionMessages(
     [],
   );
 
-  // Handle SSE message event (with buffering)
-  const handleSSEMessageEvent = useCallback(
+  // Handle stream message event (with buffering)
+  const handleStreamMessageEvent = useCallback(
     (incoming: Message) => {
       if (!initialLoadCompleteRef.current) {
-        sseBufferRef.current.push({ type: "message", msg: incoming });
+        streamBufferRef.current.push({ type: "message", msg: incoming });
         return;
       }
-      processSSEMessage(incoming);
+      processStreamMessage(incoming);
     },
-    [processSSEMessage],
+    [processStreamMessage],
   );
 
-  // Handle SSE subagent message event (with buffering)
-  const handleSSESubagentMessage = useCallback(
+  // Handle stream subagent message event (with buffering)
+  const handleStreamSubagentMessage = useCallback(
     (incoming: Message, agentId: string) => {
       if (!initialLoadCompleteRef.current) {
-        sseBufferRef.current.push({ type: "subagent", msg: incoming, agentId });
+        streamBufferRef.current.push({
+          type: "subagent",
+          msg: incoming,
+          agentId,
+        });
         return;
       }
-      processSSESubagentMessage(incoming, agentId);
+      processStreamSubagentMessage(incoming, agentId);
     },
-    [processSSESubagentMessage],
+    [processStreamSubagentMessage],
   );
 
   // Register toolUse → agent mapping
@@ -351,8 +355,8 @@ export function useSessionMessages(
     session,
     setSession,
     handleStreamingUpdate,
-    handleSSEMessageEvent,
-    handleSSESubagentMessage,
+    handleStreamMessageEvent,
+    handleStreamSubagentMessage,
     registerToolUseAgent,
     setAgentContent,
     setToolUseToAgent,

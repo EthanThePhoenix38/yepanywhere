@@ -19,8 +19,8 @@ describe("ConnectedBrowsersService", () => {
 
   describe("connect", () => {
     it("returns unique connection IDs", () => {
-      const id1 = service.connect("profile-1", "sse");
-      const id2 = service.connect("profile-1", "sse");
+      const id1 = service.connect("profile-1", "ws");
+      const id2 = service.connect("profile-1", "ws");
       const id3 = service.connect("profile-2", "ws");
 
       expect(id1).not.toBe(id2);
@@ -28,20 +28,20 @@ describe("ConnectedBrowsersService", () => {
     });
 
     it("emits browser-tab-connected event", () => {
-      service.connect("profile-1", "sse");
+      service.connect("profile-1", "ws");
 
       expect(mockEventBus.emit).toHaveBeenCalledTimes(1);
       const event = emittedEvents[0] as Record<string, unknown>;
       expect(event.type).toBe("browser-tab-connected");
       expect(event.browserProfileId).toBe("profile-1");
-      expect(event.transport).toBe("sse");
+      expect(event.transport).toBe("ws");
       expect(event.tabCount).toBe(1);
       expect(event.totalTabCount).toBe(1);
     });
 
     it("tracks multiple tabs for same device", () => {
-      service.connect("profile-1", "sse");
-      service.connect("profile-1", "sse");
+      service.connect("profile-1", "ws");
+      service.connect("profile-1", "ws");
 
       expect(service.getTabCount("profile-1")).toBe(2);
       expect(service.getTotalTabCount()).toBe(2);
@@ -52,7 +52,7 @@ describe("ConnectedBrowsersService", () => {
     });
 
     it("tracks different devices independently", () => {
-      service.connect("profile-1", "sse");
+      service.connect("profile-1", "ws");
       service.connect("profile-2", "ws");
 
       expect(service.getTabCount("profile-1")).toBe(1);
@@ -63,7 +63,7 @@ describe("ConnectedBrowsersService", () => {
 
   describe("disconnect", () => {
     it("emits browser-tab-disconnected event", () => {
-      const connId = service.connect("profile-1", "sse");
+      const connId = service.connect("profile-1", "ws");
       emittedEvents.length = 0; // Clear connect events
 
       service.disconnect(connId);
@@ -83,8 +83,8 @@ describe("ConnectedBrowsersService", () => {
     });
 
     it("updates tab counts correctly", () => {
-      const id1 = service.connect("profile-1", "sse");
-      service.connect("profile-1", "sse");
+      const id1 = service.connect("profile-1", "ws");
+      service.connect("profile-1", "ws");
 
       expect(service.getTabCount("profile-1")).toBe(2);
 
@@ -95,7 +95,7 @@ describe("ConnectedBrowsersService", () => {
     });
 
     it("removes device when last tab disconnects", () => {
-      const connId = service.connect("profile-1", "sse");
+      const connId = service.connect("profile-1", "ws");
 
       expect(service.isBrowserProfileConnected("profile-1")).toBe(true);
 
@@ -114,13 +114,13 @@ describe("ConnectedBrowsersService", () => {
     });
 
     it("returns true for connected device", () => {
-      service.connect("profile-1", "sse");
+      service.connect("profile-1", "ws");
       expect(service.isBrowserProfileConnected("profile-1")).toBe(true);
     });
 
     it("returns false after all tabs disconnect", () => {
-      const id1 = service.connect("profile-1", "sse");
-      const id2 = service.connect("profile-1", "sse");
+      const id1 = service.connect("profile-1", "ws");
+      const id2 = service.connect("profile-1", "ws");
 
       service.disconnect(id1);
       expect(service.isBrowserProfileConnected("profile-1")).toBe(true);
@@ -136,9 +136,9 @@ describe("ConnectedBrowsersService", () => {
     });
 
     it("returns all connected device IDs", () => {
-      service.connect("profile-1", "sse");
+      service.connect("profile-1", "ws");
       service.connect("profile-2", "ws");
-      service.connect("profile-3", "sse");
+      service.connect("profile-3", "ws");
 
       const browserProfileIds = service.getConnectedBrowserProfileIds();
       expect(browserProfileIds).toHaveLength(3);
@@ -148,9 +148,9 @@ describe("ConnectedBrowsersService", () => {
     });
 
     it("does not duplicate device IDs for multiple tabs", () => {
-      service.connect("profile-1", "sse");
       service.connect("profile-1", "ws");
-      service.connect("profile-1", "sse");
+      service.connect("profile-1", "ws");
+      service.connect("profile-1", "ws");
 
       const browserProfileIds = service.getConnectedBrowserProfileIds();
       expect(browserProfileIds).toEqual(["profile-1"]);
@@ -163,9 +163,9 @@ describe("ConnectedBrowsersService", () => {
     });
 
     it("returns correct count for connected device", () => {
-      service.connect("profile-1", "sse");
       service.connect("profile-1", "ws");
-      service.connect("profile-1", "sse");
+      service.connect("profile-1", "ws");
+      service.connect("profile-1", "ws");
 
       expect(service.getTabCount("profile-1")).toBe(3);
     });
@@ -177,8 +177,8 @@ describe("ConnectedBrowsersService", () => {
     });
 
     it("returns total count across all devices", () => {
-      service.connect("profile-1", "sse");
-      service.connect("profile-1", "sse");
+      service.connect("profile-1", "ws");
+      service.connect("profile-1", "ws");
       service.connect("profile-2", "ws");
 
       expect(service.getTotalTabCount()).toBe(3);
@@ -191,7 +191,7 @@ describe("ConnectedBrowsersService", () => {
     });
 
     it("returns all connection details", () => {
-      const id1 = service.connect("profile-1", "sse");
+      const id1 = service.connect("profile-1", "ws");
       const id2 = service.connect("profile-2", "ws");
 
       const connections = service.getAllConnections();
@@ -200,7 +200,7 @@ describe("ConnectedBrowsersService", () => {
       const conn1 = connections.find((c) => c.connectionId === id1);
       expect(conn1).toBeDefined();
       expect(conn1?.browserProfileId).toBe("profile-1");
-      expect(conn1?.transport).toBe("sse");
+      expect(conn1?.transport).toBe("ws");
       expect(conn1?.connectedAt).toBeDefined();
 
       const conn2 = connections.find((c) => c.connectionId === id2);

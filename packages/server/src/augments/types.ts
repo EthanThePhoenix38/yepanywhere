@@ -1,6 +1,6 @@
 /**
  * Shared types for augmentation processing.
- * Used by streaming transports (SSE, WebSocket) and batch processing (GET sessions).
+ * Used by streaming transports (WebSocket) and batch processing (GET sessions).
  */
 
 import type { EditInput } from "./edit-augments.js";
