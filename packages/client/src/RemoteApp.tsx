@@ -23,6 +23,7 @@ import { ToastProvider } from "./contexts/ToastContext";
 import { useNeedsAttentionBadge } from "./hooks/useNeedsAttentionBadge";
 import { useSyncNotifyInAppSetting } from "./hooks/useNotifyInApp";
 import { useRemoteActivityBusConnection } from "./hooks/useRemoteActivityBusConnection";
+import { connectionManager } from "./lib/connection";
 import { getHostById } from "./lib/hostStorage";
 
 interface Props {
@@ -118,6 +119,12 @@ function ConnectionGate({ children }: Props) {
   // Relay host routes (/:relayUsername/*) handle their own connection logic
   // Let them through without interference
   if (isRelayHostRoute(location.pathname)) {
+    return <>{children}</>;
+  }
+
+  // During reconnection, stay on the current page — don't redirect to /login.
+  // ConnectionManager is the source of truth; React connection state may be stale.
+  if (connectionManager.state === "reconnecting") {
     return <>{children}</>;
   }
 

@@ -5,8 +5,13 @@ import type {
   UrlProjectId,
 } from "@yep-anywhere/shared";
 import type { SessionStatus, SessionSummary } from "../types";
-import { getGlobalConnection, isRemoteClient } from "./connection";
-import { type Subscription, isNonRetryableError } from "./connection/types";
+import {
+  connectionManager,
+  getGlobalConnection,
+  getWebSocketConnection,
+  isRemoteClient,
+} from "./connection";
+import type { Subscription } from "./connection/types";
 
 // Event types matching what the server emits
 export type FileChangeType = "create" | "modify" | "delete";
@@ -152,92 +157,56 @@ export type ActivityEventType = keyof ActivityEventMap;
 
 type Listener<T> = (data: T) => void;
 
-const RECONNECT_DELAY_MS = 2000;
-/**
- * Time without events before considering connection stale and forcing reconnect.
- * Server sends heartbeats every 30s, so 45s gives margin for network latency.
- */
-const STALE_THRESHOLD_MS = 45_000;
-/** How often to check for stale connections */
-const STALE_CHECK_INTERVAL_MS = 10_000;
-
 /**
  * Singleton that manages activity event subscriptions.
  * Uses WebSocket transport for both local and remote connections.
  * Hooks subscribe via on() and receive events through callbacks.
+ *
+ * Reconnection is delegated to ConnectionManager. This class only
+ * reports events in (recordEvent/recordHeartbeat/markConnected/handleError/handleClose)
+ * and reacts to state changes out (re-subscribe on 'connected').
  */
 class ActivityBus {
   private wsSubscription: Subscription | null = null;
   private listeners = new Map<ActivityEventType, Set<Listener<unknown>>>();
-  private reconnectTimeout: ReturnType<typeof setTimeout> | null = null;
   private hasConnected = false;
   private _connected = false;
-  private _lastEventTime: number | null = null;
-  private _lastReconnectTime: number | null = null;
-  private staleCheckInterval: ReturnType<typeof setInterval> | null = null;
-  /** Track if we've received heartbeats (proves server supports them) */
-  private hasReceivedHeartbeat = false;
+  private _connectionManagerStarted = false;
+  private _stateChangeUnsub: (() => void) | null = null;
 
   get connected(): boolean {
     return this._connected;
   }
 
-  /** Timestamp of last received event (including heartbeats) */
-  get lastEventTime(): number | null {
-    return this._lastEventTime;
-  }
-
-  /** Timestamp of last reconnect attempt */
-  get lastReconnectTime(): number | null {
-    return this._lastReconnectTime;
-  }
-
-  /**
-   * Start periodic stale connection check.
-   * If no events received within STALE_THRESHOLD_MS, force reconnect.
-   * Only triggers if we've received heartbeats (proves server supports them).
-   */
-  private startStaleCheck(): void {
-    // Don't start if already running
-    if (this.staleCheckInterval) return;
-
-    this.staleCheckInterval = setInterval(() => {
-      // Only check if we've received heartbeats (backward compat with old servers)
-      // and we have a lastEventTime to compare against
-      if (
-        !this._connected ||
-        !this._lastEventTime ||
-        !this.hasReceivedHeartbeat
-      )
-        return;
-
-      const timeSinceLastEvent = Date.now() - this._lastEventTime;
-      if (timeSinceLastEvent > STALE_THRESHOLD_MS) {
-        console.warn(
-          `[ActivityBus] Connection stale (no events in ${Math.round(timeSinceLastEvent / 1000)}s), forcing reconnect`,
-        );
-        this.forceReconnect();
-      }
-    }, STALE_CHECK_INTERVAL_MS);
-  }
-
-  /**
-   * Stop the stale connection check interval.
-   */
-  private stopStaleCheck(): void {
-    if (this.staleCheckInterval) {
-      clearInterval(this.staleCheckInterval);
-      this.staleCheckInterval = null;
-    }
-  }
-
   /**
    * Connect to the activity stream. Safe to call multiple times.
    * Uses global connection (remote mode) or WebSocket (local mode).
+   *
+   * Initializes ConnectionManager on first call with the appropriate reconnectFn.
    */
   connect(): void {
     // Check if already connected
     if (this.wsSubscription) return;
+
+    // Start ConnectionManager once (idempotent)
+    if (!this._connectionManagerStarted) {
+      this._connectionManagerStarted = true;
+      connectionManager.start(async () => {
+        const globalConn = getGlobalConnection();
+        if (globalConn?.forceReconnect) {
+          await globalConn.forceReconnect();
+        } else {
+          await getWebSocketConnection().reconnect();
+        }
+      });
+
+      // Listen for ConnectionManager state changes to re-subscribe
+      this._stateChangeUnsub = connectionManager.on("stateChange", (state) => {
+        if (state === "connected" && !this.wsSubscription) {
+          this.connect();
+        }
+      });
+    }
 
     // Check for global connection (remote mode with SecureConnection)
     const globalConn = getGlobalConnection();
@@ -254,13 +223,8 @@ class ActivityBus {
       return;
     }
 
-    // Local mode: always use WebSocket
-    // Lazy import to avoid circular dependencies
-    import("./connection").then(({ getWebSocketConnection }) => {
-      // Re-check — may have connected while waiting for the import
-      if (this.wsSubscription) return;
-      this.connectWithConnection(getWebSocketConnection());
-    });
+    // Local mode: use WebSocket
+    this.connectWithConnection(getWebSocketConnection());
   }
 
   /**
@@ -275,54 +239,33 @@ class ActivityBus {
       ) => void;
       onOpen?: () => void;
       onError?: (err: Error) => void;
-      onClose?: () => void;
+      onClose?: (error?: Error) => void;
     }) => Subscription;
   }): void {
     this.wsSubscription = connection.subscribeActivity({
       onEvent: (eventType, _eventId, data) => {
+        connectionManager.recordEvent();
         this.handleWsEvent(eventType, data);
       },
       onOpen: () => {
-        const isReconnect = this.hasConnected;
-        this.hasConnected = true;
+        connectionManager.markConnected();
         this._connected = true;
-        this.startStaleCheck();
 
-        if (isReconnect) {
+        if (this.hasConnected) {
           this.emit("reconnect", undefined);
         }
+        this.hasConnected = true;
       },
       onError: (err) => {
         console.error("[ActivityBus] Connection error:", err);
         this._connected = false;
         this.wsSubscription = null;
-        this.stopStaleCheck();
-
-        // Don't reconnect for non-retryable errors (e.g., auth required)
-        if (isNonRetryableError(err)) {
-          console.warn(
-            "[ActivityBus] Non-retryable error, not reconnecting:",
-            err.message,
-          );
-          return;
-        }
-
-        // Auto-reconnect
-        this.reconnectTimeout = setTimeout(
-          () => this.connect(),
-          RECONNECT_DELAY_MS,
-        );
+        connectionManager.handleError(err);
       },
-      onClose: () => {
-        // Connection closed cleanly (e.g., relay restart) - trigger reconnect
-        console.log("[ActivityBus] Connection closed, reconnecting...");
+      onClose: (error?: Error) => {
         this._connected = false;
         this.wsSubscription = null;
-        this.stopStaleCheck();
-        this.reconnectTimeout = setTimeout(
-          () => this.connect(),
-          RECONNECT_DELAY_MS,
-        );
+        connectionManager.handleClose(error);
       },
     });
   }
@@ -331,12 +274,8 @@ class ActivityBus {
    * Handle events from WebSocket subscription.
    */
   private handleWsEvent(eventType: string, data: unknown): void {
-    // Track last event time for all events (including heartbeats)
-    this._lastEventTime = Date.now();
-
-    // Handle special events
     if (eventType === "heartbeat") {
-      this.hasReceivedHeartbeat = true;
+      connectionManager.recordHeartbeat();
       return;
     }
     if (eventType === "connected") {
@@ -374,78 +313,11 @@ class ActivityBus {
    * Disconnect from the activity stream.
    */
   disconnect(): void {
-    this.stopStaleCheck();
-    if (this.reconnectTimeout) {
-      clearTimeout(this.reconnectTimeout);
-      this.reconnectTimeout = null;
-    }
     if (this.wsSubscription) {
       this.wsSubscription.close();
       this.wsSubscription = null;
     }
     this._connected = false;
-  }
-
-  /**
-   * Force a reconnection by closing the current connection and reconnecting.
-   * Useful when the connection may have gone stale (e.g., mobile wake from sleep).
-   * For remote mode (SecureConnection), this reconnects the underlying WebSocket.
-   */
-  forceReconnect(): void {
-    console.log(
-      `[ActivityBus] Forcing reconnection... connected=${this._connected}, hasSubscription=${!!this.wsSubscription}, lastEvent=${this._lastEventTime ? `${Math.round((Date.now() - this._lastEventTime) / 1000)}s ago` : "never"}`,
-    );
-    this._lastReconnectTime = Date.now();
-
-    // Clear any pending reconnect timeout
-    if (this.reconnectTimeout) {
-      clearTimeout(this.reconnectTimeout);
-      this.reconnectTimeout = null;
-    }
-
-    // For remote mode with SecureConnection, force reconnect the underlying WebSocket
-    const globalConn = getGlobalConnection();
-    console.log(
-      `[ActivityBus] globalConn=${!!globalConn}, hasForceReconnect=${!!globalConn?.forceReconnect}`,
-    );
-    if (globalConn?.forceReconnect) {
-      this._connected = false;
-      // Close our subscription (will be re-established by SecureConnection.forceReconnect)
-      if (this.wsSubscription) {
-        console.log("[ActivityBus] Closing existing wsSubscription");
-        this.wsSubscription.close();
-        this.wsSubscription = null;
-      }
-      // Force reconnect the underlying connection, then re-subscribe
-      console.log("[ActivityBus] Calling SecureConnection.forceReconnect()");
-      globalConn
-        .forceReconnect()
-        .then(() => {
-          console.log(
-            "[ActivityBus] SecureConnection.forceReconnect() resolved, calling connect()",
-          );
-          this.connect();
-        })
-        .catch((err) => {
-          console.error("[ActivityBus] Force reconnect failed:", err);
-          // Try to reconnect anyway after a delay
-          this.reconnectTimeout = setTimeout(
-            () => this.connect(),
-            RECONNECT_DELAY_MS,
-          );
-        });
-      return;
-    }
-
-    // For local WebSocket transport, just close and reconnect
-    if (this.wsSubscription) {
-      this.wsSubscription.close();
-      this.wsSubscription = null;
-    }
-    this._connected = false;
-
-    // Reconnect immediately
-    this.connect();
   }
 
   /**

@@ -27,9 +27,6 @@ export class WebSocketConnection implements Connection {
 
   private ws: WebSocket | null = null;
   private connectionPromise: Promise<void> | null = null;
-  private reconnectAttempts = 0;
-  private maxReconnectAttempts = 3;
-  private reconnectDelay = 1000;
   private protocol: RelayProtocol;
 
   constructor() {
@@ -107,7 +104,6 @@ export class WebSocketConnection implements Connection {
         clearTimeout(timeout);
         console.log("[WebSocketConnection] Connected");
         this.ws = ws;
-        this.reconnectAttempts = 0;
         resolve();
       };
     });
@@ -186,6 +182,23 @@ export class WebSocketConnection implements Connection {
     options?: UploadOptions,
   ): Promise<UploadedFile> {
     return this.protocol.upload(projectId, sessionId, file, options);
+  }
+
+  /**
+   * Reconnect the WebSocket. Tears down the current connection and
+   * re-establishes it. Used by ConnectionManager's reconnectFn.
+   */
+  async reconnect(): Promise<void> {
+    this.protocol.rejectAllPending(new Error("Connection reconnecting"));
+    if (this.ws) {
+      this.ws.onclose = null;
+      this.ws.onerror = null;
+      this.ws.onmessage = null;
+      this.ws.close();
+      this.ws = null;
+    }
+    this.connectionPromise = null;
+    await this.ensureConnected();
   }
 
   close(): void {

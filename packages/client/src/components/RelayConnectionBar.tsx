@@ -16,10 +16,10 @@ import { useActivityBusState } from "../hooks/useActivityBusState";
 const LOGIN_ROUTES = ["/login", "/login/direct", "/login/relay"];
 
 export function RelayConnectionBar() {
-  const { connection, isConnecting, isAutoResuming, error, autoResumeError } =
+  const { isConnecting, isAutoResuming, error, autoResumeError } =
     useRemoteConnection();
   const location = useLocation();
-  const activityBusState = useActivityBusState();
+  const { connectionState } = useActivityBusState();
 
   // Don't show on login routes
   const isLoginRoute = LOGIN_ROUTES.some(
@@ -30,21 +30,21 @@ export function RelayConnectionBar() {
     return null;
   }
 
-  // Determine connection state
-  // Check both RemoteConnectionContext state AND ActivityBus state.
-  // ActivityBus knows the true connection state because it receives events.
-  // This handles the case where SecureConnection.forceReconnect() succeeds
-  // but React state hasn't been updated yet.
+  // Derive status from ConnectionManager state
   let status: "connected" | "connecting" | "disconnected";
-  if (connection || activityBusState.connected) {
+  if (connectionState === "connected") {
     status = "connected";
-  } else if (isConnecting || isAutoResuming) {
+  } else if (
+    connectionState === "reconnecting" ||
+    isConnecting ||
+    isAutoResuming
+  ) {
     status = "connecting";
   } else {
     status = "disconnected";
   }
 
-  // Also show disconnected state if there's an error
+  // Override with error state
   if (error || autoResumeError) {
     status = "disconnected";
   }

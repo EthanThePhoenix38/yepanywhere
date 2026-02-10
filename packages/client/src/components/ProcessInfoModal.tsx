@@ -129,11 +129,7 @@ export function ProcessInfoModal({
   const [processInfo, setProcessInfo] = useState<ProcessInfo | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const {
-    connected: streamConnected,
-    lastEventTime,
-    lastReconnectTime,
-  } = useActivityBusState();
+  const { connected: streamConnected, connectionState } = useActivityBusState();
 
   // Fetch process info when modal opens (if session is owned)
   useEffect(() => {
@@ -197,13 +193,7 @@ export function ProcessInfoModal({
             label="Activity stream"
             value={streamConnected ? "Connected" : "Disconnected"}
           />
-          <InfoRow label="Last activity" value={formatTimeAgo(lastEventTime)} />
-          {lastReconnectTime && (
-            <InfoRow
-              label="Last reconnect"
-              value={formatTimeAgo(lastReconnectTime)}
-            />
-          )}
+          <InfoRow label="Connection state" value={connectionState} />
           <InfoRow
             label="Session stream"
             value={

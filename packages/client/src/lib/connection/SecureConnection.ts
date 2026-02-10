@@ -989,21 +989,14 @@ export class SecureConnection implements Connection {
 
   /**
    * Force reconnection of the underlying WebSocket.
-   * Useful when the connection may have gone stale (e.g., mobile wake from sleep).
+   * ConnectionManager handles re-subscription; this just tears down and rebuilds the transport.
    */
   async forceReconnect(): Promise<void> {
     console.log(
-      `[SecureConnection] Force reconnecting... wsState=${this.ws?.readyState}, connState=${this.connectionState}, isRelay=${this.isRelayConnection}, subscriptions=${this.protocol.subscriptions.size}`,
+      `[SecureConnection] Force reconnecting... wsState=${this.ws?.readyState}, connState=${this.connectionState}, isRelay=${this.isRelayConnection}`,
     );
 
-    // Save subscriptions to notify them after reconnect
-    const savedSubscriptions = new Map(this.protocol.subscriptions);
-
-    // Close existing WebSocket without notifying subscriptions yet
     if (this.ws) {
-      console.log(
-        `[SecureConnection] Closing existing WebSocket (readyState=${this.ws.readyState})`,
-      );
       this.ws.onclose = null;
       this.ws.onerror = null;
       this.ws.onmessage = null;
@@ -1011,41 +1004,16 @@ export class SecureConnection implements Connection {
       this.ws = null;
     }
 
-    // Clear pending requests with reconnect error
-    if (this.protocol.pendingRequests.size > 0) {
-      console.log(
-        `[SecureConnection] Clearing ${this.protocol.pendingRequests.size} pending requests`,
-      );
-    }
     this.protocol.rejectAllPending(new Error("Connection reconnecting"));
-
-    // Clear subscriptions - they'll re-subscribe when we notify onClose
-    this.protocol.subscriptions.clear();
 
     // Reset connection state but keep session info for resumption
     this.connectionState = "disconnected";
     this.connectionPromise = null;
 
-    // Reconnect the WebSocket
-    console.log("[SecureConnection] Calling ensureConnected...");
     await this.ensureConnected();
-    const wsState = (this.ws as WebSocket | null)?.readyState;
     console.log(
-      `[SecureConnection] ensureConnected complete, wsState=${wsState}, connState=${this.connectionState}`,
+      `[SecureConnection] Force reconnect complete, connState=${this.connectionState}`,
     );
-
-    // Notify all subscriptions via onClose so they can re-subscribe themselves
-    console.log(
-      `[SecureConnection] Notifying ${savedSubscriptions.size} subscriptions to reconnect`,
-    );
-    for (const [subscriptionId, handlers] of savedSubscriptions) {
-      console.log(
-        `[SecureConnection] Calling onClose for subscription ${subscriptionId}`,
-      );
-      handlers.onClose?.();
-    }
-
-    console.log("[SecureConnection] Force reconnect complete");
   }
 
   /**

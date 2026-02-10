@@ -26,8 +26,11 @@ import {
   useState,
 } from "react";
 import { flushSync } from "react-dom";
-import { activityBus } from "../lib/activityBus";
-import { getGlobalConnection, setGlobalConnection } from "../lib/connection";
+import {
+  connectionManager,
+  getGlobalConnection,
+  setGlobalConnection,
+} from "../lib/connection";
 import {
   SecureConnection,
   type StoredSession,
@@ -286,34 +289,13 @@ export function RemoteConnectionProvider({ children }: Props) {
     }
   }, []);
 
-  // Callback for when connection is lost unexpectedly
+  // Callback for when connection is lost unexpectedly.
+  // Feed the error to ConnectionManager which will attempt reconnection.
+  // Do NOT clear React connection state here — defer that until ConnectionManager
+  // emits 'disconnected' (all retries exhausted or non-retryable error).
   const handleDisconnect = useCallback((error: Error) => {
     console.log("[RemoteConnection] Connection lost:", error.message);
-    // Clear the React connection state so UI reflects disconnected status.
-    // NOTE: We intentionally do NOT clear globalConnection here. The SecureConnection
-    // instance is still valid and can be used for reconnection (via forceReconnect).
-    // ActivityBus will attempt to reconnect, and when it succeeds, we'll restore
-    // the React state via the reconnect event listener.
-    setConnection(null);
-    // Set error so UI can show reconnect options
-    // Categorize the error to show appropriate UI
-    const reason = categorizeError(error.message);
-    const currentStored = storedRef.current;
-    const isRelay = currentStored?.mode === "relay";
-
-    // Show auto-resume error modal for connection failures (not auth failures)
-    if (reason !== "auth_failed" && reason !== "other") {
-      setAutoResumeError({
-        reason,
-        mode: isRelay ? "relay" : "direct",
-        relayUsername: isRelay ? currentStored?.relayUsername : undefined,
-        serverUrl: currentStored?.wsUrl,
-        message: error.message,
-      });
-    } else {
-      // For auth failures, just show a simple error
-      setError(`Connection lost: ${error.message}`);
-    }
+    connectionManager.handleError(error);
   }, []);
 
   const connect = useCallback(
@@ -733,24 +715,52 @@ export function RemoteConnectionProvider({ children }: Props) {
     void attemptAutoResume();
   }, [autoResumeAttempted, handleSessionEstablished, handleDisconnect]);
 
-  // Listen for ActivityBus reconnect events to sync React state.
-  // When SecureConnection.forceReconnect() succeeds (called by ActivityBus),
-  // we need to restore the React state since handleDisconnect may have cleared it.
+  // Listen for ConnectionManager state changes to sync React state.
+  // When reconnection succeeds, restore the React connection state.
+  // When reconnection is in progress, keep current state (don't flash to login).
+  // When disconnected (all retries exhausted), clear connection and show error.
   useEffect(() => {
-    const unsubscribe = activityBus.on("reconnect", () => {
-      const globalConn = getGlobalConnection();
-      if (globalConn && !connection) {
-        console.log(
-          "[RemoteConnection] ActivityBus reconnected, restoring React state",
-        );
-        // Restore connection state and clear any errors
-        setConnection(globalConn as SecureConnection);
-        setError(null);
-        setAutoResumeError(null);
+    const unsubState = connectionManager.on("stateChange", (state) => {
+      if (state === "connected") {
+        const globalConn = getGlobalConnection();
+        if (globalConn && !connection) {
+          console.log(
+            "[RemoteConnection] ConnectionManager connected, restoring React state",
+          );
+          setConnection(globalConn as SecureConnection);
+          setError(null);
+          setAutoResumeError(null);
+        }
+      }
+      // 'reconnecting' — do nothing, keep current UI state
+    });
+
+    const unsubFailed = connectionManager.on("reconnectFailed", (error) => {
+      console.log(
+        "[RemoteConnection] ConnectionManager reconnect failed:",
+        error.message,
+      );
+      setConnection(null);
+      const reason = categorizeError(error.message);
+      const currentStored = storedRef.current;
+      const isRelay = currentStored?.mode === "relay";
+      if (reason !== "auth_failed" && reason !== "other") {
+        setAutoResumeError({
+          reason,
+          mode: isRelay ? "relay" : "direct",
+          relayUsername: isRelay ? currentStored?.relayUsername : undefined,
+          serverUrl: currentStored?.wsUrl,
+          message: error.message,
+        });
+      } else {
+        setError(`Connection lost: ${error.message}`);
       }
     });
 
-    return unsubscribe;
+    return () => {
+      unsubState();
+      unsubFailed();
+    };
   }, [connection]);
 
   // Track connection in ref for cleanup (avoids stale closure issues)

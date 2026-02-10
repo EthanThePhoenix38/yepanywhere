@@ -189,6 +189,8 @@ export function createWsRelayRoutes(
     let messageQueue: Promise<void> = Promise.resolve();
     // Connection state for SRP authentication
     const connState: ConnectionState = createConnectionState();
+    // Ping interval for dead connection detection (set in onOpen, cleared in onClose)
+    let pingInterval: ReturnType<typeof setInterval> | null = null;
     // Encryption-aware send function (created on open, captures connState)
     let send: ReturnType<typeof createSendFn>;
     // WSAdapter wrapper
@@ -222,6 +224,18 @@ export function createWsRelayRoutes(
         if (!remoteAccessService?.isEnabled() || c.get("authenticated")) {
           connState.authState = "authenticated";
         }
+
+        // Start WebSocket ping every 30s for dead connection detection
+        const rawWs = ws.raw as RawWebSocket | undefined;
+        if (rawWs?.ping) {
+          pingInterval = setInterval(() => {
+            try {
+              if (rawWs.readyState === rawWs.OPEN) rawWs.ping();
+            } catch {
+              if (pingInterval) clearInterval(pingInterval);
+            }
+          }, 30_000);
+        }
       },
 
       onMessage(evt, _ws) {
@@ -243,6 +257,8 @@ export function createWsRelayRoutes(
       },
 
       onClose(_evt, _ws) {
+        if (pingInterval) clearInterval(pingInterval);
+
         // Clean up all uploads
         cleanupUploads(uploads, uploadManager).catch((err) => {
           console.error("[WS Relay] Error cleaning up uploads:", err);
@@ -345,8 +361,19 @@ export function createAcceptRelayConnection(
       );
     });
 
+    // Start WebSocket ping every 30s for dead connection detection
+    const pingInterval = setInterval(() => {
+      try {
+        if (rawWs.readyState === rawWs.OPEN) rawWs.ping();
+      } catch {
+        clearInterval(pingInterval);
+      }
+    }, 30_000);
+
     // Wire up close handling
     rawWs.on("close", () => {
+      clearInterval(pingInterval);
+
       cleanupUploads(uploads, uploadManager).catch((err) => {
         console.error("[WS Relay] Error cleaning up uploads:", err);
       });
