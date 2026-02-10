@@ -216,9 +216,10 @@ export function createWsRelayRoutes(
         };
         // Create the send function that captures this connection's state
         send = createSendFn(wsAdapter, connState);
-        // If remote access is not enabled, allow unauthenticated connections
-        if (!remoteAccessService?.isEnabled()) {
-          // In local mode, connections are implicitly authenticated
+        // Auto-authenticate if:
+        // 1. Remote access is not enabled (local mode, no auth needed), OR
+        // 2. HTTP upgrade request was already authenticated via session cookie
+        if (!remoteAccessService?.isEnabled() || c.get("authenticated")) {
           connState.authState = "authenticated";
         }
       },
