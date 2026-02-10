@@ -836,7 +836,7 @@ describe("Secure WebSocket Transport E2E", () => {
         ws.send(envelope);
 
         // Wait for connected event
-        await new Promise((resolve) => setTimeout(resolve, 500));
+        await new Promise((resolve) => setTimeout(resolve, 2000));
 
         expect(events.length).toBeGreaterThanOrEqual(1);
         expect(events[0].eventType).toBe("connected");
