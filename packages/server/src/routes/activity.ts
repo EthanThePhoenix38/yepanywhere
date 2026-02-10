@@ -4,7 +4,8 @@ import type {
   BrowserProfileService,
   ConnectedBrowsersService,
 } from "../services/index.js";
-import type { BusEvent, EventBus } from "../watcher/index.js";
+import { createActivitySubscription } from "../subscriptions.js";
+import type { EventBus } from "../watcher/index.js";
 
 export interface ActivityDeps {
   eventBus: EventBus;
@@ -51,52 +52,28 @@ export function createActivityRoutes(deps: ActivityDeps): Hono {
 
     return streamSSE(c, async (stream) => {
       let eventId = 0;
-
-      // Send initial connection event
-      await stream.writeSSE({
-        id: String(eventId++),
-        event: "connected",
-        data: JSON.stringify({
-          timestamp: new Date().toISOString(),
-        }),
-      });
-
-      // Heartbeat interval
-      const heartbeatInterval = setInterval(async () => {
-        try {
-          await stream.writeSSE({
-            id: String(eventId++),
-            event: "heartbeat",
-            data: JSON.stringify({ timestamp: new Date().toISOString() }),
-          });
-        } catch {
-          clearInterval(heartbeatInterval);
-        }
-      }, 30000); // 30 second heartbeat
-
       let closed = false;
 
-      // Subscribe to bus events (file changes and session status)
-      const unsubscribe = deps.eventBus.subscribe(async (event: BusEvent) => {
-        if (closed) return;
-
-        try {
-          // Use the event's type as the SSE event name
-          await stream.writeSSE({
+      const sseEmit = (eventType: string, data: unknown) => {
+        stream
+          .writeSSE({
             id: String(eventId++),
-            event: event.type,
-            data: JSON.stringify(event),
+            event: eventType,
+            data: JSON.stringify(data),
+          })
+          .catch(() => {
+            // Stream closed
           });
-        } catch {
-          // Stream closed
+      };
+
+      const { cleanup } = createActivitySubscription(deps.eventBus, sseEmit, {
+        onError: () => {
           closed = true;
-          clearInterval(heartbeatInterval);
-          unsubscribe();
-        }
+        },
       });
 
-      // Cleanup function to unregister connection
-      const cleanup = () => {
+      // Cleanup function to unregister browser connection
+      const disconnectBrowser = () => {
         if (connectionId !== undefined && deps.connectedBrowsers) {
           deps.connectedBrowsers.disconnect(connectionId);
         }
@@ -105,9 +82,8 @@ export function createActivityRoutes(deps: ActivityDeps): Hono {
       // Handle stream close
       stream.onAbort(() => {
         closed = true;
-        clearInterval(heartbeatInterval);
-        unsubscribe();
         cleanup();
+        disconnectBrowser();
       });
 
       // Keep stream open indefinitely (until client disconnects)

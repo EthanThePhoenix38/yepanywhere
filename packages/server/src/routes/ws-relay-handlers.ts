@@ -48,16 +48,6 @@ import {
 } from "@yep-anywhere/shared";
 import type { Hono } from "hono";
 import {
-  type StreamAugmenter,
-  createStreamAugmenter,
-  extractIdFromAssistant,
-  extractMessageIdFromStart,
-  extractTextDelta,
-  extractTextFromAssistant,
-  isStreamingComplete,
-  markSubagent,
-} from "../augments/index.js";
-import {
   SrpServerSession,
   decompressGzip,
   decrypt,
@@ -75,6 +65,10 @@ import type {
   BrowserProfileService,
   ConnectedBrowsersService,
 } from "../services/index.js";
+import {
+  createActivitySubscription,
+  createSessionSubscription,
+} from "../subscriptions.js";
 import type { Supervisor } from "../supervisor/Supervisor.js";
 import type { UploadManager } from "../uploads/manager.js";
 import type { EventBus } from "../watcher/index.js";
@@ -197,36 +191,48 @@ export function createSendFn(
   connState: ConnectionState,
 ): SendFn {
   return (msg: YepMessage) => {
-    if (connState.authState === "authenticated" && connState.sessionKey) {
-      const plaintext = JSON.stringify(msg);
+    try {
+      if (connState.authState === "authenticated" && connState.sessionKey) {
+        const plaintext = JSON.stringify(msg);
 
-      if (connState.useBinaryEncrypted) {
-        // Phase 1/3: Binary encrypted envelope with optional compression
-        const supportsCompression = connState.supportedFormats.has(
-          BinaryFormat.COMPRESSED_JSON,
-        );
-        const envelope = encryptToBinaryEnvelopeWithCompression(
-          plaintext,
-          connState.sessionKey,
-          supportsCompression,
-        );
-        ws.send(envelope);
+        if (connState.useBinaryEncrypted) {
+          // Phase 1/3: Binary encrypted envelope with optional compression
+          const supportsCompression = connState.supportedFormats.has(
+            BinaryFormat.COMPRESSED_JSON,
+          );
+          const envelope = encryptToBinaryEnvelopeWithCompression(
+            plaintext,
+            connState.sessionKey,
+            supportsCompression,
+          );
+          ws.send(envelope);
+        } else {
+          // Legacy: JSON encrypted envelope
+          const { nonce, ciphertext } = encrypt(
+            plaintext,
+            connState.sessionKey,
+          );
+          const envelope: EncryptedEnvelope = {
+            type: "encrypted",
+            nonce,
+            ciphertext,
+          };
+          ws.send(JSON.stringify(envelope));
+        }
+      } else if (connState.useBinaryFrames) {
+        // Client sent binary frames, respond with binary
+        ws.send(encodeJsonFrame(msg));
       } else {
-        // Legacy: JSON encrypted envelope
-        const { nonce, ciphertext } = encrypt(plaintext, connState.sessionKey);
-        const envelope: EncryptedEnvelope = {
-          type: "encrypted",
-          nonce,
-          ciphertext,
-        };
-        ws.send(JSON.stringify(envelope));
+        // Text frame fallback (backwards compat)
+        ws.send(JSON.stringify(msg));
       }
-    } else if (connState.useBinaryFrames) {
-      // Client sent binary frames, respond with binary
-      ws.send(encodeJsonFrame(msg));
-    } else {
-      // Text frame fallback (backwards compat)
-      ws.send(JSON.stringify(msg));
+    } catch (err) {
+      console.warn("[WS Relay] Failed to send message, closing socket:", err);
+      try {
+        ws.close(1011, "Send failed");
+      } catch {
+        // Socket already closing/closed
+      }
     }
   };
 }
@@ -442,8 +448,6 @@ export function handleSessionSubscribe(
   }
 
   let eventId = 0;
-  let currentStreamingMessageId: string | null = null;
-
   const sendEvent = (eventType: string, data: unknown) => {
     send({
       type: "event",
@@ -454,166 +458,13 @@ export function handleSessionSubscribe(
     });
   };
 
-  let augmenter: StreamAugmenter | null = null;
-  let augmenterPromise: Promise<StreamAugmenter> | null = null;
-
-  const getAugmenter = async (): Promise<StreamAugmenter> => {
-    if (augmenter) return augmenter;
-    if (!augmenterPromise) {
-      augmenterPromise = createStreamAugmenter({
-        onMarkdownAugment: (data) => {
-          sendEvent("markdown-augment", data);
-        },
-        onPending: (data) => {
-          sendEvent("pending", data);
-        },
-        onError: (err, context) => {
-          console.warn(`[WS Relay] ${context}:`, err);
-        },
-      });
-    }
-    augmenter = await augmenterPromise;
-    return augmenter;
-  };
-
-  const currentState = process.state;
-  send({
-    type: "event",
-    subscriptionId,
-    eventType: "connected",
-    eventId: String(eventId++),
-    data: {
-      processId: process.id,
-      sessionId: process.sessionId,
-      state: currentState.type,
-      permissionMode: process.permissionMode,
-      modeVersion: process.modeVersion,
-      provider: process.provider,
-      model: process.model,
-      ...(currentState.type === "waiting-input"
-        ? { request: currentState.request }
-        : {}),
+  const { cleanup } = createSessionSubscription(process, sendEvent, {
+    onError: (err) => {
+      console.error("[WS Relay] Error in session subscription:", err);
     },
   });
 
-  for (const message of process.getMessageHistory()) {
-    send({
-      type: "event",
-      subscriptionId,
-      eventType: "message",
-      eventId: String(eventId++),
-      data: markSubagent(message),
-    });
-  }
-
-  const streamingContent = process.getStreamingContent();
-  if (streamingContent) {
-    getAugmenter()
-      .then(async (aug) => {
-        await aug.processCatchUp(
-          streamingContent.text,
-          streamingContent.messageId,
-        );
-      })
-      .catch((err) => {
-        console.warn("[WS Relay] Failed to send catch-up pending HTML:", err);
-      });
-  }
-
-  const heartbeatInterval = setInterval(() => {
-    try {
-      sendEvent("heartbeat", { timestamp: new Date().toISOString() });
-    } catch {
-      clearInterval(heartbeatInterval);
-    }
-  }, 30000);
-
-  const unsubscribe = process.subscribe(async (event) => {
-    try {
-      switch (event.type) {
-        case "message": {
-          const message = event.message as Record<string, unknown>;
-          const aug = await getAugmenter();
-          await aug.processMessage(message);
-          sendEvent("message", markSubagent(message));
-
-          const startMessageId =
-            extractMessageIdFromStart(message) ??
-            extractIdFromAssistant(message);
-          if (startMessageId) {
-            currentStreamingMessageId = startMessageId;
-          }
-
-          const textDelta =
-            extractTextDelta(message) ?? extractTextFromAssistant(message);
-          if (textDelta && currentStreamingMessageId) {
-            process.accumulateStreamingText(
-              currentStreamingMessageId,
-              textDelta,
-            );
-          }
-
-          if (isStreamingComplete(message)) {
-            currentStreamingMessageId = null;
-            process.clearStreamingText();
-          }
-          break;
-        }
-
-        case "state-change":
-          sendEvent("status", {
-            state: event.state.type,
-            ...(event.state.type === "waiting-input"
-              ? { request: event.state.request }
-              : {}),
-          });
-          break;
-
-        case "mode-change":
-          sendEvent("mode-change", {
-            permissionMode: event.mode,
-            modeVersion: event.version,
-          });
-          break;
-
-        case "error":
-          sendEvent("error", { message: event.error.message });
-          break;
-
-        case "claude-login":
-          sendEvent("claude-login", event.event);
-          break;
-
-        case "session-id-changed":
-          sendEvent("session-id-changed", {
-            oldSessionId: event.oldSessionId,
-            newSessionId: event.newSessionId,
-          });
-          break;
-
-        case "complete":
-          if (augmenter) {
-            await augmenter.flush();
-          }
-          sendEvent("complete", { timestamp: new Date().toISOString() });
-          break;
-
-        default:
-          return;
-      }
-    } catch (err) {
-      console.error("[WS Relay] Error sending session event:", err);
-    }
-  });
-
-  subscriptions.set(subscriptionId, () => {
-    clearInterval(heartbeatInterval);
-    unsubscribe();
-    if (currentStreamingMessageId) {
-      process.clearStreamingText();
-      currentStreamingMessageId = null;
-    }
-  });
+  subscriptions.set(subscriptionId, cleanup);
 
   console.log(
     `[WS Relay] Subscribed to session ${sessionId} (${subscriptionId})`,
@@ -653,47 +504,24 @@ export function handleActivitySubscribe(
   }
 
   let eventId = 0;
+  const sendEvent = (eventType: string, data: unknown) => {
+    send({
+      type: "event",
+      subscriptionId,
+      eventType,
+      eventId: String(eventId++),
+      data,
+    });
+  };
 
-  send({
-    type: "event",
-    subscriptionId,
-    eventType: "connected",
-    eventId: String(eventId++),
-    data: { timestamp: new Date().toISOString() },
-  });
-
-  const heartbeatInterval = setInterval(() => {
-    try {
-      send({
-        type: "event",
-        subscriptionId,
-        eventType: "heartbeat",
-        eventId: String(eventId++),
-        data: { timestamp: new Date().toISOString() },
-      });
-    } catch {
-      clearInterval(heartbeatInterval);
-    }
-  }, 30000);
-
-  const unsubscribe = eventBus.subscribe((event) => {
-    try {
-      send({
-        type: "event",
-        subscriptionId,
-        eventType: event.type,
-        eventId: String(eventId++),
-        data: event,
-      });
-    } catch (err) {
-      console.error("[WS Relay] Error sending activity event:", err);
-    }
+  const { cleanup } = createActivitySubscription(eventBus, sendEvent, {
+    onError: (err) => {
+      console.error("[WS Relay] Error in activity subscription:", err);
+    },
   });
 
   subscriptions.set(subscriptionId, () => {
-    clearInterval(heartbeatInterval);
-    unsubscribe();
-    // Disconnect from connectedBrowsers when unsubscribing
+    cleanup();
     if (connectionId !== undefined && connectedBrowsers) {
       connectedBrowsers.disconnect(connectionId);
     }
@@ -1318,6 +1146,7 @@ export async function handleMessage(
         const result = decryptBinaryEnvelopeRaw(bytes, connState.sessionKey);
         if (!result) {
           console.warn("[WS Relay] Failed to decrypt binary envelope");
+          ws.close(4004, "Decryption failed");
           return;
         }
 
@@ -1369,6 +1198,7 @@ export async function handleMessage(
           return;
         } catch {
           console.warn("[WS Relay] Failed to parse decrypted binary envelope");
+          ws.close(4004, "Decryption failed");
           return;
         }
       } catch (err) {
@@ -1483,6 +1313,7 @@ export async function handleMessage(
       console.warn(
         "[WS Relay] Received encrypted message but not authenticated",
       );
+      ws.close(4001, "Authentication required");
       return;
     }
     const decrypted = decrypt(
@@ -1492,12 +1323,14 @@ export async function handleMessage(
     );
     if (!decrypted) {
       console.warn("[WS Relay] Failed to decrypt message");
+      ws.close(4004, "Decryption failed");
       return;
     }
     try {
       msg = JSON.parse(decrypted) as RemoteClientMessage;
     } catch {
       console.warn("[WS Relay] Failed to parse decrypted message");
+      ws.close(4004, "Decryption failed");
       return;
     }
   } else {
@@ -1600,12 +1433,16 @@ async function routeMessage(
       err,
     );
     if (messageId) {
-      send({
-        type: "response",
-        id: messageId,
-        status: 500,
-        body: { error: "Internal server error" },
-      });
+      try {
+        send({
+          type: "response",
+          id: messageId,
+          status: 500,
+          body: { error: "Internal server error" },
+        });
+      } catch (sendErr) {
+        console.warn("[WS Relay] Failed to send error response:", sendErr);
+      }
     }
   }
 }

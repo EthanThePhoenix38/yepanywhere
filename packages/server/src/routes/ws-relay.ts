@@ -110,12 +110,20 @@ function isAllowedOrigin(origin: string | undefined): boolean {
 function createWSAdapter(ws: RawWebSocket): WSAdapter {
   return {
     send(data: string | ArrayBuffer | Uint8Array<ArrayBuffer>): void {
-      if (ws.readyState === ws.OPEN) {
-        ws.send(data);
+      try {
+        if (ws.readyState === ws.OPEN) {
+          ws.send(data);
+        }
+      } catch {
+        // Socket closed between readyState check and send
       }
     },
     close(code?: number, reason?: string): void {
-      ws.close(code, reason);
+      try {
+        ws.close(code, reason);
+      } catch {
+        // Already closed
+      }
     },
   };
 }
@@ -192,10 +200,18 @@ export function createWsRelayRoutes(
         // Create WSAdapter wrapper for Hono's WSContext
         wsAdapter = {
           send(data: string | ArrayBuffer | Uint8Array<ArrayBuffer>): void {
-            ws.send(data);
+            try {
+              ws.send(data);
+            } catch {
+              // Socket closed or closing — handled by onClose
+            }
           },
           close(code?: number, reason?: string): void {
-            ws.close(code, reason);
+            try {
+              ws.close(code, reason);
+            } catch {
+              // Already closed
+            }
           },
         };
         // Create the send function that captures this connection's state
