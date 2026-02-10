@@ -43,6 +43,8 @@ export function useSessionStream(
   );
   // Track if we've received heartbeats (proves server supports them)
   const hasReceivedHeartbeatRef = useRef(false);
+  // True during intentional cleanup — suppresses reconnect in onClose handler
+  const cleaningUpRef = useRef(false);
   // Track when page was last visible (for visibility change reconnect)
   const lastVisibleTimeRef = useRef<number>(Date.now());
 
@@ -204,6 +206,8 @@ export function useSessionStream(
           reconnectTimeoutRef.current = setTimeout(connect, 2000);
         },
         onClose: () => {
+          // Don't reconnect during intentional cleanup (component unmount / dep change)
+          if (cleaningUpRef.current) return;
           // Connection closed cleanly (e.g., relay restart) - trigger reconnect
           setConnected(false);
           stopStaleCheck();
@@ -278,11 +282,14 @@ export function useSessionStream(
         clearTimeout(reconnectTimeoutRef.current);
         reconnectTimeoutRef.current = null;
       }
+      // Set flag BEFORE close() so onClose handler doesn't schedule a ghost reconnect
+      cleaningUpRef.current = true;
       wsSubscriptionRef.current?.close();
       wsSubscriptionRef.current = null;
       // Reset mountedSessionIdRef so the next mount can connect
       // This is needed for StrictMode where cleanup runs between mounts
       mountedSessionIdRef.current = null;
+      cleaningUpRef.current = false;
     };
   }, [connect, stopStaleCheck]);
 
