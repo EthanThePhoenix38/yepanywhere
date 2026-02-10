@@ -1,0 +1,410 @@
+import { isNonRetryableError } from "./types";
+
+export type ConnectionState = "connected" | "reconnecting" | "disconnected";
+
+export interface ConnectionManagerConfig {
+  /** Base delay for exponential backoff (default: 1000ms) */
+  baseDelayMs?: number;
+  /** Maximum delay between reconnect attempts (default: 30000ms) */
+  maxDelayMs?: number;
+  /** Maximum number of reconnect attempts before giving up (default: 10) */
+  maxAttempts?: number;
+  /** Jitter factor for backoff randomization (default: 0.3) */
+  jitterFactor?: number;
+  /** Time without events before connection is considered stale (default: 45000ms) */
+  staleThresholdMs?: number;
+  /** Interval for checking stale connections (default: 10000ms) */
+  staleCheckIntervalMs?: number;
+  /** Time page must be hidden before triggering reconnect on visibility (default: 5000ms) */
+  visibilityThresholdMs?: number;
+  /** Injectable timer interface for testing */
+  timers?: TimerInterface;
+  /** Injectable visibility interface for testing */
+  visibility?: VisibilityInterface;
+}
+
+export type ReconnectFn = () => Promise<void>;
+
+/**
+ * Injectable timer interface for deterministic testing.
+ */
+export interface TimerInterface {
+  setTimeout(fn: () => void, ms: number): number;
+  clearTimeout(id: number): void;
+  setInterval(fn: () => void, ms: number): number;
+  clearInterval(id: number): void;
+  now(): number;
+}
+
+/**
+ * Injectable visibility interface for testing.
+ */
+export interface VisibilityInterface {
+  isVisible(): boolean;
+  onVisibilityChange(cb: (visible: boolean) => void): () => void;
+}
+
+type EventMap = {
+  stateChange: (state: ConnectionState, prev: ConnectionState) => void;
+  reconnectFailed: (error: Error) => void;
+};
+
+const DEFAULT_CONFIG = {
+  baseDelayMs: 1000,
+  maxDelayMs: 30000,
+  maxAttempts: 10,
+  jitterFactor: 0.3,
+  staleThresholdMs: 45000,
+  staleCheckIntervalMs: 10000,
+  visibilityThresholdMs: 5000,
+} as const;
+
+/**
+ * Default timer implementation using real browser timers.
+ */
+const realTimers: TimerInterface = {
+  setTimeout: (fn, ms) => window.setTimeout(fn, ms),
+  clearTimeout: (id) => window.clearTimeout(id),
+  setInterval: (fn, ms) => window.setInterval(fn, ms),
+  clearInterval: (id) => window.clearInterval(id),
+  now: () => Date.now(),
+};
+
+/**
+ * Default visibility implementation using the Page Visibility API.
+ */
+const realVisibility: VisibilityInterface = {
+  isVisible: () => typeof document !== "undefined" && !document.hidden,
+  onVisibilityChange(cb) {
+    if (typeof document === "undefined") return () => {};
+    const handler = () => cb(!document.hidden);
+    document.addEventListener("visibilitychange", handler);
+    return () => document.removeEventListener("visibilitychange", handler);
+  },
+};
+
+/**
+ * Centralized connection state machine that manages reconnection.
+ *
+ * Replaces the multiple overlapping reconnection systems (stale timers,
+ * visibility handlers, backoff logic) scattered across ActivityBus,
+ * useSessionStream, useActivityBusConnection, etc.
+ *
+ * States:
+ * - connected: socket is up, events flowing
+ * - reconnecting: attempting to re-establish connection with backoff
+ * - disconnected: gave up (max attempts or non-retryable error)
+ *
+ * Consumers call handleClose/handleError to report problems.
+ * ConnectionManager decides when and how to reconnect via the provided reconnectFn.
+ */
+export class ConnectionManager {
+  private _state: ConnectionState = "disconnected";
+  private _reconnectAttempts = 0;
+  private _reconnectFn: ReconnectFn | null = null;
+  private _started = false;
+
+  // Stale detection
+  private _lastEventTime = 0;
+  private _hasReceivedHeartbeat = false;
+  private _staleCheckIntervalId: number | null = null;
+
+  // Visibility
+  private _hiddenSince: number | null = null;
+  private _removeVisibilityListener: (() => void) | null = null;
+
+  // Backoff
+  private _backoffTimerId: number | null = null;
+
+  // In-flight reconnect dedup
+  private _reconnectPromise: Promise<void> | null = null;
+
+  // Event listeners
+  private _listeners: {
+    stateChange: Set<EventMap["stateChange"]>;
+    reconnectFailed: Set<EventMap["reconnectFailed"]>;
+  } = {
+    stateChange: new Set(),
+    reconnectFailed: new Set(),
+  };
+
+  // Config
+  private readonly config: Required<
+    Omit<ConnectionManagerConfig, "timers" | "visibility">
+  >;
+  private readonly timers: TimerInterface;
+  private readonly visibility: VisibilityInterface;
+
+  constructor(config: ConnectionManagerConfig = {}) {
+    this.config = {
+      baseDelayMs: config.baseDelayMs ?? DEFAULT_CONFIG.baseDelayMs,
+      maxDelayMs: config.maxDelayMs ?? DEFAULT_CONFIG.maxDelayMs,
+      maxAttempts: config.maxAttempts ?? DEFAULT_CONFIG.maxAttempts,
+      jitterFactor: config.jitterFactor ?? DEFAULT_CONFIG.jitterFactor,
+      staleThresholdMs:
+        config.staleThresholdMs ?? DEFAULT_CONFIG.staleThresholdMs,
+      staleCheckIntervalMs:
+        config.staleCheckIntervalMs ?? DEFAULT_CONFIG.staleCheckIntervalMs,
+      visibilityThresholdMs:
+        config.visibilityThresholdMs ?? DEFAULT_CONFIG.visibilityThresholdMs,
+    };
+    this.timers = config.timers ?? realTimers;
+    this.visibility = config.visibility ?? realVisibility;
+  }
+
+  get state(): ConnectionState {
+    return this._state;
+  }
+
+  get reconnectAttempts(): number {
+    return this._reconnectAttempts;
+  }
+
+  /**
+   * Start the connection manager with a reconnect function.
+   * Idempotent — calling multiple times updates the reconnectFn but
+   * doesn't create duplicate listeners.
+   */
+  start(reconnectFn: ReconnectFn): void {
+    this._reconnectFn = reconnectFn;
+    if (this._started) return;
+    this._started = true;
+    this._setState("connected");
+    this._startStaleCheck();
+    this._startVisibilityListener();
+  }
+
+  /**
+   * Stop the connection manager, clearing all timers and listeners.
+   */
+  stop(): void {
+    this._started = false;
+    this._reconnectFn = null;
+    this._stopStaleCheck();
+    this._stopVisibilityListener();
+    this._cancelBackoff();
+    this._reconnectPromise = null;
+    this._hasReceivedHeartbeat = false;
+    this._hiddenSince = null;
+    this._setState("disconnected");
+  }
+
+  /**
+   * Record that an event was received. Resets the stale timer.
+   */
+  recordEvent(): void {
+    this._lastEventTime = this.timers.now();
+  }
+
+  /**
+   * Record that a heartbeat was received. Enables stale detection.
+   */
+  recordHeartbeat(): void {
+    this._hasReceivedHeartbeat = true;
+    this._lastEventTime = this.timers.now();
+  }
+
+  /**
+   * Mark the connection as connected. Resets backoff counter.
+   * Called by consumers when their subscription's onOpen fires.
+   */
+  markConnected(): void {
+    this._reconnectAttempts = 0;
+    this._reconnectPromise = null;
+    this._cancelBackoff();
+    this._setState("connected");
+  }
+
+  /**
+   * Handle an error from a consumer. Triggers reconnect for retryable errors,
+   * transitions to disconnected for non-retryable ones.
+   */
+  handleError(error: Error): void {
+    if (this._state === "reconnecting") return; // already reconnecting
+    if (isNonRetryableError(error)) {
+      this._setState("disconnected");
+      this._emitReconnectFailed(error);
+      return;
+    }
+    this._startReconnecting();
+  }
+
+  /**
+   * Handle a close event from a consumer. Optionally pass the close error
+   * to check retryability (e.g., WebSocketCloseError with code 4001).
+   */
+  handleClose(error?: Error): void {
+    if (this._state === "reconnecting") return; // already reconnecting
+    if (error && isNonRetryableError(error)) {
+      this._setState("disconnected");
+      this._emitReconnectFailed(error);
+      return;
+    }
+    this._startReconnecting();
+  }
+
+  /**
+   * Force an immediate reconnect, resetting backoff.
+   * Useful for user-initiated reconnection.
+   */
+  forceReconnect(): void {
+    this._reconnectAttempts = 0;
+    this._cancelBackoff();
+    this._reconnectPromise = null;
+    this._startReconnecting();
+  }
+
+  /**
+   * Subscribe to events. Returns an unsubscribe function.
+   */
+  on(event: "stateChange", cb: EventMap["stateChange"]): () => void;
+  on(event: "reconnectFailed", cb: EventMap["reconnectFailed"]): () => void;
+  on(event: keyof EventMap, cb: (...args: never[]) => void): () => void {
+    const set = this._listeners[event] as Set<(...args: never[]) => void>;
+    set.add(cb);
+    return () => {
+      set.delete(cb);
+    };
+  }
+
+  // --- Private methods ---
+
+  private _setState(newState: ConnectionState): void {
+    if (newState === this._state) return;
+    const prev = this._state;
+    this._state = newState;
+    for (const cb of this._listeners.stateChange) {
+      cb(newState, prev);
+    }
+  }
+
+  private _emitReconnectFailed(error: Error): void {
+    for (const cb of this._listeners.reconnectFailed) {
+      cb(error);
+    }
+  }
+
+  private _startReconnecting(): void {
+    this._setState("reconnecting");
+    this._scheduleReconnect();
+  }
+
+  private _scheduleReconnect(): void {
+    if (!this._started || !this._reconnectFn) return;
+
+    if (this._reconnectAttempts >= this.config.maxAttempts) {
+      this._setState("disconnected");
+      this._emitReconnectFailed(
+        new Error(
+          `Reconnection failed after ${this.config.maxAttempts} attempts`,
+        ),
+      );
+      return;
+    }
+
+    const delay = this._getBackoffDelay(this._reconnectAttempts);
+    this._reconnectAttempts++;
+
+    this._backoffTimerId = this.timers.setTimeout(() => {
+      this._backoffTimerId = null;
+      this._executeReconnect();
+    }, delay);
+  }
+
+  private _executeReconnect(): void {
+    if (!this._started || !this._reconnectFn) return;
+
+    // Dedup: if a reconnect is already in-flight, don't start another
+    if (this._reconnectPromise) return;
+
+    const fn = this._reconnectFn;
+    this._reconnectPromise = fn()
+      .then(() => {
+        // Success — markConnected() will be called by the consumer's onOpen handler
+        // If markConnected() hasn't been called after reconnectFn resolves,
+        // that's fine — the consumer will call it when events start flowing.
+        this._reconnectPromise = null;
+      })
+      .catch((error: unknown) => {
+        this._reconnectPromise = null;
+        const err = error instanceof Error ? error : new Error(String(error));
+        if (isNonRetryableError(err)) {
+          this._setState("disconnected");
+          this._emitReconnectFailed(err);
+          return;
+        }
+        // Schedule next attempt
+        this._scheduleReconnect();
+      });
+  }
+
+  private _getBackoffDelay(attempt: number): number {
+    const base = this.config.baseDelayMs * 2 ** attempt;
+    const jitter = 1 + Math.random() * this.config.jitterFactor;
+    return Math.min(this.config.maxDelayMs, base * jitter);
+  }
+
+  private _cancelBackoff(): void {
+    if (this._backoffTimerId !== null) {
+      this.timers.clearTimeout(this._backoffTimerId);
+      this._backoffTimerId = null;
+    }
+  }
+
+  // --- Stale detection ---
+
+  private _startStaleCheck(): void {
+    this._stopStaleCheck();
+    this._lastEventTime = this.timers.now();
+    this._staleCheckIntervalId = this.timers.setInterval(() => {
+      this._checkStale();
+    }, this.config.staleCheckIntervalMs);
+  }
+
+  private _stopStaleCheck(): void {
+    if (this._staleCheckIntervalId !== null) {
+      this.timers.clearInterval(this._staleCheckIntervalId);
+      this._staleCheckIntervalId = null;
+    }
+  }
+
+  private _checkStale(): void {
+    if (this._state !== "connected") return;
+    if (!this._hasReceivedHeartbeat) return;
+    const elapsed = this.timers.now() - this._lastEventTime;
+    if (elapsed >= this.config.staleThresholdMs) {
+      this.forceReconnect();
+    }
+  }
+
+  // --- Visibility ---
+
+  private _startVisibilityListener(): void {
+    this._removeVisibilityListener = this.visibility.onVisibilityChange(
+      (visible) => {
+        if (!visible) {
+          this._hiddenSince = this.timers.now();
+        } else {
+          this._handleBecameVisible();
+        }
+      },
+    );
+  }
+
+  private _stopVisibilityListener(): void {
+    if (this._removeVisibilityListener) {
+      this._removeVisibilityListener();
+      this._removeVisibilityListener = null;
+    }
+  }
+
+  private _handleBecameVisible(): void {
+    if (this._state !== "connected") return;
+    if (this._hiddenSince === null) return;
+    const hiddenDuration = this.timers.now() - this._hiddenSince;
+    this._hiddenSince = null;
+    if (hiddenDuration >= this.config.visibilityThresholdMs) {
+      this.forceReconnect();
+    }
+  }
+}

@@ -11,6 +11,14 @@ export {
   isNonRetryableError,
   NON_RETRYABLE_CLOSE_CODES,
 } from "./types";
+export {
+  ConnectionManager,
+  type ConnectionState,
+  type ConnectionManagerConfig,
+  type ReconnectFn,
+  type TimerInterface,
+  type VisibilityInterface,
+} from "./ConnectionManager";
 export { DirectConnection, directConnection } from "./DirectConnection";
 export {
   WebSocketConnection,
@@ -65,3 +73,10 @@ export function getGlobalConnection(): Connection | null {
 export function isRemoteMode(): boolean {
   return globalConnection !== null;
 }
+
+/**
+ * Singleton ConnectionManager for the app.
+ * Both ActivityBus and useSessionStream feed events into this instance.
+ */
+import { ConnectionManager } from "./ConnectionManager";
+export const connectionManager = new ConnectionManager();
