@@ -364,8 +364,8 @@ export function Sidebar({
               onClick={onNavigate}
               basePath={basePath}
             />
-            {/* Switch Host - only show in relay mode */}
-            {basePath && (
+            {/* Switch Host - show whenever we have a remote connection */}
+            {remoteConnection && (
               <button
                 type="button"
                 className="sidebar-nav-item sidebar-switch-host"

@@ -22,6 +22,7 @@ import {
   useCallback,
   useContext,
   useEffect,
+  useMemo,
   useRef,
   useState,
 } from "react";
@@ -36,7 +37,7 @@ import {
   type StoredSession,
 } from "../lib/connection/SecureConnection";
 import type { Connection } from "../lib/connection/types";
-import { updateHostSession } from "../lib/hostStorage";
+import { getHostById, updateHostSession } from "../lib/hostStorage";
 
 /** Stored credentials for auto-reconnect */
 interface StoredCredentials {
@@ -105,6 +106,8 @@ interface RemoteConnectionState {
   autoResumeError: AutoResumeError | null;
   /** Current host ID from hostStorage (for multi-host tracking) */
   currentHostId: string | null;
+  /** Relay username of the current host (derived from currentHostId) */
+  currentRelayUsername: string | null;
   /** Set the current host ID (called by RelayHostRoutes after connect) */
   setCurrentHostId: (hostId: string | null) => void;
   /** Whether user intentionally disconnected (prevents auto-redirect) */
@@ -778,6 +781,14 @@ export function RemoteConnectionProvider({ children }: Props) {
     };
   }, []);
 
+  const currentRelayUsername = useMemo(
+    () =>
+      currentHostId
+        ? (getHostById(currentHostId)?.relayUsername ?? null)
+        : null,
+    [currentHostId],
+  );
+
   const value: RemoteConnectionState = {
     connection,
     isConnecting,
@@ -785,6 +796,7 @@ export function RemoteConnectionProvider({ children }: Props) {
     error,
     autoResumeError,
     currentHostId,
+    currentRelayUsername,
     setCurrentHostId,
     isIntentionalDisconnect,
     connect,
