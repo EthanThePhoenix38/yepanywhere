@@ -5,10 +5,24 @@
  * It uses remote.html as the entry point instead of index.html.
  */
 
+import { execSync } from "node:child_process";
 import { resolve } from "node:path";
 import react from "@vitejs/plugin-react";
 import { type Plugin, defineConfig } from "vite";
 import { cspPlugin } from "./vite-plugin-csp";
+
+function getGitVersion(): string {
+  try {
+    return execSync("git describe --tags --always", {
+      encoding: "utf-8",
+      stdio: ["pipe", "pipe", "pipe"],
+    })
+      .trim()
+      .replace(/^v/, "");
+  } catch {
+    return "dev";
+  }
+}
 
 // Port for dev server (different from regular client to allow parallel dev)
 const remoteDevPort = process.env.REMOTE_PORT
@@ -54,9 +68,10 @@ export default defineConfig({
   resolve: {
     conditions: ["source"],
   },
-  // Define build-time flag for remote client mode
+  // Define build-time constants
   define: {
     "import.meta.env.VITE_IS_REMOTE_CLIENT": JSON.stringify(true),
+    __APP_VERSION__: JSON.stringify(getGitVersion()),
   },
   // Build configuration for static site
   build: {

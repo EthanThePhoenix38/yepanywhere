@@ -1,3 +1,4 @@
+import { execSync } from "node:child_process";
 import react from "@vitejs/plugin-react";
 import { defineConfig } from "vite";
 import { cspPlugin } from "./vite-plugin-csp";
@@ -14,8 +15,24 @@ const vitePort = process.env.VITE_PORT
 // VITE_HOST: Set to "true" to bind to all interfaces (needed in Docker containers)
 const viteHost = process.env.VITE_HOST === "true" ? true : undefined;
 
+function getGitVersion(): string {
+  try {
+    return execSync("git describe --tags --always", {
+      encoding: "utf-8",
+      stdio: ["pipe", "pipe", "pipe"],
+    })
+      .trim()
+      .replace(/^v/, "");
+  } catch {
+    return "dev";
+  }
+}
+
 export default defineConfig({
   clearScreen: false,
+  define: {
+    __APP_VERSION__: JSON.stringify(getGitVersion()),
+  },
   plugins: [
     react(),
     // When HMR is disabled, use reload-notify plugin to tell backend about changes

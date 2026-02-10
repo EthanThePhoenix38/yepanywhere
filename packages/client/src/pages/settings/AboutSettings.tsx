@@ -39,6 +39,7 @@ export function AboutSettings() {
           <div className="settings-item-info">
             <strong>Version</strong>
             <p>
+              Server:{" "}
               {versionInfo ? (
                 <>
                   v{versionInfo.current}
@@ -55,6 +56,7 @@ export function AboutSettings() {
                 "Loading..."
               )}
             </p>
+            <p>Client: v{__APP_VERSION__}</p>
             {versionInfo?.updateAvailable && (
               <p className="settings-update-hint">
                 Run <code>npm i -g yepanywhere</code> to update

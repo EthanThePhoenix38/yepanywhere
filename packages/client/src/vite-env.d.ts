@@ -10,3 +10,6 @@ interface ImportMetaEnv {
 interface ImportMeta {
   readonly env: ImportMetaEnv;
 }
+
+/** Build-time version from git describe (injected by Vite define) */
+declare const __APP_VERSION__: string;
