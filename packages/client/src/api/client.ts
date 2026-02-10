@@ -10,13 +10,8 @@ import type {
   ThinkingOption,
   UploadedFile,
 } from "@yep-anywhere/shared";
-import { getWebsocketTransportEnabled } from "../hooks/useDeveloperMode";
 import { authEvents } from "../lib/authEvents";
-import {
-  getGlobalConnection,
-  getWebSocketConnection,
-  isRemoteClient,
-} from "../lib/connection";
+import { getGlobalConnection, isRemoteClient } from "../lib/connection";
 import type {
   AgentSession,
   InputRequest,
@@ -163,11 +158,6 @@ export async function fetchJSON<T>(
     throw new Error(
       "Remote client requires SecureConnection - not authenticated",
     );
-  }
-
-  // Route through WebSocket if enabled (Phase 2b)
-  if (getWebsocketTransportEnabled()) {
-    return getWebSocketConnection().fetch<T>(path, options);
   }
 
   const res = await fetch(`${API_BASE}${path}`, {

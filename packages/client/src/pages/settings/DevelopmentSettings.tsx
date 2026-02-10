@@ -4,7 +4,6 @@ import { useDeveloperMode } from "../../hooks/useDeveloperMode";
 import { useReloadNotifications } from "../../hooks/useReloadNotifications";
 import { useSchemaValidation } from "../../hooks/useSchemaValidation";
 import { useServerSettings } from "../../hooks/useServerSettings";
-import { getWebSocketConnection } from "../../lib/connection";
 
 export function DevelopmentSettings() {
   const {
@@ -17,22 +16,12 @@ export function DevelopmentSettings() {
   } = useReloadNotifications();
   const { settings: validationSettings, setEnabled: setValidationEnabled } =
     useSchemaValidation();
-  const {
-    holdModeEnabled,
-    setHoldModeEnabled,
-    websocketTransportEnabled,
-    setWebsocketTransportEnabled,
-  } = useDeveloperMode();
+  const { holdModeEnabled, setHoldModeEnabled } = useDeveloperMode();
   const { ignoredTools, clearIgnoredTools } = useSchemaValidationContext();
   const { settings: serverSettings, updateSetting: updateServerSetting } =
     useServerSettings();
 
   const [restarting, setRestarting] = useState(false);
-  const [wsTestStatus, setWsTestStatus] = useState<
-    "idle" | "testing" | "success" | "error"
-  >("idle");
-  const [wsTestError, setWsTestError] = useState<string | null>(null);
-
   // When SSE reconnects after restart, re-enable the button
   useEffect(() => {
     if (restarting && connected) {
@@ -43,27 +32,6 @@ export function DevelopmentSettings() {
   const handleRestartServer = async () => {
     setRestarting(true);
     await reloadBackend();
-  };
-
-  const handleTestWebSocket = async () => {
-    setWsTestStatus("testing");
-    setWsTestError(null);
-    try {
-      const ws = getWebSocketConnection();
-      // Try a simple API call through WebSocket
-      const result = await ws.fetch<{ current: string }>("/version");
-      if (result?.current) {
-        setWsTestStatus("success");
-        // Auto-enable after successful test
-        setWebsocketTransportEnabled(true);
-      } else {
-        setWsTestStatus("error");
-        setWsTestError("Unexpected response format");
-      }
-    } catch (err) {
-      setWsTestStatus("error");
-      setWsTestError(err instanceof Error ? err.message : "Connection failed");
-    }
   };
 
   // Only render in manual reload mode (dev mode)
@@ -134,41 +102,6 @@ export function DevelopmentSettings() {
             />
             <span className="toggle-slider" />
           </label>
-        </div>
-        <div className="settings-item">
-          <div className="settings-item-info">
-            <strong>WebSocket Transport</strong>
-            <p>
-              Use WebSocket for API requests instead of fetch/SSE. Tests the
-              relay protocol without encryption (Phase 2b).
-            </p>
-            {wsTestStatus === "success" && (
-              <p className="form-success">
-                Connection successful! WebSocket enabled.
-              </p>
-            )}
-            {wsTestStatus === "error" && (
-              <p className="form-error">{wsTestError || "Connection failed"}</p>
-            )}
-          </div>
-          <div className="settings-confirm-buttons">
-            <button
-              type="button"
-              className="settings-button"
-              onClick={handleTestWebSocket}
-              disabled={wsTestStatus === "testing"}
-            >
-              {wsTestStatus === "testing" ? "Testing..." : "Test"}
-            </button>
-            <label className="toggle-switch">
-              <input
-                type="checkbox"
-                checked={websocketTransportEnabled}
-                onChange={(e) => setWebsocketTransportEnabled(e.target.checked)}
-              />
-              <span className="toggle-slider" />
-            </label>
-          </div>
         </div>
         <div className="settings-item">
           <div className="settings-item-info">

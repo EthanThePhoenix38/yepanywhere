@@ -4,13 +4,9 @@ import type {
   PendingInputType,
   UrlProjectId,
 } from "@yep-anywhere/shared";
-import { getWebsocketTransportEnabled } from "../hooks/useDeveloperMode";
 import type { SessionStatus, SessionSummary } from "../types";
-import { authEvents } from "./authEvents";
 import { getGlobalConnection, isRemoteClient } from "./connection";
-import { FetchSSE } from "./connection/FetchSSE";
 import { type Subscription, isNonRetryableError } from "./connection/types";
-import { getOrCreateBrowserProfileId } from "./storageKeys";
 
 // Event types matching what the server emits
 export type FileChangeType = "create" | "modify" | "delete";
@@ -156,7 +152,6 @@ export type ActivityEventType = keyof ActivityEventMap;
 
 type Listener<T> = (data: T) => void;
 
-const API_BASE = "/api";
 const RECONNECT_DELAY_MS = 2000;
 /**
  * Time without events before considering connection stale and forcing reconnect.
@@ -168,17 +163,15 @@ const STALE_CHECK_INTERVAL_MS = 10_000;
 
 /**
  * Singleton that manages activity event subscriptions.
- * Uses WebSocket transport when enabled, otherwise SSE.
+ * Uses WebSocket transport for both local and remote connections.
  * Hooks subscribe via on() and receive events through callbacks.
  */
 class ActivityBus {
-  private eventSource: FetchSSE | null = null;
   private wsSubscription: Subscription | null = null;
   private listeners = new Map<ActivityEventType, Set<Listener<unknown>>>();
   private reconnectTimeout: ReturnType<typeof setTimeout> | null = null;
   private hasConnected = false;
   private _connected = false;
-  private useWebSocket = false;
   private _lastEventTime: number | null = null;
   private _lastReconnectTime: number | null = null;
   private staleCheckInterval: ReturnType<typeof setInterval> | null = null;
@@ -240,11 +233,11 @@ class ActivityBus {
 
   /**
    * Connect to the activity stream. Safe to call multiple times.
-   * Uses global connection (remote mode), WebSocket transport when enabled, otherwise SSE.
+   * Uses global connection (remote mode) or WebSocket (local mode).
    */
   connect(): void {
     // Check if already connected
-    if (this.eventSource || this.wsSubscription) return;
+    if (this.wsSubscription) return;
 
     // Check for global connection (remote mode with SecureConnection)
     const globalConn = getGlobalConnection();
@@ -261,18 +254,17 @@ class ActivityBus {
       return;
     }
 
-    // Check if WebSocket transport is enabled
-    this.useWebSocket = getWebsocketTransportEnabled();
-
-    if (this.useWebSocket) {
-      this.connectWebSocket();
-    } else {
-      this.connectSSE();
-    }
+    // Local mode: always use WebSocket
+    // Lazy import to avoid circular dependencies
+    import("./connection").then(({ getWebSocketConnection }) => {
+      // Re-check — may have connected while waiting for the import
+      if (this.wsSubscription) return;
+      this.connectWithConnection(getWebSocketConnection());
+    });
   }
 
   /**
-   * Connect using a provided connection (for remote mode).
+   * Connect using a provided connection (remote or local WebSocket).
    */
   private connectWithConnection(connection: {
     subscribeActivity: (handlers: {
@@ -336,65 +328,6 @@ class ActivityBus {
   }
 
   /**
-   * Connect using WebSocket transport (Phase 2c).
-   */
-  private connectWebSocket(): void {
-    // Lazy import to avoid circular dependencies
-    import("./connection").then(({ getWebSocketConnection }) => {
-      const connection = getWebSocketConnection();
-      this.wsSubscription = connection.subscribeActivity({
-        onEvent: (eventType, _eventId, data) => {
-          // Handle activity events from WebSocket
-          this.handleWsEvent(eventType, data);
-        },
-        onOpen: () => {
-          // Mark as connected
-          const isReconnect = this.hasConnected;
-          this.hasConnected = true;
-          this._connected = true;
-          this.startStaleCheck();
-
-          if (isReconnect) {
-            this.emit("reconnect", undefined);
-          }
-        },
-        onError: (err) => {
-          console.error("[ActivityBus] WebSocket error:", err);
-          this._connected = false;
-          this.wsSubscription = null;
-          this.stopStaleCheck();
-
-          // Don't reconnect for non-retryable errors (e.g., auth required)
-          if (isNonRetryableError(err)) {
-            console.warn(
-              "[ActivityBus] Non-retryable error, not reconnecting:",
-              err.message,
-            );
-            return;
-          }
-
-          // Auto-reconnect
-          this.reconnectTimeout = setTimeout(
-            () => this.connect(),
-            RECONNECT_DELAY_MS,
-          );
-        },
-        onClose: () => {
-          // Connection closed cleanly (e.g., relay restart) - trigger reconnect
-          console.log("[ActivityBus] WebSocket closed, reconnecting...");
-          this._connected = false;
-          this.wsSubscription = null;
-          this.stopStaleCheck();
-          this.reconnectTimeout = setTimeout(
-            () => this.connect(),
-            RECONNECT_DELAY_MS,
-          );
-        },
-      });
-    });
-  }
-
-  /**
    * Handle events from WebSocket subscription.
    */
   private handleWsEvent(eventType: string, data: unknown): void {
@@ -438,122 +371,6 @@ class ActivityBus {
   }
 
   /**
-   * Connect using SSE (traditional method).
-   * Uses FetchSSE instead of native EventSource to detect 401 errors.
-   */
-  private connectSSE(): void {
-    // Don't connect if login is already required
-    if (authEvents.loginRequired) {
-      console.log("[ActivityBus] Skipping SSE connection - login required");
-      return;
-    }
-
-    // Get or create browser profile ID for connection tracking
-    const browserProfileId = getOrCreateBrowserProfileId();
-    const baseUrl = `${API_BASE}/activity/events`;
-
-    // Build URL with browser profile ID and origin metadata
-    const params = new URLSearchParams({
-      browserProfileId,
-      origin: window.location.origin,
-      scheme: window.location.protocol.replace(":", ""),
-      hostname: window.location.hostname,
-      userAgent: navigator.userAgent,
-    });
-    // Only add port if it's specified (not default)
-    if (window.location.port) {
-      params.set("port", window.location.port);
-    }
-
-    const url = `${baseUrl}?${params.toString()}`;
-    // Use FetchSSE instead of EventSource to detect 401 errors
-    const sse = new FetchSSE(url);
-
-    sse.onopen = () => {
-      const isReconnect = this.hasConnected;
-      this.hasConnected = true;
-      this._connected = true;
-      this.startStaleCheck();
-
-      if (isReconnect) {
-        this.emit("reconnect", undefined);
-      }
-    };
-
-    // Set up event listeners for each event type
-    sse.addEventListener("file-change", (event) =>
-      this.handleEvent("file-change", event),
-    );
-    sse.addEventListener("session-status-changed", (event) =>
-      this.handleEvent("session-status-changed", event),
-    );
-    sse.addEventListener("session-created", (event) =>
-      this.handleEvent("session-created", event),
-    );
-    sse.addEventListener("session-updated", (event) =>
-      this.handleEvent("session-updated", event),
-    );
-    sse.addEventListener("session-seen", (event) =>
-      this.handleEvent("session-seen", event),
-    );
-    sse.addEventListener("process-state-changed", (event) =>
-      this.handleEvent("process-state-changed", event),
-    );
-    sse.addEventListener("session-metadata-changed", (event) =>
-      this.handleEvent("session-metadata-changed", event),
-    );
-
-    // Connection events
-    sse.addEventListener("browser-tab-connected", (event) =>
-      this.handleEvent("browser-tab-connected", event),
-    );
-    sse.addEventListener("browser-tab-disconnected", (event) =>
-      this.handleEvent("browser-tab-disconnected", event),
-    );
-
-    // Dev mode events
-    sse.addEventListener("source-change", (event) =>
-      this.handleEvent("source-change", event),
-    );
-    sse.addEventListener("backend-reloaded", () =>
-      this.emit("backend-reloaded", undefined),
-    );
-    sse.addEventListener("worker-activity-changed", (event) =>
-      this.handleEvent("worker-activity-changed", event),
-    );
-
-    // Track event times for stale detection
-    sse.addEventListener("connected", () => {
-      this._lastEventTime = Date.now();
-    });
-    sse.addEventListener("heartbeat", () => {
-      this._lastEventTime = Date.now();
-      this.hasReceivedHeartbeat = true;
-    });
-
-    sse.onerror = (error) => {
-      this._connected = false;
-      this.stopStaleCheck();
-      sse.close();
-      this.eventSource = null;
-
-      // Don't reconnect for auth errors (FetchSSE handles signaling)
-      if (error.isAuthError) {
-        console.log("[ActivityBus] Auth error, not reconnecting");
-        return;
-      }
-
-      // Auto-reconnect for other errors
-      this.reconnectTimeout = setTimeout(
-        () => this.connect(),
-        RECONNECT_DELAY_MS,
-      );
-    };
-
-    this.eventSource = sse;
-  }
-
-  /**
    * Disconnect from the activity stream.
    */
   disconnect(): void {
@@ -561,10 +378,6 @@ class ActivityBus {
     if (this.reconnectTimeout) {
       clearTimeout(this.reconnectTimeout);
       this.reconnectTimeout = null;
-    }
-    if (this.eventSource) {
-      this.eventSource.close();
-      this.eventSource = null;
     }
     if (this.wsSubscription) {
       this.wsSubscription.close();
@@ -624,11 +437,7 @@ class ActivityBus {
       return;
     }
 
-    // For SSE or WebSocket transport, just close and reconnect
-    if (this.eventSource) {
-      this.eventSource.close();
-      this.eventSource = null;
-    }
+    // For local WebSocket transport, just close and reconnect
     if (this.wsSubscription) {
       this.wsSubscription.close();
       this.wsSubscription = null;
@@ -656,17 +465,6 @@ class ActivityBus {
     return () => {
       set.delete(callback as Listener<unknown>);
     };
-  }
-
-  private handleEvent(eventType: ActivityEventType, event: MessageEvent): void {
-    if (event.data === undefined || event.data === null) return;
-
-    try {
-      const data = JSON.parse(event.data);
-      this.emit(eventType, data);
-    } catch {
-      // Ignore malformed JSON
-    }
   }
 
   private emit<K extends ActivityEventType>(

@@ -3,15 +3,12 @@ import { UI_KEYS } from "../lib/storageKeys";
 
 interface DeveloperModeSettings {
   holdModeEnabled: boolean;
-  /** Use WebSocket transport instead of fetch/SSE (Phase 2b testing) */
-  websocketTransportEnabled: boolean;
   /** Log relay requests/responses to console for debugging */
   relayDebugEnabled: boolean;
 }
 
 const DEFAULT_SETTINGS: DeveloperModeSettings = {
   holdModeEnabled: false,
-  websocketTransportEnabled: false,
   relayDebugEnabled: false,
 };
 
@@ -75,10 +72,6 @@ export function useDeveloperMode() {
     updateSettings({ ...currentSettings, holdModeEnabled: enabled });
   }, []);
 
-  const setWebsocketTransportEnabled = useCallback((enabled: boolean) => {
-    updateSettings({ ...currentSettings, websocketTransportEnabled: enabled });
-  }, []);
-
   const setRelayDebugEnabled = useCallback((enabled: boolean) => {
     updateSettings({ ...currentSettings, relayDebugEnabled: enabled });
   }, []);
@@ -86,19 +79,9 @@ export function useDeveloperMode() {
   return {
     holdModeEnabled: settings.holdModeEnabled,
     setHoldModeEnabled,
-    websocketTransportEnabled: settings.websocketTransportEnabled,
-    setWebsocketTransportEnabled,
     relayDebugEnabled: settings.relayDebugEnabled,
     setRelayDebugEnabled,
   };
-}
-
-/**
- * Get the current WebSocket transport setting without React hooks.
- * Used by useConnection to check the setting synchronously.
- */
-export function getWebsocketTransportEnabled(): boolean {
-  return currentSettings.websocketTransportEnabled;
 }
 
 /**
