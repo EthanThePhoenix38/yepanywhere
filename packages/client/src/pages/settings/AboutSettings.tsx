@@ -1,11 +1,47 @@
+import { useCallback, useEffect, useState } from "react";
+import { api, fetchJSON } from "../../api/client";
+import { useDeveloperMode } from "../../hooks/useDeveloperMode";
 import { useOnboarding } from "../../hooks/useOnboarding";
 import { usePwaInstall } from "../../hooks/usePwaInstall";
 import { useVersion } from "../../hooks/useVersion";
+import { activityBus } from "../../lib/activityBus";
 
 export function AboutSettings() {
   const { canInstall, isInstalled, install } = usePwaInstall();
   const { version: versionInfo } = useVersion();
   const { resetOnboarding } = useOnboarding();
+  const { remoteLogCollectionEnabled, setRemoteLogCollectionEnabled } =
+    useDeveloperMode();
+
+  // Server restart state
+  const [restarting, setRestarting] = useState(false);
+  const [activeWorkers, setActiveWorkers] = useState(0);
+
+  // Fetch worker activity on mount
+  useEffect(() => {
+    fetchJSON<{ activeWorkers: number; hasActiveWork: boolean }>(
+      "/status/workers",
+    )
+      .then((data) => setActiveWorkers(data.activeWorkers))
+      .catch(() => {});
+  }, []);
+
+  // When activity bus reconnects after restart, clear restarting state
+  useEffect(() => {
+    if (!restarting) return;
+    return activityBus.on("reconnect", () => {
+      setRestarting(false);
+    });
+  }, [restarting]);
+
+  const handleRestart = useCallback(async () => {
+    setRestarting(true);
+    try {
+      await api.restartServer();
+    } catch {
+      // Expected - server drops connection during restart
+    }
+  }, []);
 
   return (
     <section className="settings-section">
@@ -66,6 +102,30 @@ export function AboutSettings() {
         </div>
         <div className="settings-item">
           <div className="settings-item-info">
+            <strong>Restart Server</strong>
+            <p>Restart the backend server process.</p>
+            {activeWorkers > 0 && !restarting && (
+              <p className="settings-warning">
+                {activeWorkers} active session
+                {activeWorkers !== 1 ? "s" : ""} will be interrupted
+              </p>
+            )}
+          </div>
+          <button
+            type="button"
+            className={`settings-button ${activeWorkers > 0 ? "settings-button-danger" : ""}`}
+            onClick={handleRestart}
+            disabled={restarting}
+          >
+            {restarting
+              ? "Restarting..."
+              : activeWorkers > 0
+                ? "Restart Anyway"
+                : "Restart Server"}
+          </button>
+        </div>
+        <div className="settings-item">
+          <div className="settings-item-info">
             <strong>Report a Bug</strong>
             <p>
               Found an issue? Report it on GitHub to help improve Yep Anywhere.
@@ -95,6 +155,20 @@ export function AboutSettings() {
           >
             Launch Wizard
           </button>
+        </div>
+        <div className="settings-item">
+          <div className="settings-item-info">
+            <strong>Connection Diagnostics</strong>
+            <p>Capture connection logs and send to server for debugging.</p>
+          </div>
+          <label className="toggle-switch">
+            <input
+              type="checkbox"
+              checked={remoteLogCollectionEnabled}
+              onChange={(e) => setRemoteLogCollectionEnabled(e.target.checked)}
+            />
+            <span className="toggle-slider" />
+          </label>
         </div>
       </div>
     </section>

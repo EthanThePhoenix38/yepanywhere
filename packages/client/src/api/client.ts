@@ -291,6 +291,12 @@ export const api = {
       method: "DELETE",
     }),
 
+  // Server admin API
+  restartServer: () =>
+    fetchJSON<{ ok: boolean; message: string }>("/server/restart", {
+      method: "POST",
+    }),
+
   // Provider API
   getProviders: () => fetchJSON<{ providers: ProviderInfo[] }>("/providers"),
 

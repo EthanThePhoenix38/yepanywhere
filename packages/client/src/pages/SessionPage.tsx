@@ -19,6 +19,7 @@ import {
   useStreamingMarkdownContext,
 } from "../contexts/StreamingMarkdownContext";
 import { useToastContext } from "../contexts/ToastContext";
+import { useActivityBusState } from "../hooks/useActivityBusState";
 import { useClaudeLogin } from "../hooks/useClaudeLogin";
 import { useConnection } from "../hooks/useConnection";
 import { useDeveloperMode } from "../hooks/useDeveloperMode";
@@ -141,6 +142,17 @@ function SessionPageContent({
     initialStatus,
     streamingMarkdownCallbacks,
   );
+
+  // Session connection bar state
+  const { connectionState } = useActivityBusState();
+  const sessionConnectionStatus =
+    status.owner !== "self"
+      ? "idle"
+      : connected
+        ? "connected"
+        : connectionState === "reconnecting"
+          ? "connecting"
+          : "disconnected";
 
   // Effective provider/model for immediate display before session data loads
   const effectiveProvider = session?.provider ?? initialProvider;
@@ -936,6 +948,9 @@ function SessionPageContent({
         </main>
 
         <footer className="session-input">
+          <div
+            className={`session-connection-bar session-connection-${sessionConnectionStatus}`}
+          />
           <div className="session-input-inner">
             {/* User question panel */}
             {pendingInputRequest &&

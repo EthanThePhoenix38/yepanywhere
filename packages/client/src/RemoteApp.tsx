@@ -8,7 +8,7 @@
  * - Uses RemoteConnectionProvider for connection state
  */
 
-import type { ReactNode } from "react";
+import { type ReactNode, useEffect } from "react";
 import { Navigate, useLocation } from "react-router-dom";
 import { FloatingActionButton } from "./components/FloatingActionButton";
 import { HostOfflineModal } from "./components/HostOfflineModal";
@@ -24,6 +24,7 @@ import { useNeedsAttentionBadge } from "./hooks/useNeedsAttentionBadge";
 import { useSyncNotifyInAppSetting } from "./hooks/useNotifyInApp";
 import { useRemoteActivityBusConnection } from "./hooks/useRemoteActivityBusConnection";
 import { connectionManager } from "./lib/connection";
+import { initClientLogCollection } from "./lib/diagnostics";
 import { getHostById } from "./lib/hostStorage";
 
 interface Props {
@@ -75,6 +76,9 @@ function isRelayHostRoute(pathname: string): boolean {
 function RemoteAppContent({ children }: Props) {
   // Manage activity bus connection (via SecureConnection subscribeActivity)
   useRemoteActivityBusConnection();
+
+  // Client-side log collection for connection diagnostics
+  useEffect(() => initClientLogCollection(), []);
 
   // Sync notifyInApp setting to service worker on app startup and SW restarts
   useSyncNotifyInAppSetting();

@@ -220,8 +220,12 @@ export class ConnectionManager {
    * transitions to disconnected for non-retryable ones.
    */
   handleError(error: Error): void {
+    const retryable = !isNonRetryableError(error);
+    console.log(
+      `[ConnectionManager] error: ${error.message}, retryable=${retryable}`,
+    );
     if (this._state === "reconnecting") return; // already reconnecting
-    if (isNonRetryableError(error)) {
+    if (!retryable) {
       this._setState("disconnected");
       this._emitReconnectFailed(error);
       return;
@@ -234,8 +238,12 @@ export class ConnectionManager {
    * to check retryability (e.g., WebSocketCloseError with code 4001).
    */
   handleClose(error?: Error): void {
+    const retryable = !error || !isNonRetryableError(error);
+    console.log(
+      `[ConnectionManager] close: ${error?.message ?? "no error"}, retryable=${retryable}`,
+    );
     if (this._state === "reconnecting") return; // already reconnecting
-    if (error && isNonRetryableError(error)) {
+    if (error && !retryable) {
       this._setState("disconnected");
       this._emitReconnectFailed(error);
       return;
@@ -248,6 +256,7 @@ export class ConnectionManager {
    * Useful for user-initiated reconnection.
    */
   forceReconnect(): void {
+    console.log("[ConnectionManager] force reconnect");
     this._reconnectAttempts = 0;
     this._cancelBackoff();
     this._reconnectPromise = null;
@@ -273,6 +282,7 @@ export class ConnectionManager {
     if (newState === this._state) return;
     const prev = this._state;
     this._state = newState;
+    console.log(`[ConnectionManager] ${prev} → ${newState}`);
     for (const cb of this._listeners.stateChange) {
       cb(newState, prev);
     }
@@ -304,6 +314,9 @@ export class ConnectionManager {
 
     const delay = this._getBackoffDelay(this._reconnectAttempts);
     this._reconnectAttempts++;
+    console.log(
+      `[ConnectionManager] attempt ${this._reconnectAttempts}/${this.config.maxAttempts}, delay ${Math.round(delay)}ms`,
+    );
 
     this._backoffTimerId = this.timers.setTimeout(() => {
       this._backoffTimerId = null;
@@ -328,6 +341,7 @@ export class ConnectionManager {
       .catch((error: unknown) => {
         this._reconnectPromise = null;
         const err = error instanceof Error ? error : new Error(String(error));
+        console.log(`[ConnectionManager] reconnect failed: ${err.message}`);
         if (isNonRetryableError(err)) {
           this._setState("disconnected");
           this._emitReconnectFailed(err);
@@ -373,6 +387,9 @@ export class ConnectionManager {
     if (!this._hasReceivedHeartbeat) return;
     const elapsed = this.timers.now() - this._lastEventTime;
     if (elapsed >= this.config.staleThresholdMs) {
+      console.log(
+        `[ConnectionManager] stale (${elapsed}ms), forcing reconnect`,
+      );
       this.forceReconnect();
     }
   }
@@ -403,7 +420,11 @@ export class ConnectionManager {
     if (this._hiddenSince === null) return;
     const hiddenDuration = this.timers.now() - this._hiddenSince;
     this._hiddenSince = null;
-    if (hiddenDuration >= this.config.visibilityThresholdMs) {
+    const exceeded = hiddenDuration >= this.config.visibilityThresholdMs;
+    console.log(
+      `[ConnectionManager] visible after ${hiddenDuration}ms hidden, threshold=${exceeded}`,
+    );
+    if (exceeded) {
       this.forceReconnect();
     }
   }

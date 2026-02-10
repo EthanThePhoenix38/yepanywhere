@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import { type ReactNode, useEffect } from "react";
 import { FloatingActionButton } from "./components/FloatingActionButton";
 import { ReloadBanner } from "./components/ReloadBanner";
 import { OnboardingWizard } from "./components/onboarding";
@@ -11,6 +11,7 @@ import { useNeedsAttentionBadge } from "./hooks/useNeedsAttentionBadge";
 import { useSyncNotifyInAppSetting } from "./hooks/useNotifyInApp";
 import { useOnboarding } from "./hooks/useOnboarding";
 import { useReloadNotifications } from "./hooks/useReloadNotifications";
+import { initClientLogCollection } from "./lib/diagnostics";
 
 interface Props {
   children: ReactNode;
@@ -22,6 +23,9 @@ interface Props {
 function AppContent({ children }: Props) {
   // Manage SSE connection based on auth state (prevents 401s on login page)
   useActivityBusConnection();
+
+  // Client-side log collection for connection diagnostics
+  useEffect(() => initClientLogCollection(), []);
 
   // Sync notifyInApp setting to service worker on app startup and SW restarts
   useSyncNotifyInAppSetting();

@@ -31,6 +31,7 @@ import type {
 import { createRemoteAccessRoutes } from "./remote-access/index.js";
 import { createActivityRoutes } from "./routes/activity.js";
 import { createBrowserProfilesRoutes } from "./routes/browser-profiles.js";
+import { createClientLogsRoutes } from "./routes/client-logs.js";
 import { createConnectionsRoutes } from "./routes/connections.js";
 import { createDebugStreamingRoutes } from "./routes/debug-streaming.js";
 import { createDevRoutes } from "./routes/dev.js";
@@ -44,6 +45,7 @@ import { createProcessesRoutes } from "./routes/processes.js";
 import { createProjectsRoutes } from "./routes/projects.js";
 import { createProvidersRoutes } from "./routes/providers.js";
 import { createRecentsRoutes } from "./routes/recents.js";
+import { createServerAdminRoutes } from "./routes/server-admin.js";
 import { createServerInfoRoutes } from "./routes/server-info.js";
 import { createSessionsRoutes } from "./routes/sessions.js";
 import { createSettingsRoutes } from "./routes/settings.js";
@@ -304,6 +306,9 @@ export function createApp(options: AppOptions): AppResult {
     );
   }
 
+  // Server admin routes (restart, always available for remote relay)
+  app.route("/api/server", createServerAdminRoutes({ supervisor }));
+
   // Network binding routes (runtime port/interface configuration)
   if (
     options.networkBindingService &&
@@ -340,6 +345,14 @@ export function createApp(options: AppOptions): AppResult {
     app.route(
       "/api/onboarding",
       createOnboardingRoutes({ dataDir: options.dataDir }),
+    );
+  }
+
+  // Client logs routes (remote log collection for connection diagnostics)
+  if (options.dataDir) {
+    app.route(
+      "/api/client-logs",
+      createClientLogsRoutes({ dataDir: options.dataDir }),
     );
   }
 

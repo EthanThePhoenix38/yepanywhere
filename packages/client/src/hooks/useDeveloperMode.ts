@@ -5,11 +5,14 @@ interface DeveloperModeSettings {
   holdModeEnabled: boolean;
   /** Log relay requests/responses to console for debugging */
   relayDebugEnabled: boolean;
+  /** Capture connection logs and send to server for debugging */
+  remoteLogCollectionEnabled: boolean;
 }
 
 const DEFAULT_SETTINGS: DeveloperModeSettings = {
   holdModeEnabled: false,
   relayDebugEnabled: false,
+  remoteLogCollectionEnabled: false,
 };
 
 function loadSettings(): DeveloperModeSettings {
@@ -76,11 +79,17 @@ export function useDeveloperMode() {
     updateSettings({ ...currentSettings, relayDebugEnabled: enabled });
   }, []);
 
+  const setRemoteLogCollectionEnabled = useCallback((enabled: boolean) => {
+    updateSettings({ ...currentSettings, remoteLogCollectionEnabled: enabled });
+  }, []);
+
   return {
     holdModeEnabled: settings.holdModeEnabled,
     setHoldModeEnabled,
     relayDebugEnabled: settings.relayDebugEnabled,
     setRelayDebugEnabled,
+    remoteLogCollectionEnabled: settings.remoteLogCollectionEnabled,
+    setRemoteLogCollectionEnabled,
   };
 }
 
@@ -90,4 +99,20 @@ export function useDeveloperMode() {
  */
 export function getRelayDebugEnabled(): boolean {
   return currentSettings.relayDebugEnabled;
+}
+
+/**
+ * Get the current remote log collection setting without React hooks.
+ * Used by ClientLogCollector to check the setting synchronously.
+ */
+export function getRemoteLogCollectionEnabled(): boolean {
+  return currentSettings.remoteLogCollectionEnabled;
+}
+
+/**
+ * Subscribe to developer mode setting changes (non-React).
+ * Returns an unsubscribe function.
+ */
+export function subscribeDeveloperMode(listener: () => void): () => void {
+  return subscribe(listener);
 }
