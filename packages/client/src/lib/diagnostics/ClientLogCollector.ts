@@ -48,7 +48,11 @@ export class ClientLogCollector {
 
   /** Log using the original console.log to avoid self-capture */
   private _log(...args: unknown[]): void {
-    (this._origLog ?? console.log).call(console, "[ClientLogCollector]", ...args);
+    (this._origLog ?? console.log).call(
+      console,
+      "[ClientLogCollector]",
+      ...args,
+    );
   }
 
   async start(): Promise<void> {
