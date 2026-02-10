@@ -16,7 +16,7 @@
 // Version constant for controlled updates
 // Increment this when making intentional SW changes
 // Browsers reinstall SW only when file content changes
-const SW_VERSION = "1.0.3";
+const SW_VERSION = "1.0.4";
 
 // Resolve asset URLs relative to SW scope (handles /remote/ deployment)
 function assetUrl(path) {
@@ -132,6 +132,27 @@ async function clearSwLogs() {
     // Ignore
   }
 }
+
+/**
+ * Network-first fetch for navigation requests (HTML pages).
+ *
+ * Prevents stale HTML from being served on mobile browsers / GitHub Pages
+ * where aggressive caching can prevent new releases from being picked up.
+ * Since HTML contains Vite's content-hashed asset URLs, fresh HTML = fresh everything.
+ *
+ * - cache: "no-cache" forces revalidation (sends If-None-Match for ETag-based 304s)
+ * - Fallback: if network is down, allows the browser's HTTP cache to serve what it has
+ * - Only intercepts navigation (HTML) — hashed assets are immutable and don't need this
+ */
+self.addEventListener("fetch", (event) => {
+  if (event.request.mode === "navigate") {
+    event.respondWith(
+      fetch(event.request, { cache: "no-cache" }).catch(() =>
+        fetch(event.request),
+      ),
+    );
+  }
+});
 
 /**
  * Service Worker Lifecycle: Install & Activate
