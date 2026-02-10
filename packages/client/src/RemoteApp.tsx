@@ -77,9 +77,6 @@ function RemoteAppContent({ children }: Props) {
   // Manage activity bus connection (via SecureConnection subscribeActivity)
   useRemoteActivityBusConnection();
 
-  // Client-side log collection for connection diagnostics
-  useEffect(() => initClientLogCollection(), []);
-
   // Sync notifyInApp setting to service worker on app startup and SW restarts
   useSyncNotifyInAppSetting();
 
@@ -197,6 +194,10 @@ function ConnectionGate({ children }: Props) {
  * - Connection gate that controls routing
  */
 export function RemoteApp({ children }: Props) {
+  // Client-side log collection for connection diagnostics (must be outside ConnectionGate
+  // so it runs for relay host routes too)
+  useEffect(() => initClientLogCollection(), []);
+
   return (
     <ToastProvider>
       <RemoteConnectionProvider>
