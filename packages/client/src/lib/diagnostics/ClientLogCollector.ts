@@ -46,6 +46,11 @@ export class ClientLogCollector {
   private _origError: typeof console.error | null = null;
   private _unsubscribeState: (() => void) | null = null;
 
+  /** Log using the original console.log to avoid self-capture */
+  private _log(...args: unknown[]): void {
+    (this._origLog ?? console.log).call(console, "[ClientLogCollector]", ...args);
+  }
+
   async start(): Promise<void> {
     if (this._started) return;
     this._started = true;
@@ -65,9 +70,19 @@ export class ClientLogCollector {
 
     this._unsubscribeState = connectionManager.on("stateChange", (state) => {
       if (state === "connected") {
+        this._log("stateChange → connected, flushing");
         this.flush();
       }
     });
+
+    this._log(
+      `started (db=${this._db ? "idb" : "memory"}, connState=${connectionManager.state})`,
+    );
+
+    // Flush immediately if already connected (e.g. setting enabled mid-session)
+    if (connectionManager.state === "connected") {
+      this.flush();
+    }
   }
 
   stop(): void {
@@ -105,15 +120,23 @@ export class ClientLogCollector {
 
     if (this._useMemoryFallback || !this._db) {
       entries = this._memoryBuffer.splice(0, FLUSH_BATCH_SIZE);
-      if (entries.length === 0) return;
+      if (entries.length === 0) {
+        this._log("flush: no entries (memory)");
+        return;
+      }
     } else {
       entries = await getAllEntries<LogEntry>(
         this._db,
         STORE_NAME,
         FLUSH_BATCH_SIZE,
       );
-      if (entries.length === 0) return;
+      if (entries.length === 0) {
+        this._log("flush: no entries (idb)");
+        return;
+      }
     }
+
+    this._log(`flush: sending ${entries.length} entries`);
 
     try {
       await fetchJSON("/client-logs", {
@@ -127,6 +150,8 @@ export class ClientLogCollector {
         }),
       });
 
+      this._log(`flush: sent ${entries.length} entries successfully`);
+
       // Delete flushed entries from IDB
       if (!this._useMemoryFallback && this._db) {
         const keys = entries
@@ -136,7 +161,8 @@ export class ClientLogCollector {
           await deleteEntries(this._db, STORE_NAME, keys);
         }
       }
-    } catch {
+    } catch (err) {
+      this._log("flush failed:", err);
       // If flush fails (e.g. not connected), put memory entries back
       if (this._useMemoryFallback) {
         this._memoryBuffer.unshift(...entries);

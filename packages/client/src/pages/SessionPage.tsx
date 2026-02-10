@@ -36,6 +36,7 @@ import {
   useSession,
 } from "../hooks/useSession";
 import { useNavigationLayout } from "../layouts";
+import { getGlobalConnection } from "../lib/connection";
 import { preprocessMessages } from "../lib/preprocessMessages";
 import { getSessionDisplayTitle } from "../utils";
 
@@ -143,10 +144,11 @@ function SessionPageContent({
     streamingMarkdownCallbacks,
   );
 
-  // Session connection bar state
+  // Session connection bar state (only shown in remote/relay mode)
   const { connectionState } = useActivityBusState();
+  const isRemoteMode = !!getGlobalConnection();
   const sessionConnectionStatus =
-    status.owner !== "self"
+    !isRemoteMode || status.owner !== "self"
       ? "idle"
       : connected
         ? "connected"
