@@ -454,11 +454,12 @@ export class ClaudeSessionReader implements ISessionReader {
    * The model is stored in message.model (e.g., "claude-opus-4-5-20251101").
    */
   private extractModel(messages: ClaudeSessionEntry[]): string | undefined {
-    // Find the first assistant message with a model field
+    // Find the first assistant message with a real model field.
+    // Skip "<synthetic>" which the SDK uses for error messages (e.g., 500 errors).
     for (const msg of messages) {
       if (msg.type === "assistant") {
         const model = msg.message.model;
-        if (model) {
+        if (model && model !== "<synthetic>") {
           return model;
         }
       }

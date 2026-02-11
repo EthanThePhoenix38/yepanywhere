@@ -1,93 +1,24 @@
 /**
- * RelayHostRoutes - Wrapper for relay host URL-based routing.
+ * RelayConnectionGate - Layout route for relay host connections.
  *
- * Handles /remote/:relayUsername/* routes:
+ * Used as a layout route for /:relayUsername/* in remote-main.tsx.
+ * Manages the relay connection lifecycle:
  * - Extracts relayUsername from URL
  * - Looks up saved host by username
  * - Initiates connection if host found with valid session
  * - Redirects to login if no saved session
+ * - Once connected, renders ConnectedAppContent + child routes via Outlet
  */
 
 import { useEffect, useState } from "react";
-import { Navigate, Route, Routes, useParams } from "react-router-dom";
-import { FloatingActionButton } from "../components/FloatingActionButton";
+import { Navigate, Outlet, useParams } from "react-router-dom";
+import { ConnectedAppContent } from "../RemoteApp";
 import { HostOfflineModal } from "../components/HostOfflineModal";
-import { InboxProvider } from "../contexts/InboxContext";
 import {
   type AutoResumeError,
   useRemoteConnection,
 } from "../contexts/RemoteConnectionContext";
-import { SchemaValidationProvider } from "../contexts/SchemaValidationContext";
-import { useNeedsAttentionBadge } from "../hooks/useNeedsAttentionBadge";
-import { useSyncNotifyInAppSetting } from "../hooks/useNotifyInApp";
-import { useRemoteActivityBusConnection } from "../hooks/useRemoteActivityBusConnection";
-import { NavigationLayout } from "../layouts";
 import { getHostById, getHostByRelayUsername } from "../lib/hostStorage";
-import { ActivityPage } from "./ActivityPage";
-import { AgentsPage } from "./AgentsPage";
-import { FilePage } from "./FilePage";
-import { GlobalSessionsPage } from "./GlobalSessionsPage";
-import { InboxPage } from "./InboxPage";
-import { NewSessionPage } from "./NewSessionPage";
-import { ProjectsPage } from "./ProjectsPage";
-import { SessionPage } from "./SessionPage";
-import { SettingsLayout } from "./settings";
-
-/**
- * Content wrapper that sets up activity bus and other hooks.
- */
-function RelayHostContent({ children }: { children: React.ReactNode }) {
-  useRemoteActivityBusConnection();
-  useSyncNotifyInAppSetting();
-  useNeedsAttentionBadge();
-
-  return (
-    <>
-      {children}
-      <FloatingActionButton />
-    </>
-  );
-}
-
-/**
- * Inner routes component - renders the app routes once connected.
- */
-function RelayHostInnerRoutes() {
-  return (
-    <InboxProvider>
-      <SchemaValidationProvider>
-        <RelayHostContent>
-          <Routes>
-            {/* Default to projects */}
-            <Route index element={<Navigate to="projects" replace />} />
-
-            {/* Main pages with NavigationLayout */}
-            <Route element={<NavigationLayout />}>
-              <Route path="projects" element={<ProjectsPage />} />
-              <Route path="sessions" element={<GlobalSessionsPage />} />
-              <Route path="agents" element={<AgentsPage />} />
-              <Route path="inbox" element={<InboxPage />} />
-              <Route path="settings" element={<SettingsLayout />} />
-              <Route path="settings/:category" element={<SettingsLayout />} />
-              <Route path="new-session" element={<NewSessionPage />} />
-              <Route
-                path="projects/:projectId/sessions/:sessionId"
-                element={<SessionPage />}
-              />
-            </Route>
-
-            {/* Pages with custom layouts */}
-            <Route path="projects/:projectId/file" element={<FilePage />} />
-            <Route path="activity" element={<ActivityPage />} />
-
-            {/* Catch-all - redirect to projects */}
-            <Route path="*" element={<Navigate to="projects" replace />} />
-          </Routes>
-        </RelayHostContent>
-      </SchemaValidationProvider>
-    </InboxProvider>
-  );
-}
 
 type ConnectionState =
   | "checking"
@@ -106,7 +37,6 @@ function createAutoResumeError(
   const message = err instanceof Error ? err.message : String(err);
   const lowerMessage = message.toLowerCase();
 
-  // Determine the reason based on the error message
   let reason: AutoResumeError["reason"] = "other";
   if (lowerMessage.includes("server_offline")) {
     reason = "server_offline";
@@ -141,11 +71,9 @@ function createAutoResumeError(
 }
 
 /**
- * Main relay host routes component.
- *
- * Handles the connection flow based on URL username.
+ * Layout route that manages relay connection and renders child routes when connected.
  */
-export function RelayHostRoutes() {
+export function RelayConnectionGate() {
   const { relayUsername } = useParams<{ relayUsername: string }>();
   const {
     connection,
@@ -169,12 +97,10 @@ export function RelayHostRoutes() {
 
     // If already connected, check if it's to the right host
     if (connection) {
-      // Get the currently connected host's relay username
       const currentHost = currentHostId ? getHostById(currentHostId) : null;
       const connectedRelayUsername = currentHost?.relayUsername;
 
       if (connectedRelayUsername === relayUsername) {
-        // Connected to the correct host
         setState("connected");
         return;
       }
@@ -185,16 +111,14 @@ export function RelayHostRoutes() {
         const hostByUsername = getHostByRelayUsername(relayUsername);
         if (hostByUsername) {
           console.log(
-            `[RelayHostRoutes] Connection without hostId, setting to "${hostByUsername.id}" for "${relayUsername}"`,
+            `[RelayConnectionGate] Connection without hostId, setting to "${hostByUsername.id}" for "${relayUsername}"`,
           );
           setCurrentHostId(hostByUsername.id);
           setState("connected");
           return;
         }
-        // No saved host for this username - can't verify connection matches URL
-        // Disconnect and redirect to login for this host
         console.log(
-          `[RelayHostRoutes] Connection without hostId and no saved host for "${relayUsername}", redirecting to login`,
+          `[RelayConnectionGate] Connection without hostId and no saved host for "${relayUsername}", redirecting to login`,
         );
         disconnect(false);
         setState("no_host");
@@ -202,9 +126,8 @@ export function RelayHostRoutes() {
       }
 
       // Connected to a different host - disconnect and let the effect reconnect
-      // Use isIntentional=false so the effect will reconnect to the new host
       console.log(
-        `[RelayHostRoutes] Host mismatch: connected to "${connectedRelayUsername}" but URL wants "${relayUsername}", switching...`,
+        `[RelayConnectionGate] Host mismatch: connected to "${connectedRelayUsername}" but URL wants "${relayUsername}", switching...`,
       );
       disconnect(false);
       setState("connecting");
@@ -215,7 +138,7 @@ export function RelayHostRoutes() {
     // don't try to reconnect - they're navigating away
     if (isIntentionalDisconnect) {
       console.log(
-        `[RelayHostRoutes] Intentional disconnect, not reconnecting to "${relayUsername}"`,
+        `[RelayConnectionGate] Intentional disconnect, not reconnecting to "${relayUsername}"`,
       );
       return;
     }
@@ -223,7 +146,7 @@ export function RelayHostRoutes() {
     // If auto-resume is in progress, wait for it
     if (isAutoResuming) {
       console.log(
-        `[RelayHostRoutes] Auto-resume in progress, waiting... (relayUsername="${relayUsername}")`,
+        `[RelayConnectionGate] Auto-resume in progress, waiting... (relayUsername="${relayUsername}")`,
       );
       setState("connecting");
       return;
@@ -232,7 +155,7 @@ export function RelayHostRoutes() {
     // Look up saved host by relay username
     const host = getHostByRelayUsername(relayUsername);
     console.log(
-      `[RelayHostRoutes] Looking up host for "${relayUsername}":`,
+      `[RelayConnectionGate] Looking up host for "${relayUsername}":`,
       host
         ? {
             id: host.id,
@@ -243,18 +166,16 @@ export function RelayHostRoutes() {
     );
 
     if (!host) {
-      // No saved host - redirect to login with pre-filled username
       console.log(
-        `[RelayHostRoutes] No saved host for "${relayUsername}", redirecting to login`,
+        `[RelayConnectionGate] No saved host for "${relayUsername}", redirecting to login`,
       );
       setState("no_host");
       return;
     }
 
     if (!host.session || !host.relayUrl) {
-      // Host exists but no session - need to login
       console.log(
-        `[RelayHostRoutes] Host "${relayUsername}" has no session or relayUrl, redirecting to login`,
+        `[RelayConnectionGate] Host "${relayUsername}" has no session or relayUrl, redirecting to login`,
       );
       setState("no_session");
       return;
@@ -297,7 +218,6 @@ export function RelayHostRoutes() {
     disconnect,
   ]);
 
-  // Handle different states
   switch (state) {
     case "checking":
     case "connecting":
@@ -310,7 +230,6 @@ export function RelayHostRoutes() {
 
     case "no_host":
     case "no_session":
-      // Redirect to relay login with username pre-filled
       return (
         <Navigate
           to={`/login/relay?u=${encodeURIComponent(relayUsername ?? "")}`}
@@ -331,7 +250,6 @@ export function RelayHostRoutes() {
           onRetry={() => {
             setState("connecting");
             setError(null);
-            // Re-trigger the effect
             const host = getHostByRelayUsername(relayUsername ?? "");
             if (host?.relayUrl && host.relayUsername && host.session) {
               connectViaRelay({
@@ -367,6 +285,10 @@ export function RelayHostRoutes() {
     }
 
     case "connected":
-      return <RelayHostInnerRoutes />;
+      return (
+        <ConnectedAppContent>
+          <Outlet />
+        </ConnectedAppContent>
+      );
   }
 }

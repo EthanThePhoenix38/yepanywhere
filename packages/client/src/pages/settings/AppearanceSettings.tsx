@@ -1,3 +1,4 @@
+import { useDeveloperMode } from "../../hooks/useDeveloperMode";
 import {
   FONT_SIZES,
   getFontSizeLabel,
@@ -12,6 +13,7 @@ export function AppearanceSettings() {
   const { theme, setTheme } = useTheme();
   const { streamingEnabled, setStreamingEnabled } = useStreamingEnabled();
   const { funPhrasesEnabled, setFunPhrasesEnabled } = useFunPhrases();
+  const { showConnectionBars, setShowConnectionBars } = useDeveloperMode();
 
   return (
     <section className="settings-section">
@@ -83,6 +85,23 @@ export function AppearanceSettings() {
               type="checkbox"
               checked={funPhrasesEnabled}
               onChange={(e) => setFunPhrasesEnabled(e.target.checked)}
+            />
+            <span className="toggle-slider" />
+          </label>
+        </div>
+        <div className="settings-item">
+          <div className="settings-item-info">
+            <strong>Connection Bars</strong>
+            <p>
+              Show colored status bars for relay and session connections
+              (green/orange/red).
+            </p>
+          </div>
+          <label className="toggle-switch">
+            <input
+              type="checkbox"
+              checked={showConnectionBars}
+              onChange={(e) => setShowConnectionBars(e.target.checked)}
             />
             <span className="toggle-slider" />
           </label>

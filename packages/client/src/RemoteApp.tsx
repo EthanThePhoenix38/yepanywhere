@@ -6,10 +6,18 @@
  * - No AuthProvider (SRP handles authentication)
  * - Shows login pages when not connected (handled via routing)
  * - Uses RemoteConnectionProvider for connection state
+ *
+ * Architecture:
+ * RemoteApp provides all shared providers (Toast, RemoteConnection, Inbox, SchemaValidation).
+ * Route-level gating is handled by layout routes in remote-main.tsx:
+ * - UnauthenticatedGate: wraps login routes, redirects to app if already connected
+ * - ConnectionGate: wraps direct-mode app routes, requires connection
+ * - RelayConnectionGate: wraps relay-mode app routes, manages relay connection
+ * Both ConnectionGate and RelayConnectionGate render ConnectedAppContent when connected.
  */
 
 import { type ReactNode, useEffect } from "react";
-import { Navigate, useLocation } from "react-router-dom";
+import { Navigate, Outlet } from "react-router-dom";
 import { FloatingActionButton } from "./components/FloatingActionButton";
 import { HostOfflineModal } from "./components/HostOfflineModal";
 import { RelayConnectionBar } from "./components/RelayConnectionBar";
@@ -23,66 +31,21 @@ import { ToastProvider } from "./contexts/ToastContext";
 import { useNeedsAttentionBadge } from "./hooks/useNeedsAttentionBadge";
 import { useSyncNotifyInAppSetting } from "./hooks/useNotifyInApp";
 import { useRemoteActivityBusConnection } from "./hooks/useRemoteActivityBusConnection";
+import { useRemoteBasePath } from "./hooks/useRemoteBasePath";
 import { connectionManager } from "./lib/connection";
 import { initClientLogCollection } from "./lib/diagnostics";
-import { getHostById } from "./lib/hostStorage";
 
 interface Props {
   children: ReactNode;
 }
 
-/** Routes that don't require authentication */
-const LOGIN_ROUTES = [
-  "/login",
-  "/login/direct",
-  "/login/relay",
-  "/direct",
-  "/relay",
-];
-
-/** Known route prefixes that are NOT relay host routes */
-const KNOWN_ROUTES = [
-  "/login",
-  "/direct",
-  "/relay",
-  "/projects",
-  "/sessions",
-  "/agents",
-  "/tasks",
-  "/inbox",
-  "/settings",
-  "/new-session",
-  "/activity",
-];
-
 /**
- * Check if a pathname is a relay host route (/:relayUsername/*).
- * With base="/remote/", URL /remote/macbook/projects becomes pathname /macbook/projects.
- * Any path that doesn't start with a known route prefix is a relay host route.
+ * Wrapper for connected app content. Runs hooks that require an active
+ * SecureConnection. Used by both ConnectionGate (direct mode) and
+ * RelayConnectionGate (relay mode) once connected.
  */
-function isRelayHostRoute(pathname: string): boolean {
-  // Root path is not a relay host route
-  if (pathname === "/") return false;
-  // Check if it matches any known route
-  return !KNOWN_ROUTES.some(
-    (route) => pathname === route || pathname.startsWith(`${route}/`),
-  );
-}
-
-/**
- * Inner content that requires connection.
- * Only rendered when we have an active SecureConnection.
- */
-function RemoteAppContent({ children }: Props) {
-  // Manage activity bus connection (via SecureConnection subscribeActivity)
+export function ConnectedAppContent({ children }: { children: ReactNode }) {
   useRemoteActivityBusConnection();
-
-  // Sync notifyInApp setting to service worker on app startup and SW restarts
-  useSyncNotifyInAppSetting();
-
-  // Update tab title with needs-attention badge count (uses InboxContext)
-  useNeedsAttentionBadge();
-
   return (
     <>
       {children}
@@ -92,41 +55,43 @@ function RemoteAppContent({ children }: Props) {
 }
 
 /**
- * Gate component that controls access based on connection state.
- *
- * - If auto-resuming: show loading (don't redirect yet)
- * - If auto-resume failed with host offline: show modal with retry option
- * - If not connected and on a login route: render children (login pages)
- * - If not connected and not on a login route: redirect to /login
- * - If connected and on a login route: redirect to /projects
- * - If connected and not on a login route: render children (app)
+ * Layout route that redirects away from login pages if already connected.
+ * Renders <Outlet /> (login pages) when not connected.
  */
-function ConnectionGate({ children }: Props) {
+export function UnauthenticatedGate() {
+  const { connection, isIntentionalDisconnect } = useRemoteConnection();
+  const basePath = useRemoteBasePath();
+
+  // If connected and user didn't intentionally disconnect, redirect to app
+  if (connection && !isIntentionalDisconnect) {
+    return <Navigate to={`${basePath}/projects`} replace />;
+  }
+
+  return <Outlet />;
+}
+
+/**
+ * Layout route for direct-mode app routes. Requires an active connection.
+ *
+ * - Reconnecting: stay on current page (don't redirect to /login)
+ * - Auto-resuming: show loading spinner
+ * - Not connected + auto-resume error: show HostOfflineModal
+ * - Not connected: redirect to /login
+ * - Connected: render ConnectedAppContent + child routes
+ */
+export function ConnectionGate() {
   const {
     connection,
     isAutoResuming,
     autoResumeError,
     clearAutoResumeError,
     retryAutoResume,
-    currentHostId,
-    isIntentionalDisconnect,
   } = useRemoteConnection();
-  const location = useLocation();
-  const isLoginRoute = LOGIN_ROUTES.some(
-    (route) =>
-      location.pathname === route || location.pathname.startsWith(`${route}/`),
-  );
-
-  // Relay host routes (/:relayUsername/*) handle their own connection logic
-  // Let them through without interference
-  if (isRelayHostRoute(location.pathname)) {
-    return <>{children}</>;
-  }
 
   // During reconnection, stay on the current page — don't redirect to /login.
   // ConnectionManager is the source of truth; React connection state may be stale.
   if (connectionManager.state === "reconnecting") {
-    return <>{children}</>;
+    return <Outlet />;
   }
 
   // During auto-resume, don't redirect - show loading state
@@ -153,56 +118,54 @@ function ConnectionGate({ children }: Props) {
       );
     }
 
-    // If not on a login route, redirect to /login
-    if (!isLoginRoute) {
-      return <Navigate to="/login" replace />;
-    }
-    // On a login route - render children (login pages)
-    return <>{children}</>;
+    return <Navigate to="/login" replace />;
   }
 
-  // Connected - redirect away from login routes (unless user intentionally disconnected)
-  if (isLoginRoute && !isIntentionalDisconnect) {
-    // Determine redirect URL based on current host
-    // Note: With base="/remote/", route "/{username}/projects" becomes URL "/remote/{username}/projects"
-    let redirectUrl = "/projects";
-    if (currentHostId) {
-      const host = getHostById(currentHostId);
-      if (host?.mode === "relay" && host.relayUsername) {
-        redirectUrl = `/${encodeURIComponent(host.relayUsername)}/projects`;
-      }
-    }
-    return <Navigate to={redirectUrl} />;
-  }
-
-  // Connected and on an app route - show the app with providers
+  // Connected - render child routes with connected-state hooks
   return (
-    <InboxProvider>
-      <SchemaValidationProvider>
-        <RemoteAppContent>{children}</RemoteAppContent>
-      </SchemaValidationProvider>
-    </InboxProvider>
+    <ConnectedAppContent>
+      <Outlet />
+    </ConnectedAppContent>
+  );
+}
+
+/**
+ * Inner component that runs hooks requiring InboxContext.
+ * Must be rendered inside InboxProvider.
+ */
+function RemoteAppInner({ children }: Props) {
+  useNeedsAttentionBadge();
+
+  return (
+    <>
+      <RelayConnectionBar />
+      {children}
+    </>
   );
 }
 
 /**
  * RemoteApp wrapper for remote client mode.
  *
- * Provides:
+ * Provides shared context for all routes:
  * - ToastProvider (always available)
  * - RemoteConnectionProvider for connection management
- * - Connection gate that controls routing
+ * - InboxProvider for inbox data (works without connection — gracefully empty)
+ * - SchemaValidationProvider (localStorage only, no connection needed)
+ * - Connection-independent hooks (notify sync, log collection)
  */
 export function RemoteApp({ children }: Props) {
-  // Client-side log collection for connection diagnostics (must be outside ConnectionGate
-  // so it runs for relay host routes too)
   useEffect(() => initClientLogCollection(), []);
+  useSyncNotifyInAppSetting();
 
   return (
     <ToastProvider>
       <RemoteConnectionProvider>
-        <RelayConnectionBar />
-        <ConnectionGate>{children}</ConnectionGate>
+        <InboxProvider>
+          <SchemaValidationProvider>
+            <RemoteAppInner>{children}</RemoteAppInner>
+          </SchemaValidationProvider>
+        </InboxProvider>
       </RemoteConnectionProvider>
     </ToastProvider>
   );

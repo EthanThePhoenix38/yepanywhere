@@ -144,11 +144,14 @@ function SessionPageContent({
     streamingMarkdownCallbacks,
   );
 
+  // Developer mode settings
+  const { holdModeEnabled, showConnectionBars } = useDeveloperMode();
+
   // Session connection bar state (only shown in remote/relay mode)
   const { connectionState } = useActivityBusState();
   const isRemoteMode = !!getGlobalConnection();
   const sessionConnectionStatus =
-    !isRemoteMode || status.owner !== "self"
+    !isRemoteMode || status.owner !== "self" || !showConnectionBars
       ? "idle"
       : connected
         ? "connected"
@@ -172,9 +175,6 @@ function SessionPageContent({
 
   // Connection for uploads (uses WebSocket when enabled)
   const connection = useConnection();
-
-  // Developer mode settings (hold mode is experimental)
-  const { holdModeEnabled } = useDeveloperMode();
 
   // Combine SDK slash commands with our custom commands
   const allSlashCommands = useMemo(() => {

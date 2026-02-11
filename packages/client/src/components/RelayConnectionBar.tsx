@@ -11,6 +11,7 @@
 import { useLocation } from "react-router-dom";
 import { useRemoteConnection } from "../contexts/RemoteConnectionContext";
 import { useActivityBusState } from "../hooks/useActivityBusState";
+import { useDeveloperMode } from "../hooks/useDeveloperMode";
 
 /** Routes where we don't show the connection bar */
 const LOGIN_ROUTES = ["/login", "/login/direct", "/login/relay"];
@@ -20,13 +21,14 @@ export function RelayConnectionBar() {
     useRemoteConnection();
   const location = useLocation();
   const { connectionState } = useActivityBusState();
+  const { showConnectionBars } = useDeveloperMode();
 
-  // Don't show on login routes
+  // Don't show on login routes or if disabled in settings
   const isLoginRoute = LOGIN_ROUTES.some(
     (route) =>
       location.pathname === route || location.pathname.startsWith(`${route}/`),
   );
-  if (isLoginRoute) {
+  if (isLoginRoute || !showConnectionBars) {
     return null;
   }
 

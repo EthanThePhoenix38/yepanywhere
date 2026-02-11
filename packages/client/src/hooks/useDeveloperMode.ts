@@ -7,12 +7,15 @@ interface DeveloperModeSettings {
   relayDebugEnabled: boolean;
   /** Capture connection logs and send to server for debugging */
   remoteLogCollectionEnabled: boolean;
+  /** Show connection status bars (green/orange/red) */
+  showConnectionBars: boolean;
 }
 
 const DEFAULT_SETTINGS: DeveloperModeSettings = {
   holdModeEnabled: false,
   relayDebugEnabled: false,
   remoteLogCollectionEnabled: false,
+  showConnectionBars: true,
 };
 
 function loadSettings(): DeveloperModeSettings {
@@ -83,6 +86,10 @@ export function useDeveloperMode() {
     updateSettings({ ...currentSettings, remoteLogCollectionEnabled: enabled });
   }, []);
 
+  const setShowConnectionBars = useCallback((enabled: boolean) => {
+    updateSettings({ ...currentSettings, showConnectionBars: enabled });
+  }, []);
+
   return {
     holdModeEnabled: settings.holdModeEnabled,
     setHoldModeEnabled,
@@ -90,6 +97,8 @@ export function useDeveloperMode() {
     setRelayDebugEnabled,
     remoteLogCollectionEnabled: settings.remoteLogCollectionEnabled,
     setRemoteLogCollectionEnabled,
+    showConnectionBars: settings.showConnectionBars,
+    setShowConnectionBars,
   };
 }
 

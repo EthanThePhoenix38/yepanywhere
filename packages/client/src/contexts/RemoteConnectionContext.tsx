@@ -108,7 +108,7 @@ interface RemoteConnectionState {
   currentHostId: string | null;
   /** Relay username of the current host (derived from currentHostId) */
   currentRelayUsername: string | null;
-  /** Set the current host ID (called by RelayHostRoutes after connect) */
+  /** Set the current host ID (called by RelayConnectionGate after connect) */
   setCurrentHostId: (hostId: string | null) => void;
   /** Whether user intentionally disconnected (prevents auto-redirect) */
   isIntentionalDisconnect: boolean;

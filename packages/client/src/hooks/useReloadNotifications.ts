@@ -44,8 +44,7 @@ export function useReloadNotifications() {
 
   // Sync dev status and worker activity from server
   const syncFromServer = useCallback(() => {
-    // Only sync in dev mode and not on login page
-    if (!import.meta.env.DEV || window.location.pathname === "/login") {
+    if (window.location.pathname === "/login") {
       return;
     }
 
@@ -70,10 +69,9 @@ export function useReloadNotifications() {
       });
   }, []);
 
-  // Check if we're in dev mode and get persisted dirty state
+  // Check if server is in dev mode and get persisted dirty state
   useEffect(() => {
-    // Only check in dev mode and not on login page
-    if (!import.meta.env.DEV || window.location.pathname === "/login") {
+    if (window.location.pathname === "/login") {
       return;
     }
 

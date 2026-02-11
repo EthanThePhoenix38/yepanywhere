@@ -5,6 +5,14 @@
  * - Uses SecureConnection for all communication (SRP + NaCl encryption)
  * - Shows a login page before connecting
  * - Does NOT use cookie-based auth (uses SRP instead)
+ *
+ * Route structure:
+ * - UnauthenticatedGate: wraps login routes, redirects to app if already connected
+ * - ConnectionGate: wraps direct-mode app routes (no relay username in URL)
+ * - RelayConnectionGate: wraps relay-mode app routes (/:relayUsername/...)
+ *
+ * ConnectionGate and RelayConnectionGate share the same APP_ROUTES.
+ * This avoids duplicating route definitions or provider wrapping.
  */
 
 console.log("[RemoteClient] Loading remote-main.tsx entry point");
@@ -17,7 +25,7 @@ const STRICT_MODE = false;
 const Wrapper = STRICT_MODE ? StrictMode : Fragment;
 
 import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
-import { RemoteApp } from "./RemoteApp";
+import { ConnectionGate, RemoteApp, UnauthenticatedGate } from "./RemoteApp";
 import { initializeFontSize } from "./hooks/useFontSize";
 import { initializeTheme } from "./hooks/useTheme";
 import { NavigationLayout } from "./layouts";
@@ -30,7 +38,7 @@ import { HostPickerPage } from "./pages/HostPickerPage";
 import { InboxPage } from "./pages/InboxPage";
 import { NewSessionPage } from "./pages/NewSessionPage";
 import { ProjectsPage } from "./pages/ProjectsPage";
-import { RelayHostRoutes } from "./pages/RelayHostRoutes";
+import { RelayConnectionGate } from "./pages/RelayConnectionGate";
 import { RelayLoginPage } from "./pages/RelayLoginPage";
 import { SessionPage } from "./pages/SessionPage";
 import { SettingsLayout } from "./pages/settings";
@@ -44,6 +52,39 @@ initializeFontSize();
 // Remove trailing slash for BrowserRouter basename
 const basename = import.meta.env.BASE_URL.replace(/\/$/, "") || undefined;
 
+/**
+ * Shared app routes used by both direct mode (ConnectionGate) and
+ * relay mode (RelayConnectionGate). Uses relative paths so they resolve
+ * correctly under both "/" and "/:relayUsername/".
+ */
+const APP_ROUTES = (
+  <>
+    <Route index element={<Navigate to="projects" replace />} />
+
+    {/* Main pages with NavigationLayout for persistent sidebar */}
+    <Route element={<NavigationLayout />}>
+      <Route path="projects" element={<ProjectsPage />} />
+      <Route path="sessions" element={<GlobalSessionsPage />} />
+      <Route path="agents" element={<AgentsPage />} />
+      <Route path="inbox" element={<InboxPage />} />
+      <Route path="settings" element={<SettingsLayout />} />
+      <Route path="settings/:category" element={<SettingsLayout />} />
+      <Route path="new-session" element={<NewSessionPage />} />
+      <Route
+        path="projects/:projectId/sessions/:sessionId"
+        element={<SessionPage />}
+      />
+    </Route>
+
+    {/* Pages with custom layouts */}
+    <Route path="projects/:projectId/file" element={<FilePage />} />
+    <Route path="activity" element={<ActivityPage />} />
+
+    {/* Catch-all redirect to projects */}
+    <Route path="*" element={<Navigate to="projects" replace />} />
+  </>
+);
+
 const rootElement = document.getElementById("root");
 if (!rootElement) {
   throw new Error("Root element not found");
@@ -54,50 +95,30 @@ createRoot(rootElement).render(
     <BrowserRouter basename={basename}>
       <RemoteApp>
         <Routes>
-          {/* Login routes (unauthenticated) */}
-          <Route path="/login" element={<HostPickerPage />} />
-          <Route path="/login/direct" element={<DirectLoginPage />} />
-          <Route path="/login/relay" element={<RelayLoginPage />} />
-
-          {/* Legacy routes - redirect to new paths */}
-          <Route
-            path="/direct"
-            element={<Navigate to="/login/direct" replace />}
-          />
-          <Route
-            path="/relay"
-            element={<Navigate to="/login/relay" replace />}
-          />
-
-          {/* App routes (authenticated) - for direct mode or when no username in URL */}
-          <Route path="/" element={<Navigate to="/projects" replace />} />
-          {/* All pages share NavigationLayout for persistent sidebar */}
-          <Route element={<NavigationLayout />}>
-            <Route path="/projects" element={<ProjectsPage />} />
-            <Route path="/sessions" element={<GlobalSessionsPage />} />
-            <Route path="/agents" element={<AgentsPage />} />
-            <Route path="/inbox" element={<InboxPage />} />
-            <Route path="/settings" element={<SettingsLayout />} />
-            <Route path="/settings/:category" element={<SettingsLayout />} />
-            {/* Project-scoped pages */}
+          {/* Login routes — redirect to app if already connected */}
+          <Route element={<UnauthenticatedGate />}>
+            <Route path="/login" element={<HostPickerPage />} />
+            <Route path="/login/direct" element={<DirectLoginPage />} />
+            <Route path="/login/relay" element={<RelayLoginPage />} />
             <Route
-              path="/projects/:projectId"
-              element={<Navigate to="/sessions" replace />}
+              path="/direct"
+              element={<Navigate to="/login/direct" replace />}
             />
-            <Route path="/new-session" element={<NewSessionPage />} />
             <Route
-              path="/projects/:projectId/sessions/:sessionId"
-              element={<SessionPage />}
+              path="/relay"
+              element={<Navigate to="/login/relay" replace />}
             />
           </Route>
-          {/* File page has its own layout (no sidebar) */}
-          <Route path="/projects/:projectId/file" element={<FilePage />} />
-          {/* Activity page has its own layout */}
-          <Route path="/activity" element={<ActivityPage />} />
 
-          {/* Relay host routes with username in URL - MUST be last so specific routes above take precedence.
-              With base="/remote/", URL /remote/macbook/projects becomes pathname /macbook/projects */}
-          <Route path="/:relayUsername/*" element={<RelayHostRoutes />} />
+          {/* Direct mode — requires connection, no relay username in URL */}
+          <Route element={<ConnectionGate />}>{APP_ROUTES}</Route>
+
+          {/* Relay mode — manages relay connection by URL username.
+              React Router ranks static segments above dynamic params,
+              so /projects matches ConnectionGate, not /:relayUsername. */}
+          <Route path="/:relayUsername" element={<RelayConnectionGate />}>
+            {APP_ROUTES}
+          </Route>
         </Routes>
       </RemoteApp>
     </BrowserRouter>
