@@ -141,6 +141,34 @@ Environment variables:
 - `LOG_TO_FILE` - Set to "false" to disable file logging
 - `LOG_TO_CONSOLE` - Set to "false" to disable console logging
 
+## Client Console Logs
+
+Remote collection of browser `console.log/warn/error` from mobile clients. Useful for debugging connection issues on devices where you can't open DevTools.
+
+**Enable:** Developer Mode settings → "Remote Log Collection" toggle.
+
+**Storage:** `{dataDir}/logs/client-logs/` (default: `~/.yep-anywhere/logs/client-logs/`). One JSONL file per device per day, named `client-{YYYY-MM-DD}-{deviceId}.jsonl`. The device UUID is persisted in the client's `localStorage`.
+
+Each line is a single log event:
+```json
+{"timestamp":1770790157738,"level":"log","prefix":"[SecureConnection]","message":"[SecureConnection] Closed: 1006","_receivedAt":1770790161477}
+```
+
+A `[ClientInfo]` entry is written on each session start with user agent, screen size, DPR, and language.
+
+```bash
+# List device log files
+ls ~/.yep-anywhere/logs/client-logs/
+
+# View today's logs for a device
+cat ~/.yep-anywhere/logs/client-logs/client-$(date +%Y-%m-%d)-<deviceId>.jsonl
+
+# Follow incoming logs
+tail -f ~/.yep-anywhere/logs/client-logs/*.jsonl
+```
+
+**Implementation:** `packages/client/src/lib/diagnostics/ClientLogCollector.ts` (client), `packages/server/src/routes/client-logs.ts` (server `POST /api/client-logs`).
+
 ## Maintenance Server
 
 A separate lightweight HTTP server runs on PORT + 1 (default 3401) for out-of-band diagnostics. Useful when the main server is unresponsive.

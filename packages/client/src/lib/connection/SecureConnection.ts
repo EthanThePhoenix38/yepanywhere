@@ -972,6 +972,20 @@ export class SecureConnection implements Connection {
   }
 
   /**
+   * Send a keepalive ping to verify the connection is alive.
+   */
+  sendPing(id: string): void {
+    this.protocol.sendPing(id);
+  }
+
+  /**
+   * Register a callback for pong responses.
+   */
+  setOnPong(cb: (id: string) => void): void {
+    this.protocol.setOnPong(cb);
+  }
+
+  /**
    * Close the secure connection.
    */
   close(): void {

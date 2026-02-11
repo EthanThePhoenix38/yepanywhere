@@ -23,6 +23,20 @@ const MAX_ENTRIES = 2000;
 const FLUSH_BATCH_SIZE = 500;
 
 const PREFIX_REGEX = /^\[([A-Za-z]+)\]/;
+const DEVICE_ID_KEY = "yep-anywhere-device-id";
+
+function getDeviceId(): string | undefined {
+  try {
+    let id = localStorage.getItem(DEVICE_ID_KEY);
+    if (!id) {
+      id = crypto.randomUUID();
+      localStorage.setItem(DEVICE_ID_KEY, id);
+    }
+    return id;
+  } catch {
+    return undefined;
+  }
+}
 
 export class ClientLogCollector {
   private _db: IDBDatabase | null = null;
@@ -30,6 +44,7 @@ export class ClientLogCollector {
   private _useMemoryFallback = false;
   private _started = false;
   private _flushing = false;
+  private _deviceId: string | undefined;
 
   private _origLog: typeof console.log | null = null;
   private _origWarn: typeof console.warn | null = null;
@@ -41,6 +56,7 @@ export class ClientLogCollector {
   async start(): Promise<void> {
     if (this._started) return;
     this._started = true;
+    this._deviceId = getDeviceId();
 
     try {
       this._db = await openDatabase(DB_NAME, DB_VERSION, (db) => {
@@ -54,6 +70,11 @@ export class ClientLogCollector {
     }
 
     this._wrapConsole();
+    this._writeEntry(
+      "info",
+      "[ClientInfo]",
+      `[ClientInfo] ${navigator.userAgent} | ${window.screen.width}x${window.screen.height} | dpr=${window.devicePixelRatio} | lang=${navigator.language}`,
+    );
 
     this._unsubscribeState = connectionManager.on("stateChange", (state) => {
       if (state === "connected") {
@@ -117,10 +138,7 @@ export class ClientLogCollector {
         method: "POST",
         body: JSON.stringify({
           entries,
-          meta: {
-            userAgent: navigator.userAgent,
-            connectionMode: connectionManager.state,
-          },
+          deviceId: this._deviceId,
         }),
       });
 

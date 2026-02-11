@@ -93,6 +93,24 @@ export interface RelayEvent {
 }
 
 // ============================================================================
+// Keepalive Ping/Pong
+// ============================================================================
+
+/** Client -> Server: Keepalive ping to verify connection is alive */
+export interface ClientPing {
+  type: "ping";
+  /** Client-generated ID to correlate with pong response */
+  id: string;
+}
+
+/** Server -> Client: Keepalive pong response */
+export interface ServerPong {
+  type: "pong";
+  /** Echoed from the ping request */
+  id: string;
+}
+
+// ============================================================================
 // Client Capabilities (Phase 3 - Compression negotiation)
 // ============================================================================
 
@@ -201,7 +219,8 @@ export type RemoteClientMessage =
   | RelayUploadStart
   | RelayUploadChunk
   | RelayUploadEnd
-  | ClientCapabilities;
+  | ClientCapabilities
+  | ClientPing;
 
 /** All messages from yepanywhere server -> phone/browser */
 export type YepMessage =
@@ -209,7 +228,8 @@ export type YepMessage =
   | RelayEvent
   | RelayUploadProgress
   | RelayUploadComplete
-  | RelayUploadError;
+  | RelayUploadError
+  | ServerPong;
 
 /** All relay protocol messages */
 export type RelayMessage = RemoteClientMessage | YepMessage;

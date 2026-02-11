@@ -7818,6 +7818,7 @@ a.sidebar-nav-item {
 
 .session-connection-bar {
   height: 1px;
+  margin-bottom: 2px;
   pointer-events: none;
   transition: background-color 0.3s ease;
 }

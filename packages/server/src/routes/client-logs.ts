@@ -1,8 +1,10 @@
-import { mkdirSync, writeFileSync } from "node:fs";
+import { appendFileSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { Hono } from "hono";
 
 const MAX_ENTRIES_PER_REQUEST = 500;
+const UUID_REGEX =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 
 interface LogEntry {
   id?: number;
@@ -14,10 +16,7 @@ interface LogEntry {
 
 interface ClientLogsBody {
   entries: LogEntry[];
-  meta?: {
-    userAgent?: string;
-    connectionMode?: string;
-  };
+  deviceId?: string;
 }
 
 export interface ClientLogsRoutesOptions {
@@ -49,21 +48,27 @@ export function createClientLogsRoutes(options: ClientLogsRoutesOptions): Hono {
     }
 
     const entries = body.entries.slice(0, MAX_ENTRIES_PER_REQUEST);
-    const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
-    const random = Math.random().toString(36).slice(2, 8);
-    const filename = `client-${timestamp}-${random}.jsonl`;
+
+    const date = new Date().toISOString().slice(0, 10); // YYYY-MM-DD
+
+    let filename: string;
+    if (body.deviceId && UUID_REGEX.test(body.deviceId)) {
+      filename = `client-${date}-${body.deviceId}.jsonl`;
+    } else {
+      const random = Math.random().toString(36).slice(2, 8);
+      filename = `client-${date}-${random}.jsonl`;
+    }
 
     ensureDir();
 
     const lines = entries.map((entry) =>
       JSON.stringify({
         ...entry,
-        _meta: body.meta,
         _receivedAt: Date.now(),
       }),
     );
 
-    writeFileSync(join(logsDir, filename), `${lines.join("\n")}\n`);
+    appendFileSync(join(logsDir, filename), `${lines.join("\n")}\n`);
 
     return c.json({ received: entries.length });
   });

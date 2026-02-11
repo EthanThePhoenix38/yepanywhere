@@ -305,6 +305,9 @@ export type {
   SecureConnectionState,
   // Client capabilities (Phase 3)
   ClientCapabilities,
+  // Keepalive ping/pong
+  ClientPing,
+  ServerPong,
 } from "./relay.js";
 
 export {

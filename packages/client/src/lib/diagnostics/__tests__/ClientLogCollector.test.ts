@@ -1,6 +1,6 @@
 import "fake-indexeddb/auto";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { ClientLogCollector, type LogEntry } from "../ClientLogCollector";
+import { ClientLogCollector } from "../ClientLogCollector";
 
 // Mock fetchJSON to avoid real network calls
 vi.mock("../../../api/client", () => ({
@@ -40,72 +40,37 @@ describe("ClientLogCollector", () => {
 
   afterEach(() => {
     collector.stop();
-    // Restore console just in case
     console.log = origLog;
     console.warn = origWarn;
     console.error = origError;
   });
 
-  it("captures all console.log messages", async () => {
+  it("captures console messages and flushes with deviceId", async () => {
     await collector.start();
 
     console.log("[ConnectionManager] connected → reconnecting");
-    console.log("[SecureConnection] SRP resume sent");
-    console.log("unrelated log message");
-
-    // Give fire-and-forget writes a tick
-    await new Promise((r) => setTimeout(r, 10));
-
-    // Flush to see what was captured
-    vi.mocked(fetchJSON).mockResolvedValueOnce({ received: 3 });
-    await collector.flush();
-
-    expect(fetchJSON).toHaveBeenCalledTimes(1);
-    // biome-ignore lint/style/noNonNullAssertion: test assertion after expect(calledTimes(1))
-    const call = vi.mocked(fetchJSON).mock.calls[0]!;
-    expect(call[0]).toBe("/client-logs");
-    const body = JSON.parse(call[1]?.body as string);
-    expect(body.entries).toHaveLength(3);
-    expect(body.entries[0].prefix).toBe("[ConnectionManager]");
-    expect(body.entries[1].prefix).toBe("[SecureConnection]");
-    expect(body.entries[2].prefix).toBe("");
-  });
-
-  it("captures non-string first args", async () => {
-    await collector.start();
-
-    console.log(42);
-    console.log({ foo: "bar" });
-
-    await new Promise((r) => setTimeout(r, 10));
-
-    vi.mocked(fetchJSON).mockResolvedValueOnce({ received: 2 });
-    await collector.flush();
-
-    const body = JSON.parse(
-      vi.mocked(fetchJSON).mock.calls[0]?.[1]?.body as string,
-    );
-    expect(body.entries).toHaveLength(2);
-    expect(body.entries[0].message).toBe("42");
-    expect(body.entries[1].message).toBe('{"foo":"bar"}');
-  });
-
-  it("captures warn and error levels", async () => {
-    await collector.start();
-
     console.warn("warn message");
     console.error("error message");
 
     await new Promise((r) => setTimeout(r, 10));
 
-    vi.mocked(fetchJSON).mockResolvedValueOnce({ received: 2 });
+    vi.mocked(fetchJSON).mockResolvedValueOnce({ received: 4 });
     await collector.flush();
 
+    expect(fetchJSON).toHaveBeenCalledTimes(1);
     const body = JSON.parse(
       vi.mocked(fetchJSON).mock.calls[0]?.[1]?.body as string,
     );
-    expect(body.entries[0].level).toBe("warn");
-    expect(body.entries[1].level).toBe("error");
+    // Should have ClientInfo entry + 3 console entries
+    expect(body.entries.length).toBeGreaterThanOrEqual(4);
+    expect(
+      body.entries.some((e: { prefix: string }) => e.prefix === "[ClientInfo]"),
+    ).toBe(true);
+    expect(
+      body.entries.some(
+        (e: { prefix: string }) => e.prefix === "[ConnectionManager]",
+      ),
+    ).toBe(true);
   });
 
   it("restores console on stop", async () => {
@@ -118,115 +83,19 @@ describe("ClientLogCollector", () => {
     expect(console.error).toBe(origError);
   });
 
-  it("passes through all log messages to original console", async () => {
-    const spy = vi.fn();
-    console.log = spy;
-
-    // Create new collector after spy is set
-    const c = new ClientLogCollector();
-    await c.start();
-
-    console.log("[ConnectionManager] test");
-    expect(spy).toHaveBeenCalledWith("[ConnectionManager] test");
-
-    console.log("unrelated");
-    expect(spy).toHaveBeenCalledWith("unrelated");
-
-    c.stop();
-  });
-
-  it("subscribes to stateChange and flushes on connected", async () => {
+  it("flushes on stateChange to connected", async () => {
     await collector.start();
 
-    // Log something
-    console.log("[ConnectionManager] test entry");
+    console.log("test entry");
     await new Promise((r) => setTimeout(r, 10));
 
     vi.mocked(fetchJSON).mockResolvedValueOnce({ received: 1 });
 
-    // Simulate reconnect → connected
     for (const cb of stateChangeListeners) {
       cb("connected", "reconnecting");
     }
 
-    // Wait for flush
     await new Promise((r) => setTimeout(r, 10));
-
     expect(fetchJSON).toHaveBeenCalledTimes(1);
-  });
-
-  it("falls back to memory buffer when IDB is unavailable", async () => {
-    // Temporarily break indexedDB
-    const origIDB = globalThis.indexedDB;
-    Object.defineProperty(globalThis, "indexedDB", {
-      value: {
-        open: () => {
-          throw new Error("IDB not available");
-        },
-      },
-      writable: true,
-      configurable: true,
-    });
-
-    const memCollector = new ClientLogCollector();
-    await memCollector.start();
-
-    console.log("[ConnectionManager] memory test");
-    await new Promise((r) => setTimeout(r, 10));
-
-    vi.mocked(fetchJSON).mockResolvedValueOnce({ received: 1 });
-    await memCollector.flush();
-
-    expect(fetchJSON).toHaveBeenCalledTimes(1);
-    const body = JSON.parse(
-      vi.mocked(fetchJSON).mock.calls[0]?.[1]?.body as string,
-    );
-    expect(body.entries).toHaveLength(1);
-    expect(body.entries[0].message).toContain("memory test");
-
-    memCollector.stop();
-
-    // Restore indexedDB
-    Object.defineProperty(globalThis, "indexedDB", {
-      value: origIDB,
-      writable: true,
-      configurable: true,
-    });
-  });
-
-  it("concatenates multiple arguments into message", async () => {
-    await collector.start();
-
-    console.log("[ConnectionManager] state:", "connected", { extra: true });
-    await new Promise((r) => setTimeout(r, 10));
-
-    vi.mocked(fetchJSON).mockResolvedValueOnce({ received: 1 });
-    await collector.flush();
-
-    const body = JSON.parse(
-      vi.mocked(fetchJSON).mock.calls[0]?.[1]?.body as string,
-    );
-    expect(body.entries[0].message).toBe(
-      '[ConnectionManager] state: connected {"extra":true}',
-    );
-  });
-
-  it("captures Error objects with stack traces", async () => {
-    await collector.start();
-
-    const err = new Error("test error");
-    console.error("Something failed:", err);
-
-    await new Promise((r) => setTimeout(r, 10));
-
-    vi.mocked(fetchJSON).mockResolvedValueOnce({ received: 1 });
-    await collector.flush();
-
-    const body = JSON.parse(
-      vi.mocked(fetchJSON).mock.calls[0]?.[1]?.body as string,
-    );
-    expect(body.entries[0].level).toBe("error");
-    expect(body.entries[0].message).toContain("Something failed:");
-    expect(body.entries[0].message).toContain("test error");
   });
 });

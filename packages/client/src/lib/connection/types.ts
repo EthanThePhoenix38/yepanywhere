@@ -144,8 +144,8 @@ export interface StreamHandlers {
   onOpen?: () => void;
   /** Called on error (will attempt reconnect for recoverable errors) */
   onError?: (error: Error) => void;
-  /** Called when stream ends normally */
-  onClose?: () => void;
+  /** Called when stream ends. Error is provided if transport closed unexpectedly. */
+  onClose?: (error?: Error) => void;
 }
 
 /**

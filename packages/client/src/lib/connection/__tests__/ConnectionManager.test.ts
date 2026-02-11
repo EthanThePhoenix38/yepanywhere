@@ -3,6 +3,7 @@ import {
   ConnectionManager,
   type ConnectionState,
   type ReconnectFn,
+  type SendPingFn,
 } from "../ConnectionManager";
 import { WebSocketCloseError } from "../types";
 import { MockTimers, MockVisibility } from "./ConnectionSimulator";
@@ -20,12 +21,13 @@ function setup(
     jitterFactor?: number;
     staleThresholdMs?: number;
     staleCheckIntervalMs?: number;
-    visibilityThresholdMs?: number;
+    pongTimeoutMs?: number;
   } = {},
 ) {
   const timers = new MockTimers();
   const visibility = new MockVisibility();
   const reconnectFn = vi.fn<ReconnectFn>(() => Promise.resolve());
+  const sendPing = vi.fn<SendPingFn>();
   const stateChanges: Array<{
     state: ConnectionState;
     prev: ConnectionState;
@@ -51,6 +53,7 @@ function setup(
     timers,
     visibility,
     reconnectFn,
+    sendPing,
     stateChanges,
     reconnectFailures,
   };
@@ -240,45 +243,166 @@ describe("ConnectionManager", () => {
     });
   });
 
-  describe("visibility", () => {
-    it("hidden >5s + visible → triggers reconnect", () => {
-      const { cm, reconnectFn, timers, visibility } = setup({
-        visibilityThresholdMs: 5000,
-      });
-      cm.start(reconnectFn);
+  describe("visibility ping/pong", () => {
+    it("sends ping when page becomes visible", () => {
+      const { cm, reconnectFn, sendPing, visibility } = setup();
+      cm.start(reconnectFn, { sendPing });
 
       visibility.hide();
-      timers.advance(6000);
       visibility.show();
 
+      expect(sendPing).toHaveBeenCalledTimes(1);
+      expect(sendPing).toHaveBeenCalledWith("1");
+    });
+
+    it("forces reconnect if pong times out", () => {
+      const { cm, reconnectFn, sendPing, timers, visibility } = setup({
+        pongTimeoutMs: 5000,
+      });
+      cm.start(reconnectFn, { sendPing });
+
+      visibility.hide();
+      visibility.show();
+      expect(cm.state).toBe("connected");
+
+      // Pong timeout fires
+      timers.advance(5000);
       expect(cm.state).toBe("reconnecting");
     });
 
-    it("hidden <5s + visible → no-op", () => {
-      const { cm, reconnectFn, timers, visibility } = setup({
-        visibilityThresholdMs: 5000,
+    it("stays connected if pong received before timeout", () => {
+      const { cm, reconnectFn, sendPing, timers, visibility } = setup({
+        pongTimeoutMs: 5000,
       });
-      cm.start(reconnectFn);
+      cm.start(reconnectFn, { sendPing });
 
       visibility.hide();
-      timers.advance(3000);
       visibility.show();
 
+      // Pong arrives quickly
+      cm.receivePong("1");
+
+      // Timeout would have fired but pong already received
+      timers.advance(5000);
       expect(cm.state).toBe("connected");
     });
 
-    it("visibility change while reconnecting → no-op", () => {
-      const { cm, reconnectFn, timers, visibility } = setup();
-      cm.start(reconnectFn);
+    it("ignores stale pong with wrong id", () => {
+      const { cm, reconnectFn, sendPing, timers, visibility } = setup({
+        pongTimeoutMs: 5000,
+      });
+      cm.start(reconnectFn, { sendPing });
 
-      cm.handleClose();
+      visibility.hide();
+      visibility.show();
+
+      // Stale pong with wrong id
+      cm.receivePong("wrong-id");
+
+      // Timeout fires — pong wasn't matched
+      timers.advance(5000);
       expect(cm.state).toBe("reconnecting");
+    });
+
+    it("forces reconnect immediately if sendPing throws", () => {
+      const { cm, reconnectFn, timers, visibility } = setup();
+      const failingPing = vi.fn(() => {
+        throw new Error("WebSocket not connected");
+      });
+      cm.start(reconnectFn, { sendPing: failingPing });
+
+      visibility.hide();
+      visibility.show();
+
+      expect(cm.state).toBe("reconnecting");
+      // No pong timeout should be pending
+      expect(timers.pendingCount).toBe(2); // stale check + backoff only
+    });
+
+    it("handles rapid visible/hidden toggling (only latest ping matters)", () => {
+      const { cm, reconnectFn, sendPing, timers, visibility } = setup({
+        pongTimeoutMs: 5000,
+      });
+      cm.start(reconnectFn, { sendPing });
+
+      // First visibility cycle
+      visibility.hide();
+      visibility.show();
+      expect(sendPing).toHaveBeenCalledWith("1");
+
+      // Rapidly toggle again before pong arrives
+      visibility.hide();
+      visibility.show();
+      expect(sendPing).toHaveBeenCalledWith("2");
+
+      // Pong for first ping arrives (stale, should be ignored)
+      cm.receivePong("1");
+
+      // Pong for second ping arrives
+      cm.receivePong("2");
+
+      // No reconnect should happen
+      timers.advance(5000);
+      expect(cm.state).toBe("connected");
+    });
+
+    it("rapid toggling: stale pong doesn't prevent timeout for latest ping", () => {
+      const { cm, reconnectFn, sendPing, timers, visibility } = setup({
+        pongTimeoutMs: 5000,
+      });
+      cm.start(reconnectFn, { sendPing });
+
+      // First visibility cycle
+      visibility.hide();
+      visibility.show();
+
+      // Second visibility cycle
+      visibility.hide();
+      visibility.show();
+
+      // Only the stale pong arrives
+      cm.receivePong("1");
+
+      // Timeout for ping "2" fires
+      timers.advance(5000);
+      expect(cm.state).toBe("reconnecting");
+    });
+
+    it("no-op if no sendPing provided", () => {
+      const { cm, reconnectFn, timers, visibility } = setup();
+      cm.start(reconnectFn); // no sendPing
 
       visibility.hide();
       timers.advance(10000);
       visibility.show();
 
+      expect(cm.state).toBe("connected");
+    });
+
+    it("skips ping if already reconnecting", () => {
+      const { cm, reconnectFn, sendPing, visibility } = setup();
+      cm.start(reconnectFn, { sendPing });
+
+      cm.handleClose();
       expect(cm.state).toBe("reconnecting");
+
+      visibility.hide();
+      visibility.show();
+
+      expect(sendPing).not.toHaveBeenCalled();
+    });
+
+    it("stop() clears pending pong timeout", () => {
+      const { cm, reconnectFn, sendPing, timers, visibility } = setup({
+        pongTimeoutMs: 5000,
+      });
+      cm.start(reconnectFn, { sendPing });
+
+      visibility.hide();
+      visibility.show();
+
+      cm.stop();
+      expect(timers.pendingCount).toBe(0);
     });
   });
 

@@ -2,6 +2,8 @@ import { isNonRetryableError } from "./types";
 
 export type ConnectionState = "connected" | "reconnecting" | "disconnected";
 
+export type SendPingFn = (id: string) => void;
+
 export interface ConnectionManagerConfig {
   /** Base delay for exponential backoff (default: 1000ms) */
   baseDelayMs?: number;
@@ -15,8 +17,8 @@ export interface ConnectionManagerConfig {
   staleThresholdMs?: number;
   /** Interval for checking stale connections (default: 10000ms) */
   staleCheckIntervalMs?: number;
-  /** Time page must be hidden before triggering reconnect on visibility (default: 5000ms) */
-  visibilityThresholdMs?: number;
+  /** Timeout waiting for pong response before forcing reconnect (default: 5000ms) */
+  pongTimeoutMs?: number;
   /** Injectable timer interface for testing */
   timers?: TimerInterface;
   /** Injectable visibility interface for testing */
@@ -56,7 +58,7 @@ const DEFAULT_CONFIG = {
   jitterFactor: 0.3,
   staleThresholdMs: 45000,
   staleCheckIntervalMs: 10000,
-  visibilityThresholdMs: 5000,
+  pongTimeoutMs: 5000,
 } as const;
 
 /**
@@ -102,6 +104,8 @@ export class ConnectionManager {
   private _state: ConnectionState = "disconnected";
   private _reconnectAttempts = 0;
   private _reconnectFn: ReconnectFn | null = null;
+  private _sendPing: SendPingFn | null = null;
+  private _label: string | null = null;
   private _started = false;
 
   // Stale detection
@@ -109,9 +113,12 @@ export class ConnectionManager {
   private _hasReceivedHeartbeat = false;
   private _staleCheckIntervalId: number | null = null;
 
-  // Visibility
+  // Visibility ping/pong
   private _hiddenSince: number | null = null;
   private _removeVisibilityListener: (() => void) | null = null;
+  private _pendingPingId: string | null = null;
+  private _pongTimeoutId: number | null = null;
+  private _pingCounter = 0;
 
   // Backoff
   private _backoffTimerId: number | null = null;
@@ -145,8 +152,7 @@ export class ConnectionManager {
         config.staleThresholdMs ?? DEFAULT_CONFIG.staleThresholdMs,
       staleCheckIntervalMs:
         config.staleCheckIntervalMs ?? DEFAULT_CONFIG.staleCheckIntervalMs,
-      visibilityThresholdMs:
-        config.visibilityThresholdMs ?? DEFAULT_CONFIG.visibilityThresholdMs,
+      pongTimeoutMs: config.pongTimeoutMs ?? DEFAULT_CONFIG.pongTimeoutMs,
     };
     this.timers = config.timers ?? realTimers;
     this.visibility = config.visibility ?? realVisibility;
@@ -164,9 +170,20 @@ export class ConnectionManager {
    * Start the connection manager with a reconnect function.
    * Idempotent — calling multiple times updates the reconnectFn but
    * doesn't create duplicate listeners.
+   *
+   * @param reconnectFn - Function to call when reconnecting.
+   * @param options.sendPing - Optional function to send a keepalive ping with a given ID.
+   *   When provided, visibility changes trigger a ping/pong check instead of
+   *   blindly forcing reconnect.
+   * @param options.label - Optional label for log messages (e.g., "ws", "relay").
    */
-  start(reconnectFn: ReconnectFn): void {
+  start(
+    reconnectFn: ReconnectFn,
+    options?: { sendPing?: SendPingFn; label?: string },
+  ): void {
     this._reconnectFn = reconnectFn;
+    this._sendPing = options?.sendPing ?? null;
+    this._label = options?.label ?? null;
     if (this._started) return;
     this._started = true;
     this._setState("connected");
@@ -180,9 +197,12 @@ export class ConnectionManager {
   stop(): void {
     this._started = false;
     this._reconnectFn = null;
+    this._sendPing = null;
+    this._label = null;
     this._stopStaleCheck();
     this._stopVisibilityListener();
     this._cancelBackoff();
+    this._cancelPongTimeout();
     this._reconnectPromise = null;
     this._hasReceivedHeartbeat = false;
     this._hiddenSince = null;
@@ -216,21 +236,30 @@ export class ConnectionManager {
   }
 
   /**
+   * Handle a pong response from the server.
+   * Only acts if the ID matches the current pending ping (ignores stale pongs).
+   */
+  receivePong(id: string): void {
+    if (id !== this._pendingPingId) return;
+    this._cancelPongTimeout();
+    this._pendingPingId = null;
+    this._log("pong received, connection verified");
+  }
+
+  /**
    * Handle an error from a consumer. Triggers reconnect for retryable errors,
    * transitions to disconnected for non-retryable ones.
    */
   handleError(error: Error): void {
     const retryable = !isNonRetryableError(error);
-    console.log(
-      `[ConnectionManager] error: ${error.message}, retryable=${retryable}`,
-    );
+    this._log(`error: ${error.message}, retryable=${retryable}`);
     if (this._state === "reconnecting") return; // already reconnecting
     if (!retryable) {
-      this._setState("disconnected");
+      this._setState("disconnected", `error: ${error.message}`);
       this._emitReconnectFailed(error);
       return;
     }
-    this._startReconnecting();
+    this._startReconnecting(`error: ${error.message}`);
   }
 
   /**
@@ -239,28 +268,27 @@ export class ConnectionManager {
    */
   handleClose(error?: Error): void {
     const retryable = !error || !isNonRetryableError(error);
-    console.log(
-      `[ConnectionManager] close: ${error?.message ?? "no error"}, retryable=${retryable}`,
-    );
+    const detail = error?.message ?? "no error";
+    this._log(`close: ${detail}, retryable=${retryable}`);
     if (this._state === "reconnecting") return; // already reconnecting
     if (error && !retryable) {
-      this._setState("disconnected");
+      this._setState("disconnected", `close: ${detail}`);
       this._emitReconnectFailed(error);
       return;
     }
-    this._startReconnecting();
+    this._startReconnecting(`close: ${detail}`);
   }
 
   /**
    * Force an immediate reconnect, resetting backoff.
    * Useful for user-initiated reconnection.
    */
-  forceReconnect(): void {
-    console.log("[ConnectionManager] force reconnect");
+  forceReconnect(reason?: string): void {
+    this._log(`force reconnect${reason ? `: ${reason}` : ""}`);
     this._reconnectAttempts = 0;
     this._cancelBackoff();
     this._reconnectPromise = null;
-    this._startReconnecting();
+    this._startReconnecting(reason ?? "force");
   }
 
   /**
@@ -278,11 +306,19 @@ export class ConnectionManager {
 
   // --- Private methods ---
 
-  private _setState(newState: ConnectionState): void {
+  private _log(msg: string): void {
+    const prefix = this._label
+      ? `[ConnectionManager:${this._label}]`
+      : "[ConnectionManager]";
+    console.log(`${prefix} ${msg}`);
+  }
+
+  private _setState(newState: ConnectionState, reason?: string): void {
     if (newState === this._state) return;
     const prev = this._state;
     this._state = newState;
-    console.log(`[ConnectionManager] ${prev} → ${newState}`);
+    const suffix = reason ? ` (${reason})` : "";
+    this._log(`${prev} → ${newState}${suffix}`);
     for (const cb of this._listeners.stateChange) {
       cb(newState, prev);
     }
@@ -294,8 +330,10 @@ export class ConnectionManager {
     }
   }
 
-  private _startReconnecting(): void {
-    this._setState("reconnecting");
+  private _startReconnecting(reason?: string): void {
+    this._cancelPongTimeout();
+    this._pendingPingId = null;
+    this._setState("reconnecting", reason);
     this._scheduleReconnect();
   }
 
@@ -314,8 +352,8 @@ export class ConnectionManager {
 
     const delay = this._getBackoffDelay(this._reconnectAttempts);
     this._reconnectAttempts++;
-    console.log(
-      `[ConnectionManager] attempt ${this._reconnectAttempts}/${this.config.maxAttempts}, delay ${Math.round(delay)}ms`,
+    this._log(
+      `attempt ${this._reconnectAttempts}/${this.config.maxAttempts}, delay ${Math.round(delay)}ms`,
     );
 
     this._backoffTimerId = this.timers.setTimeout(() => {
@@ -341,7 +379,7 @@ export class ConnectionManager {
       .catch((error: unknown) => {
         this._reconnectPromise = null;
         const err = error instanceof Error ? error : new Error(String(error));
-        console.log(`[ConnectionManager] reconnect failed: ${err.message}`);
+        this._log(`reconnect failed: ${err.message}`);
         if (isNonRetryableError(err)) {
           this._setState("disconnected");
           this._emitReconnectFailed(err);
@@ -387,10 +425,8 @@ export class ConnectionManager {
     if (!this._hasReceivedHeartbeat) return;
     const elapsed = this.timers.now() - this._lastEventTime;
     if (elapsed >= this.config.staleThresholdMs) {
-      console.log(
-        `[ConnectionManager] stale (${elapsed}ms), forcing reconnect`,
-      );
-      this.forceReconnect();
+      this._log(`stale (${elapsed}ms since last event)`);
+      this.forceReconnect("stale");
     }
   }
 
@@ -417,15 +453,49 @@ export class ConnectionManager {
 
   private _handleBecameVisible(): void {
     if (this._state !== "connected") return;
-    if (this._hiddenSince === null) return;
-    const hiddenDuration = this.timers.now() - this._hiddenSince;
+
+    const hiddenDuration =
+      this._hiddenSince !== null ? this.timers.now() - this._hiddenSince : null;
     this._hiddenSince = null;
-    const exceeded = hiddenDuration >= this.config.visibilityThresholdMs;
-    console.log(
-      `[ConnectionManager] visible after ${hiddenDuration}ms hidden, threshold=${exceeded}`,
+
+    if (!this._sendPing) {
+      // No ping function provided — skip connectivity check
+      return;
+    }
+
+    // Cancel any previous pending ping (handles rapid visible/hidden toggling)
+    this._cancelPongTimeout();
+
+    const pingId = String(++this._pingCounter);
+    this._pendingPingId = pingId;
+
+    this._log(
+      `visible${hiddenDuration != null ? ` after ${hiddenDuration}ms hidden` : ""}, pinging`,
     );
-    if (exceeded) {
-      this.forceReconnect();
+
+    try {
+      this._sendPing(pingId);
+    } catch {
+      this._pendingPingId = null;
+      this._log("ping send failed");
+      this.forceReconnect("ping-failed");
+      return;
+    }
+
+    this._pongTimeoutId = this.timers.setTimeout(() => {
+      this._pongTimeoutId = null;
+      if (this._pendingPingId === pingId) {
+        this._log("pong timeout");
+        this._pendingPingId = null;
+        this.forceReconnect("pong-timeout");
+      }
+    }, this.config.pongTimeoutMs);
+  }
+
+  private _cancelPongTimeout(): void {
+    if (this._pongTimeoutId !== null) {
+      this.timers.clearTimeout(this._pongTimeoutId);
+      this._pongTimeoutId = null;
     }
   }
 }

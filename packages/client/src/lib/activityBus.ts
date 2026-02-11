@@ -191,14 +191,28 @@ class ActivityBus {
     // Start ConnectionManager once (idempotent)
     if (!this._connectionManagerStarted) {
       this._connectionManagerStarted = true;
-      connectionManager.start(async () => {
+
+      const sendPing = (id: string): void => {
         const globalConn = getGlobalConnection();
-        if (globalConn?.forceReconnect) {
-          await globalConn.forceReconnect();
+        if (globalConn && "sendPing" in globalConn) {
+          (globalConn as { sendPing: (id: string) => void }).sendPing(id);
         } else {
-          await getWebSocketConnection().reconnect();
+          getWebSocketConnection().sendPing(id);
         }
-      });
+      };
+
+      const label = getGlobalConnection() ? "relay" : "ws";
+      connectionManager.start(
+        async () => {
+          const globalConn = getGlobalConnection();
+          if (globalConn?.forceReconnect) {
+            await globalConn.forceReconnect();
+          } else {
+            await getWebSocketConnection().reconnect();
+          }
+        },
+        { sendPing, label },
+      );
 
       // Listen for ConnectionManager state changes to re-subscribe
       this._stateChangeUnsub = connectionManager.on("stateChange", (state) => {
@@ -211,6 +225,11 @@ class ActivityBus {
     // Check for global connection (remote mode with SecureConnection)
     const globalConn = getGlobalConnection();
     if (globalConn) {
+      if ("setOnPong" in globalConn) {
+        (
+          globalConn as { setOnPong: (cb: (id: string) => void) => void }
+        ).setOnPong((id) => connectionManager.receivePong(id));
+      }
       this.connectWithConnection(globalConn);
       return;
     }
@@ -224,7 +243,9 @@ class ActivityBus {
     }
 
     // Local mode: use WebSocket
-    this.connectWithConnection(getWebSocketConnection());
+    const wsConn = getWebSocketConnection();
+    wsConn.setOnPong((id) => connectionManager.receivePong(id));
+    this.connectWithConnection(wsConn);
   }
 
   /**

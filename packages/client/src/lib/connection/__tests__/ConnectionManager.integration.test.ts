@@ -3,6 +3,7 @@ import {
   ConnectionManager,
   type ConnectionState,
   type ReconnectFn,
+  type SendPingFn,
 } from "../ConnectionManager";
 import { WebSocketCloseError } from "../types";
 import { MockTimers, MockVisibility } from "./ConnectionSimulator";
@@ -24,12 +25,13 @@ function setup(
     maxDelayMs?: number;
     staleThresholdMs?: number;
     staleCheckIntervalMs?: number;
-    visibilityThresholdMs?: number;
+    pongTimeoutMs?: number;
   } = {},
 ) {
   const timers = new MockTimers();
   const visibility = new MockVisibility();
   const reconnectFn = vi.fn<ReconnectFn>(() => Promise.resolve());
+  const sendPing = vi.fn<SendPingFn>();
   const stateLog: Array<{
     state: ConnectionState;
     prev: ConnectionState;
@@ -46,9 +48,9 @@ function setup(
   cm.on("stateChange", (state, prev) => stateLog.push({ state, prev }));
   cm.on("reconnectFailed", (err) => failures.push(err));
 
-  cm.start(reconnectFn);
+  cm.start(reconnectFn, { sendPing });
 
-  return { cm, timers, visibility, reconnectFn, stateLog, failures };
+  return { cm, timers, visibility, reconnectFn, sendPing, stateLog, failures };
 }
 
 describe("ConnectionManager integration", () => {
@@ -125,15 +127,20 @@ describe("ConnectionManager integration", () => {
     expect(reconnectFn).toHaveBeenCalledTimes(1);
   });
 
-  it("5. Mobile sleep/wake: visible → hidden 10s → visible → reconnect → connected", async () => {
-    const { cm, reconnectFn, timers, visibility } = setup({
-      visibilityThresholdMs: 5000,
+  it("5. Sleep/wake: visible → hidden → visible → ping → pong timeout → reconnect → connected", async () => {
+    const { cm, reconnectFn, sendPing, timers, visibility } = setup({
+      pongTimeoutMs: 5000,
     });
 
     visibility.hide();
     timers.advance(10000);
     visibility.show();
 
+    expect(sendPing).toHaveBeenCalledTimes(1);
+    expect(cm.state).toBe("connected"); // still connected, waiting for pong
+
+    // Pong never arrives — timeout triggers reconnect
+    timers.advance(5000);
     expect(cm.state).toBe("reconnecting");
 
     timers.advance(1000);
@@ -144,15 +151,19 @@ describe("ConnectionManager integration", () => {
     expect(reconnectFn).toHaveBeenCalledTimes(1);
   });
 
-  it("6. Quick tab switch: visible → hidden 2s → visible → NO reconnect", () => {
-    const { cm, reconnectFn, timers, visibility } = setup({
-      visibilityThresholdMs: 5000,
+  it("6. Tab switch: visible → hidden → visible → ping → pong received → stays connected", () => {
+    const { cm, reconnectFn, sendPing, timers, visibility } = setup({
+      pongTimeoutMs: 5000,
     });
 
     visibility.hide();
     timers.advance(2000);
     visibility.show();
 
+    expect(sendPing).toHaveBeenCalledTimes(1);
+    cm.receivePong("1"); // pong confirms connection is alive
+
+    timers.advance(5000);
     expect(cm.state).toBe("connected");
     expect(reconnectFn).not.toHaveBeenCalled();
   });

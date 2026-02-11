@@ -185,6 +185,20 @@ export class WebSocketConnection implements Connection {
   }
 
   /**
+   * Send a keepalive ping to verify the connection is alive.
+   */
+  sendPing(id: string): void {
+    this.protocol.sendPing(id);
+  }
+
+  /**
+   * Register a callback for pong responses.
+   */
+  setOnPong(cb: (id: string) => void): void {
+    this.protocol.setOnPong(cb);
+  }
+
+  /**
    * Reconnect the WebSocket. Tears down the current connection and
    * re-establishes it. Used by ConnectionManager's reconnectFn.
    */

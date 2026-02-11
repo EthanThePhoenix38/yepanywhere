@@ -16,6 +16,7 @@ export {
   type ConnectionState,
   type ConnectionManagerConfig,
   type ReconnectFn,
+  type SendPingFn,
   type TimerInterface,
   type VisibilityInterface,
 } from "./ConnectionManager";

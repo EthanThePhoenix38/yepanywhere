@@ -1,4 +1,5 @@
 import type {
+  ClientPing,
   RelayEvent,
   RelayRequest,
   RelayResponse,
@@ -10,6 +11,7 @@ import type {
   RelayUploadProgress,
   RelayUploadStart,
   RemoteClientMessage,
+  ServerPong,
   UploadedFile,
   YepMessage,
 } from "@yep-anywhere/shared";
@@ -31,6 +33,7 @@ export interface RelayTransport {
 export interface RelayProtocolOptions {
   debugEnabled?: () => boolean;
   logPrefix?: string;
+  onPong?: (id: string) => void;
 }
 
 function generateId(): string {
@@ -84,6 +87,22 @@ export class RelayProtocol {
   }
 
   /**
+   * Send a keepalive ping to verify the connection is alive.
+   * Throws if the transport is not connected.
+   */
+  sendPing(id: string): void {
+    const msg: ClientPing = { type: "ping", id };
+    this.transport.sendMessage(msg);
+  }
+
+  /**
+   * Set the callback for pong responses.
+   */
+  setOnPong(cb: (id: string) => void): void {
+    this.options.onPong = cb;
+  }
+
+  /**
    * Route an incoming message to the appropriate handler.
    */
   routeMessage(msg: YepMessage): void {
@@ -102,6 +121,9 @@ export class RelayProtocol {
         break;
       case "upload_error":
         this.handleUploadError(msg);
+        break;
+      case "pong":
+        this.options.onPong?.(msg.id);
         break;
       default:
         console.warn(
@@ -576,7 +598,7 @@ export class RelayProtocol {
       if (error) {
         handlers.onError?.(error);
       }
-      handlers.onClose?.();
+      handlers.onClose?.(error);
     }
     this.subscriptions.clear();
   }

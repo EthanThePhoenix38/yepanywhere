@@ -1419,6 +1419,10 @@ async function routeMessage(
         await handleUploadEnd(uploads, msg, send, uploadManager);
         break;
 
+      case "ping":
+        send({ type: "pong", id: msg.id });
+        break;
+
       default:
         console.warn(
           "[WS Relay] Unknown message type:",
