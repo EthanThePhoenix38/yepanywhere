@@ -15,7 +15,7 @@ const DEFAULT_SETTINGS: DeveloperModeSettings = {
   holdModeEnabled: false,
   relayDebugEnabled: false,
   remoteLogCollectionEnabled: false,
-  showConnectionBars: true,
+  showConnectionBars: false,
 };
 
 function loadSettings(): DeveloperModeSettings {
