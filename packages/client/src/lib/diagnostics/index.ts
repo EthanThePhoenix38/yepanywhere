@@ -12,9 +12,6 @@ export const clientLogCollector = new ClientLogCollector();
  * Returns a cleanup function.
  */
 export function initClientLogCollection(): () => void {
-  const enabled = getRemoteLogCollectionEnabled();
-  console.log("[ClientLogCollector] init called, enabled =", enabled);
-
   function sync() {
     if (getRemoteLogCollectionEnabled()) {
       clientLogCollector.start();

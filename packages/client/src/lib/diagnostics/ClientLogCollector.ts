@@ -22,16 +22,6 @@ const STORE_NAME = "entries";
 const MAX_ENTRIES = 2000;
 const FLUSH_BATCH_SIZE = 500;
 
-const CAPTURED_PREFIXES = [
-  "[ConnectionManager]",
-  "[SecureConnection]",
-  "[ActivityBus]",
-  "[WebSocketConnection]",
-  "[RemoteConnection]",
-  "[Relay]",
-  "[RelayProtocol]",
-];
-
 const PREFIX_REGEX = /^\[([A-Za-z]+)\]/;
 
 export class ClientLogCollector {
@@ -45,15 +35,8 @@ export class ClientLogCollector {
   private _origWarn: typeof console.warn | null = null;
   private _origError: typeof console.error | null = null;
   private _unsubscribeState: (() => void) | null = null;
-
-  /** Log using the original console.log to avoid self-capture */
-  private _log(...args: unknown[]): void {
-    (this._origLog ?? console.log).call(
-      console,
-      "[ClientLogCollector]",
-      ...args,
-    );
-  }
+  private _errorHandler: ((e: ErrorEvent) => void) | null = null;
+  private _rejectionHandler: ((e: PromiseRejectionEvent) => void) | null = null;
 
   async start(): Promise<void> {
     if (this._started) return;
@@ -74,14 +57,9 @@ export class ClientLogCollector {
 
     this._unsubscribeState = connectionManager.on("stateChange", (state) => {
       if (state === "connected") {
-        this._log("stateChange → connected, flushing");
         this.flush();
       }
     });
-
-    this._log(
-      `started (db=${this._db ? "idb" : "memory"}, connState=${connectionManager.state})`,
-    );
 
     // Flush immediately if already connected (e.g. setting enabled mid-session)
     if (connectionManager.state === "connected") {
@@ -124,23 +102,15 @@ export class ClientLogCollector {
 
     if (this._useMemoryFallback || !this._db) {
       entries = this._memoryBuffer.splice(0, FLUSH_BATCH_SIZE);
-      if (entries.length === 0) {
-        this._log("flush: no entries (memory)");
-        return;
-      }
+      if (entries.length === 0) return;
     } else {
       entries = await getAllEntries<LogEntry>(
         this._db,
         STORE_NAME,
         FLUSH_BATCH_SIZE,
       );
-      if (entries.length === 0) {
-        this._log("flush: no entries (idb)");
-        return;
-      }
+      if (entries.length === 0) return;
     }
-
-    this._log(`flush: sending ${entries.length} entries`);
 
     try {
       await fetchJSON("/client-logs", {
@@ -154,8 +124,6 @@ export class ClientLogCollector {
         }),
       });
 
-      this._log(`flush: sent ${entries.length} entries successfully`);
-
       // Delete flushed entries from IDB
       if (!this._useMemoryFallback && this._db) {
         const keys = entries
@@ -165,8 +133,7 @@ export class ClientLogCollector {
           await deleteEntries(this._db, STORE_NAME, keys);
         }
       }
-    } catch (err) {
-      this._log("flush failed:", err);
+    } catch {
       // If flush fails (e.g. not connected), put memory entries back
       if (this._useMemoryFallback) {
         this._memoryBuffer.unshift(...entries);
@@ -217,17 +184,35 @@ export class ClientLogCollector {
     this._origError = console.error;
 
     console.log = (...args: unknown[]) => {
-      this._captureIfMatched("log", args);
+      this._capture("log", args);
       this._origLog?.apply(console, args);
     };
     console.warn = (...args: unknown[]) => {
-      this._captureIfMatched("warn", args);
+      this._capture("warn", args);
       this._origWarn?.apply(console, args);
     };
     console.error = (...args: unknown[]) => {
-      this._captureIfMatched("error", args);
+      this._capture("error", args);
       this._origError?.apply(console, args);
     };
+
+    // Capture unhandled exceptions and promise rejections
+    this._errorHandler = (e: ErrorEvent) => {
+      const msg =
+        e.error instanceof Error
+          ? (e.error.stack ?? e.error.message)
+          : e.message;
+      this._writeEntry("error", "[UncaughtError]", msg);
+    };
+    this._rejectionHandler = (e: PromiseRejectionEvent) => {
+      const reason =
+        e.reason instanceof Error
+          ? (e.reason.stack ?? e.reason.message)
+          : String(e.reason);
+      this._writeEntry("error", "[UnhandledRejection]", reason);
+    };
+    window.addEventListener("error", this._errorHandler);
+    window.addEventListener("unhandledrejection", this._rejectionHandler);
   }
 
   private _restoreConsole(): void {
@@ -237,23 +222,33 @@ export class ClientLogCollector {
     this._origLog = null;
     this._origWarn = null;
     this._origError = null;
+
+    if (this._errorHandler) {
+      window.removeEventListener("error", this._errorHandler);
+      this._errorHandler = null;
+    }
+    if (this._rejectionHandler) {
+      window.removeEventListener("unhandledrejection", this._rejectionHandler);
+      this._rejectionHandler = null;
+    }
   }
 
-  private _captureIfMatched(level: string, args: unknown[]): void {
+  /** Capture all warn/error messages unconditionally */
+  private _capture(level: string, args: unknown[]): void {
     if (args.length === 0) return;
-    const first = args[0];
-    if (typeof first !== "string") return;
-
-    const match = PREFIX_REGEX.exec(first);
-    if (!match) return;
-
-    const fullPrefix = `[${match[1]}]`;
-    if (!CAPTURED_PREFIXES.includes(fullPrefix)) return;
-
     const message = args
-      .map((a) => (typeof a === "string" ? a : JSON.stringify(a)))
+      .map((a) =>
+        typeof a === "string"
+          ? a
+          : a instanceof Error
+            ? `${a.message}${a.stack ? `\n${a.stack}` : ""}`
+            : JSON.stringify(a),
+      )
       .join(" ");
 
-    this._writeEntry(level, fullPrefix, message);
+    const first = args[0];
+    const prefix =
+      typeof first === "string" ? (PREFIX_REGEX.exec(first)?.[0] ?? "") : "";
+    this._writeEntry(level, prefix, message);
   }
 }

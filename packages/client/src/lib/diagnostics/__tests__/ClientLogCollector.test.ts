@@ -46,7 +46,7 @@ describe("ClientLogCollector", () => {
     console.error = origError;
   });
 
-  it("captures matching prefixed log messages", async () => {
+  it("captures all console.log messages", async () => {
     await collector.start();
 
     console.log("[ConnectionManager] connected → reconnecting");
@@ -57,7 +57,7 @@ describe("ClientLogCollector", () => {
     await new Promise((r) => setTimeout(r, 10));
 
     // Flush to see what was captured
-    vi.mocked(fetchJSON).mockResolvedValueOnce({ received: 2 });
+    vi.mocked(fetchJSON).mockResolvedValueOnce({ received: 3 });
     await collector.flush();
 
     expect(fetchJSON).toHaveBeenCalledTimes(1);
@@ -65,30 +65,36 @@ describe("ClientLogCollector", () => {
     const call = vi.mocked(fetchJSON).mock.calls[0]!;
     expect(call[0]).toBe("/client-logs");
     const body = JSON.parse(call[1]?.body as string);
-    expect(body.entries).toHaveLength(2);
+    expect(body.entries).toHaveLength(3);
     expect(body.entries[0].prefix).toBe("[ConnectionManager]");
     expect(body.entries[1].prefix).toBe("[SecureConnection]");
+    expect(body.entries[2].prefix).toBe("");
   });
 
-  it("ignores non-matching prefixed messages", async () => {
+  it("captures non-string first args", async () => {
     await collector.start();
 
-    console.log("plain message");
-    console.log("[UnknownPrefix] something");
-    console.log(42); // non-string first arg
+    console.log(42);
+    console.log({ foo: "bar" });
 
     await new Promise((r) => setTimeout(r, 10));
+
+    vi.mocked(fetchJSON).mockResolvedValueOnce({ received: 2 });
     await collector.flush();
 
-    // fetchJSON should not be called (no entries to flush)
-    expect(fetchJSON).not.toHaveBeenCalled();
+    const body = JSON.parse(
+      vi.mocked(fetchJSON).mock.calls[0]?.[1]?.body as string,
+    );
+    expect(body.entries).toHaveLength(2);
+    expect(body.entries[0].message).toBe("42");
+    expect(body.entries[1].message).toBe('{"foo":"bar"}');
   });
 
   it("captures warn and error levels", async () => {
     await collector.start();
 
-    console.warn("[ConnectionManager] warn message");
-    console.error("[ConnectionManager] error message");
+    console.warn("warn message");
+    console.error("error message");
 
     await new Promise((r) => setTimeout(r, 10));
 
@@ -203,5 +209,24 @@ describe("ClientLogCollector", () => {
     expect(body.entries[0].message).toBe(
       '[ConnectionManager] state: connected {"extra":true}',
     );
+  });
+
+  it("captures Error objects with stack traces", async () => {
+    await collector.start();
+
+    const err = new Error("test error");
+    console.error("Something failed:", err);
+
+    await new Promise((r) => setTimeout(r, 10));
+
+    vi.mocked(fetchJSON).mockResolvedValueOnce({ received: 1 });
+    await collector.flush();
+
+    const body = JSON.parse(
+      vi.mocked(fetchJSON).mock.calls[0]?.[1]?.body as string,
+    );
+    expect(body.entries[0].level).toBe("error");
+    expect(body.entries[0].message).toContain("Something failed:");
+    expect(body.entries[0].message).toContain("test error");
   });
 });
