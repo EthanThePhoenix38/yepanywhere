@@ -2,14 +2,13 @@
  * RelayConnectionBar - A thin colored bar at the top of the screen
  * showing relay connection status.
  *
- * Colors:
+ * Uses ConnectionManager as the single source of truth:
  * - Green: connected
- * - Orange (pulsing): connecting/reconnecting
- * - Red: disconnected/error
+ * - Orange (pulsing): reconnecting
+ * - Red: disconnected
  */
 
 import { useLocation } from "react-router-dom";
-import { useRemoteConnection } from "../contexts/RemoteConnectionContext";
 import { useActivityBusState } from "../hooks/useActivityBusState";
 import { useDeveloperMode } from "../hooks/useDeveloperMode";
 
@@ -17,8 +16,6 @@ import { useDeveloperMode } from "../hooks/useDeveloperMode";
 const LOGIN_ROUTES = ["/login", "/login/direct", "/login/relay"];
 
 export function RelayConnectionBar() {
-  const { isConnecting, isAutoResuming, error, autoResumeError } =
-    useRemoteConnection();
   const location = useLocation();
   const { connectionState } = useActivityBusState();
   const { showConnectionBars } = useDeveloperMode();
@@ -32,24 +29,9 @@ export function RelayConnectionBar() {
     return null;
   }
 
-  // Derive status from ConnectionManager state
-  let status: "connected" | "connecting" | "disconnected";
-  if (connectionState === "connected") {
-    status = "connected";
-  } else if (
-    connectionState === "reconnecting" ||
-    isConnecting ||
-    isAutoResuming
-  ) {
-    status = "connecting";
-  } else {
-    status = "disconnected";
-  }
-
-  // Override with error state
-  if (error || autoResumeError) {
-    status = "disconnected";
-  }
+  // Map ConnectionManager state to CSS class
+  const status =
+    connectionState === "reconnecting" ? "connecting" : connectionState;
 
   return <div className={`relay-connection-bar relay-connection-${status}`} />;
 }
