@@ -76,11 +76,21 @@ export function useSessionStream(
         ) => Subscription;
       },
     ) => {
-      // Close any existing subscription before creating a new one
+      // Close any existing subscription before creating a new one.
+      // Clear ref BEFORE close() so isStale() returns true for the old
+      // subscription's handlers if they fire synchronously during close.
       if (wsSubscriptionRef.current) {
-        wsSubscriptionRef.current.close();
+        const old = wsSubscriptionRef.current;
         wsSubscriptionRef.current = null;
+        old.close();
       }
+
+      // Track this specific subscription instance for staleness detection.
+      // When ConnectionManager reconnects, a new subscription replaces this one.
+      // Without this guard, the old subscription's late-firing onClose would
+      // clear the new subscription's state (wsSubscriptionRef, mountedSessionIdRef).
+      let sub: Subscription | null = null;
+      const isStale = () => sub !== null && wsSubscriptionRef.current !== sub;
 
       const handlers = {
         onEvent: (
@@ -102,11 +112,13 @@ export function useSessionStream(
           });
         },
         onOpen: () => {
+          if (isStale()) return;
           setConnected(true);
           connectionManager.markConnected();
           optionsRef.current.onOpen?.();
         },
         onError: (error: Error) => {
+          if (isStale()) return;
           setConnected(false);
           wsSubscriptionRef.current = null;
           mountedSessionIdRef.current = null;
@@ -123,20 +135,20 @@ export function useSessionStream(
           connectionManager.handleError(error);
         },
         onClose: () => {
-          // Don't reconnect during intentional cleanup (component unmount / dep change)
           if (cleaningUpRef.current) return;
+          if (isStale()) return;
           setConnected(false);
           wsSubscriptionRef.current = null;
           mountedSessionIdRef.current = null;
-          // Don't reconnect here — ConnectionManager handles it
         },
       };
 
-      wsSubscriptionRef.current = connection.subscribeSession(
+      sub = connection.subscribeSession(
         sessionId,
         handlers,
         lastEventIdRef.current ?? undefined,
       );
+      wsSubscriptionRef.current = sub;
     },
     [],
   );
@@ -144,6 +156,20 @@ export function useSessionStream(
   // Listen for ConnectionManager state changes to re-subscribe
   useEffect(() => {
     return connectionManager.on("stateChange", (state) => {
+      if (state === "reconnecting" || state === "disconnected") {
+        // Proactively tear down the session subscription. Without this,
+        // the "connected" stateChange can fire before the old subscription's
+        // onClose, causing the !wsSubscriptionRef.current guard to skip
+        // reconnection — leaving the session stream permanently disconnected
+        // while the underlying transport is fine.
+        if (wsSubscriptionRef.current) {
+          const old = wsSubscriptionRef.current;
+          wsSubscriptionRef.current = null;
+          old.close();
+        }
+        setConnected(false);
+        mountedSessionIdRef.current = null;
+      }
       if (state === "connected" && sessionId && !wsSubscriptionRef.current) {
         connect();
       }
