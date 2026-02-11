@@ -1005,14 +1005,17 @@ export async function handleSrpProof(
 }
 
 /**
- * Check if binary data looks like a binary encrypted envelope.
+ * Check if binary data is a binary encrypted envelope.
  * Binary envelope: [1 byte: version 0x01][24 bytes: nonce][ciphertext]
  * vs Phase 0 binary: [1 byte: format 0x01-0x03][payload]
  *
- * We can distinguish them because:
- * - Binary envelope starts with version 0x01 and is at least MIN_BINARY_ENVELOPE_LENGTH bytes
- * - Binary envelope is only valid when authenticated (has session key)
- * - Phase 0 format bytes 0x02-0x03 are clearly not version 0x01
+ * Once a connection has sent one encrypted envelope (useBinaryEncrypted=true),
+ * all subsequent binary frames are encrypted — no ambiguity.
+ *
+ * For the first binary frame, the auth state is the primary discriminator:
+ * authenticated connections always use encrypted envelopes, while
+ * unauthenticated connections use Phase 0 frames. These are mutually exclusive
+ * because clients must complete SRP before sending application messages.
  */
 export function isBinaryEncryptedEnvelope(
   bytes: Uint8Array,
@@ -1020,7 +1023,6 @@ export function isBinaryEncryptedEnvelope(
 ): boolean {
   // Must be authenticated with a session key to receive encrypted data
   if (connState.authState !== "authenticated" || !connState.sessionKey) {
-    // Debug: log when auth check fails for binary data that looks like encrypted envelope
     if (bytes.length >= MIN_BINARY_ENVELOPE_LENGTH && bytes[0] === 0x01) {
       console.warn(
         `[WS Relay] Binary envelope rejected: authState=${connState.authState}, hasKey=${!!connState.sessionKey}`,
@@ -1028,22 +1030,17 @@ export function isBinaryEncryptedEnvelope(
     }
     return false;
   }
+  // Once we've seen one encrypted envelope, all binary frames are encrypted.
+  // No heuristic needed — the connection has committed to encrypted mode.
+  if (connState.useBinaryEncrypted) {
+    return true;
+  }
   // Must be at least minimum envelope length
   if (bytes.length < MIN_BINARY_ENVELOPE_LENGTH) {
     return false;
   }
   // First byte must be version 0x01
   if (bytes[0] !== 0x01) {
-    return false;
-  }
-  // For Phase 0 binary frames, a format byte 0x01 followed by valid JSON
-  // typically starts with '{' (0x7B) or '[' (0x5B) at position 1.
-  // For binary envelope, position 1-24 is the nonce (random bytes).
-  // We use a heuristic: if bytes[1] is a printable ASCII char that starts JSON,
-  // it's likely Phase 0 format. Otherwise, treat as binary envelope.
-  const secondByte = bytes[1];
-  if (secondByte === 0x7b || secondByte === 0x5b) {
-    // '{' or '[' - likely Phase 0 JSON frame
     return false;
   }
   return true;
