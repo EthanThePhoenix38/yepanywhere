@@ -11,7 +11,7 @@ vi.mock("../../../api/client", () => ({
 const stateChangeListeners = new Set<(state: string, prev: string) => void>();
 vi.mock("../../connection", () => ({
   connectionManager: {
-    state: "connected",
+    state: "disconnected",
     on: vi.fn((event: string, cb: (state: string, prev: string) => void) => {
       if (event === "stateChange") {
         stateChangeListeners.add(cb);
