@@ -251,7 +251,10 @@ export function createApp(options: AppOptions): AppResult {
           hashToCwd: geminiScanner.getHashToCwd(),
         });
       case "claude":
-        return new ClaudeSessionReader({ sessionDir: project.sessionDir });
+        return new ClaudeSessionReader({
+          sessionDir: project.sessionDir,
+          additionalDirs: project.mergedSessionDirs,
+        });
       case "opencode":
         return new OpenCodeSessionReader({
           projectPath: project.path,

@@ -21,6 +21,7 @@ import { Navigate, Outlet } from "react-router-dom";
 import { FloatingActionButton } from "./components/FloatingActionButton";
 import { HostOfflineModal } from "./components/HostOfflineModal";
 import { RelayConnectionBar } from "./components/RelayConnectionBar";
+import { ReloadBanner } from "./components/ReloadBanner";
 import { InboxProvider } from "./contexts/InboxContext";
 import {
   RemoteConnectionProvider,
@@ -30,6 +31,7 @@ import { SchemaValidationProvider } from "./contexts/SchemaValidationContext";
 import { ToastProvider } from "./contexts/ToastContext";
 import { useNeedsAttentionBadge } from "./hooks/useNeedsAttentionBadge";
 import { useSyncNotifyInAppSetting } from "./hooks/useNotifyInApp";
+import { useReloadNotifications } from "./hooks/useReloadNotifications";
 import { useRemoteActivityBusConnection } from "./hooks/useRemoteActivityBusConnection";
 import { useRemoteBasePath } from "./hooks/useRemoteBasePath";
 import { connectionManager } from "./lib/connection";
@@ -46,8 +48,35 @@ interface Props {
  */
 export function ConnectedAppContent({ children }: { children: ReactNode }) {
   useRemoteActivityBusConnection();
+
+  const {
+    isManualReloadMode,
+    pendingReloads,
+    reloadBackend,
+    reloadFrontend,
+    dismiss,
+    unsafeToRestart,
+    workerActivity,
+  } = useReloadNotifications();
+
   return (
     <>
+      {isManualReloadMode && pendingReloads.backend && (
+        <ReloadBanner
+          target="backend"
+          onReload={reloadBackend}
+          onDismiss={() => dismiss("backend")}
+          unsafeToRestart={unsafeToRestart}
+          activeWorkers={workerActivity.activeWorkers}
+        />
+      )}
+      {isManualReloadMode && pendingReloads.frontend && (
+        <ReloadBanner
+          target="frontend"
+          onReload={reloadFrontend}
+          onDismiss={() => dismiss("frontend")}
+        />
+      )}
       {children}
       <FloatingActionButton />
     </>

@@ -87,6 +87,7 @@ export class ExternalSessionTracker {
       messageCount: number;
       projectId: UrlProjectId;
       contextUsage?: ContextUsage;
+      model?: string;
     }
   > = new Map();
 
@@ -128,15 +129,17 @@ export class ExternalSessionTracker {
               messageCount: summary.messageCount,
               projectId,
               contextUsage: summary.contextUsage,
+              model: summary.model,
             });
             this.createdSessions.add(sessionId);
 
-            // Emit session-updated if title, messageCount, or contextUsage has real values
+            // Emit session-updated if title, messageCount, contextUsage, or model has real values
             // (supervisor emits session-created with title: null, messageCount: 0)
             if (
               summary.title ||
               summary.messageCount > 0 ||
-              summary.contextUsage
+              summary.contextUsage ||
+              summary.model
             ) {
               const event: SessionUpdatedEvent = {
                 type: "session-updated",
@@ -146,6 +149,7 @@ export class ExternalSessionTracker {
                 messageCount: summary.messageCount,
                 updatedAt: summary.updatedAt,
                 contextUsage: summary.contextUsage,
+                model: summary.model,
                 timestamp: now,
               };
               this.eventBus.emit(event);
@@ -168,6 +172,7 @@ export class ExternalSessionTracker {
               messageCount: summary.messageCount,
               projectId,
               contextUsage: summary.contextUsage,
+              model: summary.model,
             });
           }
         } else {
@@ -180,8 +185,14 @@ export class ExternalSessionTracker {
           const contextUsageChanged =
             cached?.contextUsage?.inputTokens !==
             summary.contextUsage?.inputTokens;
+          const modelChanged = cached?.model !== summary.model;
 
-          if (titleChanged || messageCountChanged || contextUsageChanged) {
+          if (
+            titleChanged ||
+            messageCountChanged ||
+            contextUsageChanged ||
+            modelChanged
+          ) {
             const event: SessionUpdatedEvent = {
               type: "session-updated",
               sessionId,
@@ -190,6 +201,7 @@ export class ExternalSessionTracker {
               messageCount: summary.messageCount,
               updatedAt: summary.updatedAt,
               contextUsage: summary.contextUsage,
+              model: summary.model,
               timestamp: now,
             };
             this.eventBus.emit(event);
@@ -200,6 +212,7 @@ export class ExternalSessionTracker {
               messageCount: summary.messageCount,
               projectId,
               contextUsage: summary.contextUsage,
+              model: summary.model,
             });
           }
         }

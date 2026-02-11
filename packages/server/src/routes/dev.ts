@@ -44,22 +44,6 @@ export function createDevRoutes(deps: DevDeps): Hono {
     return c.json({ ok: true });
   });
 
-  // POST /api/dev/reload - Trigger server restart
-  routes.post("/reload", (c) => {
-    console.log("[Dev] Manual reload requested, exiting...");
-
-    // Respond before exiting
-    const response = c.json({ ok: true, message: "Server restarting..." });
-
-    // Schedule exit after response is sent
-    // The dev wrapper script (scripts/dev.js) will restart the server
-    setTimeout(() => {
-      process.exit(0);
-    }, 100);
-
-    return response;
-  });
-
   // GET /api/dev/status - Get dev mode status including dirty flag
   routes.get("/status", (c) => {
     return c.json({

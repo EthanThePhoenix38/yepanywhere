@@ -335,6 +335,7 @@ export function useGlobalSessions(options: UseGlobalSessionsOptions = {}) {
           ...(event.contextUsage !== undefined && {
             contextUsage: event.contextUsage,
           }),
+          ...(event.model !== undefined && { model: event.model }),
         };
       }),
     );

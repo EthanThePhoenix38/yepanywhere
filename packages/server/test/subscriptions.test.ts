@@ -34,6 +34,7 @@ function createMockProcess(overrides?: Partial<Record<string, unknown>>): {
     modeVersion: 1,
     provider: "anthropic",
     model: "claude-sonnet-4-5-20250929",
+    resolvedModel: "claude-sonnet-4-5-20250929",
     subscribe: vi.fn((fn: Listener) => {
       listener = fn;
       return () => {

@@ -15,6 +15,7 @@ import {
   decodeProjectId,
   encodeProjectId,
   isAbsolutePath,
+  normalizeProjectPathForDedup,
   readCwdFromSessionFile,
 } from "./paths.js";
 
@@ -62,6 +63,8 @@ export class ProjectScanner {
   async listProjects(): Promise<Project[]> {
     const projects: Project[] = [];
     const seenPaths = new Set<string>();
+    // Map from normalized path to project index for cross-machine dedup
+    const normalizedIndex = new Map<string, number>();
 
     try {
       await access(this.projectsDir);
@@ -81,6 +84,50 @@ export class ProjectScanner {
       return [];
     }
 
+    // Helper to add a Claude project, merging cross-machine duplicates
+    const addOrMerge = (
+      projectPath: string,
+      sessionDir: string,
+      sessionCount: number,
+      lastActivity: string | null,
+    ) => {
+      if (seenPaths.has(projectPath)) return; // exact path duplicate
+      seenPaths.add(projectPath);
+
+      const normalized = normalizeProjectPathForDedup(projectPath);
+      const existingIdx = normalizedIndex.get(normalized);
+
+      if (existingIdx !== undefined) {
+        // Cross-machine duplicate — merge into existing project
+        const existing = projects[existingIdx];
+        if (!existing) return;
+        existing.sessionCount += sessionCount;
+        if (!existing.mergedSessionDirs) {
+          existing.mergedSessionDirs = [];
+        }
+        existing.mergedSessionDirs.push(sessionDir);
+        if (
+          lastActivity &&
+          (!existing.lastActivity || lastActivity > existing.lastActivity)
+        ) {
+          existing.lastActivity = lastActivity;
+        }
+      } else {
+        normalizedIndex.set(normalized, projects.length);
+        projects.push({
+          id: encodeProjectId(projectPath),
+          path: projectPath,
+          name: basename(projectPath),
+          sessionCount,
+          sessionDir,
+          activeOwnedCount: 0, // populated by route
+          activeExternalCount: 0, // populated by route
+          lastActivity,
+          provider: "claude",
+        });
+      }
+    };
+
     for (const dir of dirs) {
       const dirPath = join(this.projectsDir, dir);
 
@@ -89,21 +136,10 @@ export class ProjectScanner {
       // On Windows: C:\Users\kaa\project → c--Users-kaa-project (drive letter + --)
       if (dir.startsWith("-") || /^[a-zA-Z]--/.test(dir)) {
         const projectPath = await this.getProjectPathFromSessions(dirPath);
-        if (projectPath && !seenPaths.has(projectPath)) {
-          seenPaths.add(projectPath);
+        if (projectPath) {
           const sessionCount = await this.countSessions(dirPath);
           const lastActivity = await this.getLastActivity(dirPath);
-          projects.push({
-            id: encodeProjectId(projectPath),
-            path: projectPath,
-            name: basename(projectPath),
-            sessionCount,
-            sessionDir: dirPath,
-            activeOwnedCount: 0, // populated by route
-            activeExternalCount: 0, // populated by route
-            lastActivity,
-            provider: "claude",
-          });
+          addOrMerge(projectPath, dirPath, sessionCount, lastActivity);
         }
         continue;
       }
@@ -124,24 +160,11 @@ export class ProjectScanner {
         const projectDirPath = join(dirPath, projectDir);
         const projectPath =
           await this.getProjectPathFromSessions(projectDirPath);
-
-        if (!projectPath || seenPaths.has(projectPath)) continue;
-        seenPaths.add(projectPath);
+        if (!projectPath) continue;
 
         const sessionCount = await this.countSessions(projectDirPath);
         const lastActivity = await this.getLastActivity(projectDirPath);
-
-        projects.push({
-          id: encodeProjectId(projectPath),
-          path: projectPath,
-          name: basename(projectPath),
-          sessionCount,
-          sessionDir: projectDirPath,
-          activeOwnedCount: 0, // populated by route
-          activeExternalCount: 0, // populated by route
-          lastActivity,
-          provider: "claude",
-        });
+        addOrMerge(projectPath, projectDirPath, sessionCount, lastActivity);
       }
     }
 
@@ -330,7 +353,11 @@ export class ProjectScanner {
     // e.g., suffix "-home-user-project" matches "~/.claude/projects/-home-user-project"
     // e.g., suffix "hostname/-home-user-project" matches "~/.claude/projects/hostname/-home-user-project"
     return (
-      projects.find((p) => p.sessionDir.endsWith(`${sep}${dirSuffix}`)) ?? null
+      projects.find(
+        (p) =>
+          p.sessionDir.endsWith(`${sep}${dirSuffix}`) ||
+          p.mergedSessionDirs?.some((d) => d.endsWith(`${sep}${dirSuffix}`)),
+      ) ?? null
     );
   }
 

@@ -167,7 +167,7 @@ export function createSessionSubscription(
     permissionMode: process.permissionMode,
     modeVersion: process.modeVersion,
     provider: process.provider,
-    model: process.model,
+    model: process.resolvedModel,
     ...(currentState.type === "waiting-input"
       ? { request: currentState.request }
       : {}),

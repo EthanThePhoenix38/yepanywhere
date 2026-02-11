@@ -421,6 +421,7 @@ export function useSession(
           ...(event.contextUsage !== undefined && {
             contextUsage: event.contextUsage,
           }),
+          ...(event.model !== undefined && { model: event.model }),
         };
       });
     },
@@ -754,15 +755,13 @@ export function useSession(
         const sseModel = connectedData.model;
         if (sseProvider) {
           setSession((prev) => {
-            // Can only update if we have an existing session object
             if (!prev) return prev;
-            // If session already has provider/model, don't override with stream data
-            if (prev.provider) return prev;
-            // Add provider/model to existing session
+            // Always update model if the connected event has a resolved model
+            // (provider won't change, but model resolves from undefined/"Default" to actual name)
             return {
               ...prev,
-              provider: sseProvider,
-              model: sseModel,
+              provider: prev.provider || sseProvider,
+              ...(sseModel && { model: sseModel }),
             };
           });
         }

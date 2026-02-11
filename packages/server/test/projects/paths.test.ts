@@ -10,6 +10,7 @@ import {
   getProjectName,
   getSessionFilePath,
   getSessionIdFromPath,
+  normalizeProjectPathForDedup,
   readCwdFromSessionFile,
 } from "../../src/projects/paths.js";
 
@@ -142,6 +143,54 @@ describe("Project Path Utilities", () => {
 
     it("returns other for unknown files", () => {
       expect(getFileTypeFromRelativePath("some-random-file.txt")).toBe("other");
+    });
+  });
+
+  describe("normalizeProjectPathForDedup", () => {
+    it("normalizes macOS home paths", () => {
+      expect(normalizeProjectPathForDedup("/Users/kgraehl/dotfiles")).toBe(
+        "kgraehl/dotfiles",
+      );
+    });
+
+    it("normalizes Linux home paths", () => {
+      expect(normalizeProjectPathForDedup("/home/kgraehl/dotfiles")).toBe(
+        "kgraehl/dotfiles",
+      );
+    });
+
+    it("matches macOS and Linux paths for same user/project", () => {
+      const macos = normalizeProjectPathForDedup(
+        "/Users/kgraehl/code/yepanywhere",
+      );
+      const linux = normalizeProjectPathForDedup(
+        "/home/kgraehl/code/yepanywhere",
+      );
+      expect(macos).toBe(linux);
+    });
+
+    it("normalizes root user paths", () => {
+      expect(normalizeProjectPathForDedup("/root/project")).toBe(
+        "root/project",
+      );
+    });
+
+    it("leaves non-home paths unchanged", () => {
+      expect(normalizeProjectPathForDedup("/opt/shared/project")).toBe(
+        "/opt/shared/project",
+      );
+    });
+
+    it("does not merge different users", () => {
+      const userA = normalizeProjectPathForDedup("/Users/alice/dotfiles");
+      const userB = normalizeProjectPathForDedup("/home/bob/dotfiles");
+      expect(userA).not.toBe(userB);
+    });
+
+    it("handles nested project paths", () => {
+      expect(
+        normalizeProjectPathForDedup("/Users/user/code/deep/nested/project"),
+      ).toBe("user/code/deep/nested/project");
     });
   });
 

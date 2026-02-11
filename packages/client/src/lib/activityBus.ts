@@ -90,6 +90,8 @@ export interface SessionUpdatedEvent {
   updatedAt?: string;
   /** Context window usage from the last assistant message */
   contextUsage?: ContextUsage;
+  /** Resolved model name (e.g., "claude-sonnet-4-5-20250929") */
+  model?: string;
   timestamp: string;
 }
 

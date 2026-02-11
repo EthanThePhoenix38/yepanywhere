@@ -424,6 +424,7 @@ export const api = {
         model: options?.model,
         thinking: options?.thinking,
         provider: options?.provider,
+        executor: options?.executor,
         attachments,
         tempId,
       }),

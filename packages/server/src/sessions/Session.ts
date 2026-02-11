@@ -94,6 +94,7 @@ export class Session extends SessionView {
       customTitle: metadata?.customTitle,
       isArchived: metadata?.isArchived,
       isStarred: metadata?.isStarred,
+      executor: metadata?.executor,
     };
 
     return new Session(enrichedSummary, deps);

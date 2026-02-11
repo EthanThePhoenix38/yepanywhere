@@ -41,6 +41,12 @@ const MAX_TERMINATED_PROCESSES = 50;
 /** How long to retain terminated process info (10 minutes) */
 const TERMINATED_RETENTION_MS = 10 * 60 * 1000;
 
+/** How often to check for stale processes (60 seconds) */
+const STALE_CHECK_INTERVAL_MS = 60 * 1000;
+
+/** Terminate in-turn processes with no SDK messages for this long (5 minutes) */
+const STALE_IN_TURN_THRESHOLD_MS = 5 * 60 * 1000;
+
 /**
  * Model and thinking settings for a session.
  */
@@ -106,6 +112,7 @@ export class Supervisor {
   private idlePreemptThresholdMs: number;
   private workerQueue: WorkerQueue;
   private onSessionExecutor?: OnSessionExecutorCallback;
+  private staleCheckTimer: ReturnType<typeof setInterval>;
 
   constructor(options: SupervisorOptions) {
     this.provider = options.provider ?? null;
@@ -122,6 +129,11 @@ export class Supervisor {
       maxQueueSize: options.maxQueueSize,
     });
     this.onSessionExecutor = options.onSessionExecutor;
+    this.staleCheckTimer = setInterval(
+      () => this.terminateStaleProcesses(),
+      STALE_CHECK_INTERVAL_MS,
+    );
+    this.staleCheckTimer.unref(); // Don't keep process alive for cleanup
 
     if (!this.provider && !this.sdk && !this.realSdk) {
       throw new Error("Either provider, sdk, or realSdk must be provided");
@@ -1328,6 +1340,43 @@ export class Supervisor {
       timestamp: new Date().toISOString(),
     };
     this.eventBus.emit(event);
+  }
+
+  // ============ Staleness Detection ============
+
+  /**
+   * Terminate processes stuck in "in-turn" with no SDK messages for too long.
+   * This catches phantom processes where the underlying Claude process died
+   * without the SDK iterator returning done or throwing.
+   */
+  private terminateStaleProcesses(): void {
+    const now = Date.now();
+
+    for (const process of this.processes.values()) {
+      if (process.state.type !== "in-turn") continue;
+      if (process.isHeld) continue;
+
+      const silentMs = now - process.lastMessageTime.getTime();
+      if (silentMs < STALE_IN_TURN_THRESHOLD_MS) continue;
+
+      const log = getLogger();
+      log.warn(
+        {
+          event: "stale_process_detected",
+          sessionId: process.sessionId,
+          processId: process.id,
+          projectId: process.projectId,
+          silentMs,
+          startedAt: process.startedAt.toISOString(),
+          lastMessageTime: process.lastMessageTime.toISOString(),
+        },
+        `Terminating stale process: ${process.sessionId} (no messages for ${Math.round(silentMs / 1000)}s)`,
+      );
+
+      process.terminate(
+        `stale: no SDK messages for ${Math.round(silentMs / 1000)}s`,
+      );
+    }
   }
 
   // ============ Worker Pool Methods ============

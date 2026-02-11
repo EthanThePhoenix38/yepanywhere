@@ -37,6 +37,8 @@ export interface SDKMessage {
   message?: {
     content: string | ContentBlock[];
     role?: string;
+    /** Resolved model name from API response (e.g., "claude-sonnet-4-5-20250929") */
+    model?: string;
   };
   // DAG structure
   parentUuid?: string | null;

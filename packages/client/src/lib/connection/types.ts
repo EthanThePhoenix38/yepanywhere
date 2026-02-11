@@ -48,6 +48,19 @@ export class RelayReconnectRequiredError extends Error {
     this.name = "RelayReconnectRequiredError";
     this.cause = cause;
   }
+
+  /**
+   * Check if this relay error is non-retryable (terminal).
+   * Terminal errors won't resolve by retrying (e.g., unknown user, missing config).
+   * Transient errors (timeouts, network issues, server_offline) should be retried.
+   */
+  isNonRetryable(): boolean {
+    if (!this.cause) return false;
+    const msg = this.cause.message.toLowerCase();
+    if (msg.includes("unknown_username")) return true;
+    if (msg.includes("missing relay config")) return true;
+    return false;
+  }
 }
 
 /**
@@ -105,10 +118,10 @@ export class SubscriptionError extends Error {
  * Check if an error is non-retryable (retrying won't help).
  */
 export function isNonRetryableError(error: unknown): boolean {
-  // Relay reconnect required is non-retryable at the SecureConnection level
-  // The RemoteConnectionContext handles relay reconnection
+  // Relay errors: only non-retryable if the cause is terminal (e.g., unknown username).
+  // Transient causes (timeouts, network issues) are retryable via ConnectionManager backoff.
   if (error instanceof RelayReconnectRequiredError) {
-    return true;
+    return error.isNonRetryable();
   }
   // Subscription 4xx errors (e.g., 404 "No active process") won't resolve by retrying.
   // The activity stream will trigger a fresh subscription when the process starts.

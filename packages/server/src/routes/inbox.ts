@@ -15,6 +15,7 @@ import type { SessionIndexService } from "../indexes/index.js";
 import type { SessionMetadataService } from "../metadata/SessionMetadataService.js";
 import type { NotificationService } from "../notifications/index.js";
 import type { ProjectScanner } from "../projects/scanner.js";
+import { ClaudeSessionReader } from "../sessions/reader.js";
 import type { ISessionReader } from "../sessions/types.js";
 import type { Supervisor } from "../supervisor/Supervisor.js";
 import type {
@@ -97,6 +98,18 @@ export function createInboxRoutes(deps: InboxDeps): Hono {
           project.id,
           reader,
         );
+        // Include sessions from cross-machine merged directories
+        if (project.mergedSessionDirs) {
+          for (const dir of project.mergedSessionDirs) {
+            const mergedReader = new ClaudeSessionReader({ sessionDir: dir });
+            const merged = await deps.sessionIndexService.getSessionsWithCache(
+              dir,
+              project.id,
+              mergedReader,
+            );
+            sessions = [...sessions, ...merged];
+          }
+        }
       } else {
         sessions = await reader.listSessions(project.id);
       }

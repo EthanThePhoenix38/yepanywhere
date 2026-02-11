@@ -313,6 +313,8 @@ export interface AppSessionSummary {
   isArchived?: boolean;
   isStarred?: boolean;
   contextUsage?: ContextUsage;
+  /** SSH host alias for remote execution (undefined = local) */
+  executor?: string;
 }
 
 /**

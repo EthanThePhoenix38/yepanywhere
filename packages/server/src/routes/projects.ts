@@ -13,6 +13,7 @@ import { isAbsolutePath } from "../projects/paths.js";
 import type { ProjectScanner } from "../projects/scanner.js";
 import { CodexSessionReader } from "../sessions/codex-reader.js";
 import { GeminiSessionReader } from "../sessions/gemini-reader.js";
+import { ClaudeSessionReader } from "../sessions/reader.js";
 import type { ISessionReader } from "../sessions/types.js";
 import type { ExternalSessionTracker } from "../supervisor/ExternalSessionTracker.js";
 import type { Supervisor } from "../supervisor/Supervisor.js";
@@ -337,6 +338,18 @@ export function createProjectsRoutes(deps: ProjectsDeps): Hono {
         project.id,
         reader,
       );
+      // Include sessions from cross-machine merged directories
+      if (project.mergedSessionDirs) {
+        for (const dir of project.mergedSessionDirs) {
+          const mergedReader = new ClaudeSessionReader({ sessionDir: dir });
+          const merged = await deps.sessionIndexService.getSessionsWithCache(
+            dir,
+            project.id,
+            mergedReader,
+          );
+          sessions = [...sessions, ...merged];
+        }
+      }
     } else {
       sessions = await reader.listSessions(project.id);
     }

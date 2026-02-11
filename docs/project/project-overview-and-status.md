@@ -18,7 +18,7 @@ Like the VS Code Claude extension, but:
 
 **Core Loop**
 - Server spawns and manages Claude Code SDK processes
-- Real-time SSE streaming of agent messages to clients
+- Real-time WebSocket streaming of agent messages to clients
 - Message queuing while Claude is working
 - Tool approval UI with approve/deny actions
 - Permission modes: default, acceptEdits, plan, bypassPermissions
@@ -34,7 +34,7 @@ Like the VS Code Claude extension, but:
 - PWA with installable web app support
 - Push notifications for approval requests (VAPID, no Firebase)
 - Approve/deny from lock screen
-- SSE auto-reconnect with resume
+- WebSocket auto-reconnect with resume
 
 **Agent Features**
 - Subagent (Task tool) tracking with status display
@@ -59,12 +59,12 @@ Like the VS Code Claude extension, but:
 │  - Dashboard: multi-project session list                    │
 │  - Push notification service worker                         │
 └─────────────────────────┬───────────────────────────────────┘
-                          │ SSE (streaming) + REST (actions)
+                          │ WebSocket (streaming + actions)
 ┌─────────────────────────▼───────────────────────────────────┐
 │  Server (Hono)                                              │
 │  - Supervisor: manages process pool with worker queue       │
 │  - Process: wraps Claude SDK, handles approvals/queue       │
-│  - SessionReader: merges jsonl + SSE via DAG                │
+│  - SessionReader: merges jsonl + live events via DAG        │
 │  - PushNotifier: VAPID web push                             │
 └─────────────────────────┬───────────────────────────────────┘
                           │ Claude Code SDK
@@ -102,7 +102,7 @@ packages/
 ├── client/     # React frontend
 │   ├── pages/        # SessionPage, NewSessionPage, etc.
 │   ├── components/   # MessageInput, MessageList, ToolApprovalPanel
-│   └── hooks/        # useSession, useSSE, usePushNotifications
+│   └── hooks/        # useSession, useConnection, usePushNotifications
 └── shared/     # Shared types
 ```
 

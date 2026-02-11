@@ -147,7 +147,7 @@ export function useReloadNotifications() {
   const reloadBackend = useCallback(async () => {
     console.log("[ReloadNotifications] Requesting backend reload...");
     try {
-      await fetchJSON<{ success: boolean }>("/dev/reload", { method: "POST" });
+      await fetchJSON<{ ok: boolean }>("/server/restart", { method: "POST" });
       console.log("[ReloadNotifications] Reload completed");
       setPendingReloads((prev) => ({ ...prev, backend: false }));
     } catch (err) {

@@ -32,6 +32,8 @@ import { buildDag, findOrphanedToolUses } from "./dag.js";
 
 export interface ClaudeSessionReaderOptions {
   sessionDir: string;
+  /** Additional session dirs from cross-machine merged projects */
+  additionalDirs?: string[];
 }
 
 /** @deprecated Use ClaudeSessionReaderOptions */
@@ -66,31 +68,44 @@ export interface AgentMapping {
  */
 export class ClaudeSessionReader implements ISessionReader {
   private sessionDir: string;
+  private allSessionDirs: string[];
 
   constructor(options: ClaudeSessionReaderOptions) {
     this.sessionDir = options.sessionDir;
+    this.allSessionDirs = [
+      options.sessionDir,
+      ...(options.additionalDirs ?? []),
+    ];
   }
 
   async listSessions(projectId: UrlProjectId): Promise<SessionSummary[]> {
     const summaries: SessionSummary[] = [];
+    const seenIds = new Set<string>();
 
-    try {
-      const files = await readdir(this.sessionDir);
-      // Filter out agent-* files (internal subagent warmup sessions)
-      const jsonlFiles = files.filter(
-        (f) => f.endsWith(".jsonl") && !f.startsWith("agent-"),
-      );
+    for (const dir of this.allSessionDirs) {
+      try {
+        const files = await readdir(dir);
+        // Filter out agent-* files (internal subagent warmup sessions)
+        const jsonlFiles = files.filter(
+          (f) => f.endsWith(".jsonl") && !f.startsWith("agent-"),
+        );
 
-      for (const file of jsonlFiles) {
-        const sessionId = file.replace(".jsonl", "");
-        const summary = await this.getSessionSummary(sessionId, projectId);
-        if (summary) {
-          summaries.push(summary);
+        for (const file of jsonlFiles) {
+          const sessionId = file.replace(".jsonl", "");
+          if (seenIds.has(sessionId)) continue;
+          seenIds.add(sessionId);
+          const summary = await this.getSessionSummaryFromDir(
+            dir,
+            sessionId,
+            projectId,
+          );
+          if (summary) {
+            summaries.push(summary);
+          }
         }
+      } catch {
+        // Directory doesn't exist or not readable — continue to next
       }
-    } catch {
-      // Directory doesn't exist or not readable
-      return [];
     }
 
     // Sort by updatedAt descending
@@ -106,7 +121,23 @@ export class ClaudeSessionReader implements ISessionReader {
     sessionId: string,
     projectId: UrlProjectId,
   ): Promise<SessionSummary | null> {
-    const filePath = join(this.sessionDir, `${sessionId}.jsonl`);
+    for (const dir of this.allSessionDirs) {
+      const result = await this.getSessionSummaryFromDir(
+        dir,
+        sessionId,
+        projectId,
+      );
+      if (result) return result;
+    }
+    return null;
+  }
+
+  private async getSessionSummaryFromDir(
+    dir: string,
+    sessionId: string,
+    projectId: UrlProjectId,
+  ): Promise<SessionSummary | null> {
+    const filePath = join(dir, `${sessionId}.jsonl`);
 
     try {
       const content = await readFile(filePath, "utf-8");
@@ -181,7 +212,9 @@ export class ClaudeSessionReader implements ISessionReader {
     const summary = await this.getSessionSummary(sessionId, projectId);
     if (!summary) return null;
 
-    const filePath = join(this.sessionDir, `${sessionId}.jsonl`);
+    // Find the session file across all dirs
+    const filePath = await this.findSessionFile(sessionId);
+    if (!filePath) return null;
     const content = await readFile(filePath, "utf-8");
     const lines = content.trim().split("\n");
 
@@ -228,7 +261,19 @@ export class ClaudeSessionReader implements ISessionReader {
    * @returns Agent session with messages and inferred status
    */
   async getAgentSession(agentId: string): Promise<AgentSession> {
-    const filePath = join(this.sessionDir, `agent-${agentId}.jsonl`);
+    // Find the agent file across all dirs
+    let filePath: string | null = null;
+    for (const dir of this.allSessionDirs) {
+      const candidate = join(dir, `agent-${agentId}.jsonl`);
+      try {
+        await stat(candidate);
+        filePath = candidate;
+        break;
+      } catch {
+        // Not in this dir
+      }
+    }
+    if (!filePath) return { messages: [], status: "pending" };
 
     try {
       const content = await readFile(filePath, "utf-8");
@@ -282,47 +327,52 @@ export class ClaudeSessionReader implements ISessionReader {
    */
   async getAgentMappings(): Promise<AgentMapping[]> {
     const mappings: AgentMapping[] = [];
+    const seenAgentIds = new Set<string>();
 
-    try {
-      const files = await readdir(this.sessionDir);
-      const agentFiles = files.filter(
-        (f) => f.startsWith("agent-") && f.endsWith(".jsonl"),
-      );
+    for (const dir of this.allSessionDirs) {
+      try {
+        const files = await readdir(dir);
+        const agentFiles = files.filter(
+          (f) => f.startsWith("agent-") && f.endsWith(".jsonl"),
+        );
 
-      for (const file of agentFiles) {
-        // Extract agentId from filename: agent-{agentId}.jsonl
-        const agentId = file.slice(6, -6); // Remove "agent-" prefix and ".jsonl" suffix
-        const filePath = join(this.sessionDir, file);
+        for (const file of agentFiles) {
+          // Extract agentId from filename: agent-{agentId}.jsonl
+          const agentId = file.slice(6, -6); // Remove "agent-" prefix and ".jsonl" suffix
+          if (seenAgentIds.has(agentId)) continue;
+          seenAgentIds.add(agentId);
+          const filePath = join(dir, file);
 
-        try {
-          const content = await readFile(filePath, "utf-8");
-          const trimmed = content.trim();
-          if (!trimmed) continue;
+          try {
+            const content = await readFile(filePath, "utf-8");
+            const trimmed = content.trim();
+            if (!trimmed) continue;
 
-          // Check first few lines for parent_tool_use_id
-          const lines = trimmed.split("\n").slice(0, 5);
-          for (const line of lines) {
-            try {
-              const msg = JSON.parse(line) as ClaudeSessionEntry & {
-                parent_tool_use_id?: string;
-              };
-              if (msg.parent_tool_use_id) {
-                mappings.push({
-                  toolUseId: msg.parent_tool_use_id,
-                  agentId,
-                });
-                break;
+            // Check first few lines for parent_tool_use_id
+            const lines = trimmed.split("\n").slice(0, 5);
+            for (const line of lines) {
+              try {
+                const msg = JSON.parse(line) as ClaudeSessionEntry & {
+                  parent_tool_use_id?: string;
+                };
+                if (msg.parent_tool_use_id) {
+                  mappings.push({
+                    toolUseId: msg.parent_tool_use_id,
+                    agentId,
+                  });
+                  break;
+                }
+              } catch {
+                // Skip malformed lines
               }
-            } catch {
-              // Skip malformed lines
             }
+          } catch {
+            // Skip unreadable files
           }
-        } catch {
-          // Skip unreadable files
         }
+      } catch {
+        // Directory doesn't exist or not readable
       }
-    } catch {
-      // Directory doesn't exist or not readable
     }
 
     return mappings;
@@ -359,6 +409,20 @@ export class ClaudeSessionReader implements ISessionReader {
 
     // No result message - still running or interrupted
     return "running";
+  }
+
+  /** Find the session file across all session dirs, returning the first match. */
+  private async findSessionFile(sessionId: string): Promise<string | null> {
+    for (const dir of this.allSessionDirs) {
+      const candidate = join(dir, `${sessionId}.jsonl`);
+      try {
+        await stat(candidate);
+        return candidate;
+      } catch {
+        // Not in this dir
+      }
+    }
+    return null;
   }
 
   private findFirstUserMessage(messages: ClaudeSessionEntry[]): string | null {
@@ -525,7 +589,8 @@ export class ClaudeSessionReader implements ISessionReader {
     cachedMtime: number,
     cachedSize: number,
   ): Promise<{ summary: SessionSummary; mtime: number; size: number } | null> {
-    const filePath = join(this.sessionDir, `${sessionId}.jsonl`);
+    const filePath = await this.findSessionFile(sessionId);
+    if (!filePath) return null;
 
     try {
       const stats = await stat(filePath);

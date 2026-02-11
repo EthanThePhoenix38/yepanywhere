@@ -145,6 +145,12 @@ export class Process {
   private sessionIdResolvers: Array<(id: string) => void> = [];
   private sessionIdResolved = false;
 
+  /** Timestamp of last SDK message received (for staleness detection) */
+  private _lastMessageTime: Date;
+
+  /** Resolved model name from the first assistant message (e.g., "claude-sonnet-4-5-20250929") */
+  private _resolvedModel: string | undefined;
+
   /** Whether the process is held (soft pause) */
   private _isHeld = false;
   /** When hold mode was activated */
@@ -176,6 +182,7 @@ export class Process {
     this.supportedModelsFn = options.supportedModelsFn ?? null;
     this.supportedCommandsFn = options.supportedCommandsFn ?? null;
     this.setModelFn = options.setModelFn ?? null;
+    this._lastMessageTime = new Date();
 
     // Start bucket swap timer for bounded message history
     this.startBucketSwapTimer();
@@ -209,8 +216,21 @@ export class Process {
     return this._sessionId;
   }
 
+  /**
+   * The actual model used by the API, extracted from the first assistant message.
+   * Falls back to the requested model if no assistant message has been received yet.
+   */
+  get resolvedModel(): string | undefined {
+    return this._resolvedModel ?? this.model;
+  }
+
   get state(): ProcessState {
     return this._state;
+  }
+
+  /** When the last SDK message was received (for staleness detection) */
+  get lastMessageTime(): Date {
+    return this._lastMessageTime;
   }
 
   get queueDepth(): number {
@@ -602,6 +622,7 @@ export class Process {
       startedAt: this.startedAt.toISOString(),
       queueDepth: this.queueDepth,
       provider: this.provider,
+      model: this._resolvedModel ?? this.model,
       maxThinkingTokens: this._maxThinkingTokens,
       executor: this.executor,
     };
@@ -1100,6 +1121,14 @@ export class Process {
     this.emit({ type: "claude-login", event });
   }
 
+  /**
+   * Terminate the process with a reason (e.g., staleness detection).
+   * Unlike abort(), this records the reason for logging/debugging.
+   */
+  terminate(reason: string): void {
+    this.markTerminated(reason);
+  }
+
   async abort(): Promise<void> {
     this.clearIdleTimer();
 
@@ -1137,6 +1166,7 @@ export class Process {
         }
 
         const message = result.value;
+        this._lastMessageTime = new Date();
 
         // Store message in history for replay to late-joining clients.
         // Exclude stream_event messages - they're transient streaming deltas that
@@ -1194,6 +1224,16 @@ export class Process {
             resolve(this._sessionId);
           }
           this.sessionIdResolvers = [];
+        }
+
+        // Capture resolved model from first assistant message
+        if (
+          !this._resolvedModel &&
+          message.type === "assistant" &&
+          message.message?.model &&
+          message.message.model !== "<synthetic>"
+        ) {
+          this._resolvedModel = message.message.model;
         }
 
         // Emit to SSE subscribers

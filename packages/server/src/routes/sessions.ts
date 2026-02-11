@@ -679,7 +679,7 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
         // Extract context usage from raw SDK messages (has usage field)
         const contextUsage = extractContextUsageFromSDKMessages(
           sdkMessages,
-          process.model,
+          process.resolvedModel,
         );
         // Get metadata even for new sessions (in case it was set before file was written)
         const metadata = deps.sessionMetadataService?.getMetadata(sessionId);
@@ -705,7 +705,7 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
             lastSeenAt: lastSeenEntry?.timestamp,
             hasUnread,
             provider: process.provider,
-            model: process.model,
+            model: process.resolvedModel,
             contextUsage,
           },
           messages: processMessages,
@@ -972,23 +972,29 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
     const model =
       body.model && body.model !== "default" ? body.model : undefined;
 
-    // Look up saved executor for remote session resume
-    const savedExecutor = deps.sessionMetadataService?.getExecutor(sessionId);
+    // Use client-provided executor, falling back to saved executor from metadata
+    const executor =
+      body.executor ?? deps.sessionMetadataService?.getExecutor(sessionId);
 
     // For remote sessions, sync local files TO remote before resuming
     // This ensures the remote has the latest session state
-    if (savedExecutor) {
+    if (executor) {
       const projectDir = getProjectDirFromCwd(project.path);
       const syncResult = await syncSessions({
-        host: savedExecutor,
+        host: executor,
         projectDir,
         direction: "to-remote",
       });
       if (!syncResult.success) {
         console.warn(
-          `[resume] Failed to pre-sync session to ${savedExecutor}: ${syncResult.error}`,
+          `[resume] Failed to pre-sync session to ${executor}: ${syncResult.error}`,
         );
         // Continue anyway - remote may have the files from before
+      }
+
+      // Save executor to metadata if not already saved (e.g. client provided it)
+      if (deps.sessionMetadataService) {
+        await deps.sessionMetadataService.setExecutor(sessionId, executor);
       }
     }
 
@@ -1001,7 +1007,7 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
         model,
         maxThinkingTokens,
         providerName: body.provider,
-        executor: savedExecutor,
+        executor,
       },
     );
 

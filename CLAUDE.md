@@ -6,9 +6,13 @@ A mobile-first supervisor for Claude Code agents. Like the VS Code Claude extens
 - **Server-owned processes** — Claude runs on your dev machine; client disconnects don't interrupt work
 - **Multi-session dashboard** — See all projects at a glance, no window cycling
 - **Mobile supervision** — Push notifications for approvals, respond from your lock screen
-- **Zero external dependencies** — No Firebase, no accounts, just Tailscale for network access
+- **Zero external dependencies** — No Firebase, no accounts
 
-**Architecture:** Hono server manages Claude SDK processes. React client connects via SSE for real-time streaming. Sessions persist to jsonl files (handled by SDK).
+**Architecture:** Hono server manages Claude SDK processes. React client connects via WebSocket for real-time streaming. Sessions persist to jsonl files (handled by SDK).
+
+**Remote access:** Two connection modes:
+- **Direct (Tailscale/LAN)** — Client connects to server WebSocket directly
+- **Relay** — Client connects through a relay server (`packages/relay/`). SRP (Secure Remote Password) authenticates without exposing the password to the relay. All messages are end-to-end encrypted with NaCl (XSalsa20-Poly1305) so the relay sees only opaque ciphertext.
 
 For detailed overview, see `docs/project/`. Historical vision docs in `docs/archive/`.
 

@@ -111,6 +111,26 @@ export function getProjectName(projectPath: string): string {
 }
 
 /**
+ * Normalize a project path for cross-machine deduplication.
+ *
+ * Strips OS-specific home directory prefixes so the same project
+ * on different machines (macOS vs Linux) merges into one entry.
+ *
+ * @example
+ * normalizeProjectPathForDedup("/Users/kgraehl/dotfiles")  // => "kgraehl/dotfiles"
+ * normalizeProjectPathForDedup("/home/kgraehl/dotfiles")   // => "kgraehl/dotfiles"
+ * normalizeProjectPathForDedup("/root/dotfiles")           // => "root/dotfiles"
+ * normalizeProjectPathForDedup("/opt/shared/project")      // => "/opt/shared/project"
+ */
+export function normalizeProjectPathForDedup(path: string): string {
+  const homeMatch = path.match(/^\/(?:Users|home)\/(.+)$/);
+  if (homeMatch?.[1]) return homeMatch[1];
+  const rootMatch = path.match(/^\/root\/(.+)$/);
+  if (rootMatch?.[1]) return `root/${rootMatch[1]}`;
+  return path;
+}
+
+/**
  * Get the full path to a session file.
  *
  * @param sessionDir - The project's session directory (Project.sessionDir)
