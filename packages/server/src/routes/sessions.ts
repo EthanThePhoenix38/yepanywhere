@@ -1040,9 +1040,9 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
       return c.json({ error: "No active process for session" }, 404);
     }
 
-    let body: StartSessionBody;
+    let body: StartSessionBody & { deferred?: boolean };
     try {
-      body = await c.req.json<StartSessionBody>();
+      body = await c.req.json<StartSessionBody & { deferred?: boolean }>();
     } catch {
       return c.json({ error: "Invalid JSON body" }, 400);
     }
@@ -1069,6 +1069,12 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
         },
         410,
       ); // 410 Gone
+    }
+
+    // Deferred messages are held server-side and auto-sent when the agent finishes
+    if (body.deferred) {
+      process.deferMessage(userMessage);
+      return c.json({ queued: true, deferred: true });
     }
 
     // Convert thinking option to token budget
@@ -1102,6 +1108,24 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
       restarted: result.restarted,
       processId: result.process.id,
     });
+  });
+
+  // DELETE /api/sessions/:sessionId/deferred/:tempId - Cancel a deferred message
+  routes.delete("/sessions/:sessionId/deferred/:tempId", (c) => {
+    const sessionId = c.req.param("sessionId");
+    const tempId = c.req.param("tempId");
+
+    const process = deps.supervisor.getProcessForSession(sessionId);
+    if (!process) {
+      return c.json({ error: "No active process for session" }, 404);
+    }
+
+    const cancelled = process.cancelDeferredMessage(tempId);
+    if (!cancelled) {
+      return c.json({ error: "Deferred message not found" }, 404);
+    }
+
+    return c.json({ cancelled: true });
   });
 
   // PUT /api/sessions/:sessionId/mode - Update permission mode without sending a message

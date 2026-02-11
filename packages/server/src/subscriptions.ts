@@ -144,6 +144,10 @@ export function createSessionSubscription(
           });
           break;
 
+        case "deferred-queue":
+          emit("deferred-queue", { messages: event.messages });
+          break;
+
         case "complete":
           if (augmenter) {
             await augmenter.flush();
@@ -160,6 +164,7 @@ export function createSessionSubscription(
 
   // Now that we're subscribed, capture state and emit "connected"
   const currentState = process.state;
+  const deferredMessages = process.getDeferredQueueSummary();
   emit("connected", {
     processId: process.id,
     sessionId: process.sessionId,
@@ -171,6 +176,7 @@ export function createSessionSubscription(
     ...(currentState.type === "waiting-input"
       ? { request: currentState.request }
       : {}),
+    ...(deferredMessages.length > 0 ? { deferredMessages } : {}),
   });
 
   // Replay buffered messages for late-joining clients

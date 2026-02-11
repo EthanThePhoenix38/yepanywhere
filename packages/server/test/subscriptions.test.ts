@@ -45,6 +45,7 @@ function createMockProcess(overrides?: Partial<Record<string, unknown>>): {
     getStreamingContent: vi.fn(() => null),
     accumulateStreamingText: vi.fn(),
     clearStreamingText: vi.fn(),
+    getDeferredQueueSummary: vi.fn(() => []),
     ...overrides,
   } as unknown as Process;
 

@@ -151,6 +151,9 @@ export class Process {
   /** Resolved model name from the first assistant message (e.g., "claude-sonnet-4-5-20250929") */
   private _resolvedModel: string | undefined;
 
+  /** Deferred message queue — messages queued while agent is in-turn, auto-sent when turn ends */
+  private deferredQueue: { message: UserMessage; timestamp: string }[] = [];
+
   /** Whether the process is held (soft pause) */
   private _isHeld = false;
   /** When hold mode was activated */
@@ -826,6 +829,57 @@ export class Process {
   }
 
   /**
+   * Add a message to the deferred queue.
+   * Deferred messages are held server-side and auto-sent when the agent's current turn ends.
+   */
+  deferMessage(message: UserMessage): { success: true } {
+    this.deferredQueue.push({
+      message,
+      timestamp: new Date().toISOString(),
+    });
+    this.emitDeferredQueueChange();
+    return { success: true };
+  }
+
+  /**
+   * Cancel a deferred message by its tempId.
+   */
+  cancelDeferredMessage(tempId: string): boolean {
+    const index = this.deferredQueue.findIndex(
+      (entry) => entry.message.tempId === tempId,
+    );
+    if (index === -1) return false;
+    this.deferredQueue.splice(index, 1);
+    this.emitDeferredQueueChange();
+    return true;
+  }
+
+  /**
+   * Get a summary of the deferred queue for SSE events and client sync.
+   */
+  getDeferredQueueSummary(): {
+    tempId?: string;
+    content: string;
+    timestamp: string;
+  }[] {
+    return this.deferredQueue.map((entry) => ({
+      tempId: entry.message.tempId,
+      content: entry.message.text,
+      timestamp: entry.timestamp,
+    }));
+  }
+
+  /**
+   * Emit a deferred-queue event with the current queue state.
+   */
+  private emitDeferredQueueChange(): void {
+    this.emit({
+      type: "deferred-queue",
+      messages: this.getDeferredQueueSummary(),
+    });
+  }
+
+  /**
    * Handle tool approval request from SDK's canUseTool callback.
    * This is called by the Supervisor when creating the session.
    * Behavior depends on current permission mode:
@@ -1320,6 +1374,13 @@ export class Process {
 
   private transitionToIdle(): void {
     this.clearIdleTimer();
+    // Feed next deferred message before transitioning to idle
+    const next = this.deferredQueue.shift();
+    if (next) {
+      this.emitDeferredQueueChange();
+      this.queueMessage(next.message); // stays in-turn, SDK picks it up
+      return;
+    }
     this.setState({ type: "idle", since: new Date() });
     this.startIdleTimer();
     this.processNextInQueue();

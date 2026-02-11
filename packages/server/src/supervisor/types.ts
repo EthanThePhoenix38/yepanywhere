@@ -192,7 +192,11 @@ export type ProcessEvent =
   | { type: "error"; error: Error }
   | { type: "complete" }
   | { type: "terminated"; reason: string; error?: Error }
-  | { type: "claude-login"; event: ClaudeLoginEvent };
+  | { type: "claude-login"; event: ClaudeLoginEvent }
+  | {
+      type: "deferred-queue";
+      messages: { tempId?: string; content: string; timestamp: string }[];
+    };
 
 // Process options
 export interface ProcessOptions {
