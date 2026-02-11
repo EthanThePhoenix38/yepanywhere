@@ -49,6 +49,13 @@ interface PendingMessage {
   timestamp: string;
 }
 
+/** Deferred message queued server-side */
+interface DeferredMessage {
+  tempId?: string;
+  content: string;
+  timestamp: string;
+}
+
 interface Props {
   messages: Message[];
   isStreaming?: boolean;
@@ -59,6 +66,10 @@ interface Props {
   scrollTrigger?: number;
   /** Messages waiting for server confirmation (shown as "Sending...") */
   pendingMessages?: PendingMessage[];
+  /** Deferred messages queued server-side (shown as "Queued") */
+  deferredMessages?: DeferredMessage[];
+  /** Callback to cancel a deferred message */
+  onCancelDeferred?: (tempId: string) => void;
   /** Pre-rendered markdown HTML from server (keyed by message ID) */
   markdownAugments?: Record<string, MarkdownAugment>;
   /** Active tool approval - prevents matching orphaned tool from showing as interrupted */
@@ -72,6 +83,8 @@ export const MessageList = memo(function MessageList({
   isCompacting = false,
   scrollTrigger = 0,
   pendingMessages = [],
+  deferredMessages = [],
+  onCancelDeferred,
   markdownAugments,
   activeToolApproval,
 }: Props) {
@@ -253,6 +266,32 @@ export const MessageList = memo(function MessageList({
             {pending.content}
           </div>
           <div className="pending-message-status">Sending...</div>
+        </div>
+      ))}
+      {/* Deferred messages - queued server-side, waiting for agent turn to end */}
+      {deferredMessages.map((deferred, index) => (
+        <div
+          key={deferred.tempId ?? `deferred-${index}`}
+          className="deferred-message"
+        >
+          <div className="message-user-prompt deferred-message-bubble">
+            {deferred.content}
+          </div>
+          <div className="deferred-message-footer">
+            <span className="deferred-message-status">
+              {index === 0 ? "Queued (next)" : `Queued (#${index + 1})`}
+            </span>
+            {deferred.tempId && onCancelDeferred && (
+              <button
+                type="button"
+                className="deferred-message-cancel"
+                onClick={() => onCancelDeferred(deferred.tempId as string)}
+                aria-label="Cancel queued message"
+              >
+                ×
+              </button>
+            )}
+          </div>
         </div>
       ))}
       {/* Compacting indicator - shown when context is being compressed */}

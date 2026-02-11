@@ -2028,7 +2028,8 @@ a.sidebar-nav-item {
 }
 
 .send-button,
-.stop-button {
+.stop-button,
+.queue-button {
   width: 36px;
   height: 36px;
   display: flex;
@@ -2090,6 +2091,54 @@ a.sidebar-nav-item {
   height: 12px;
   background: white;
   border-radius: 2px;
+}
+
+.queue-button {
+  background: var(--attention-color);
+  color: white;
+}
+
+.queue-button:hover {
+  opacity: 0.85;
+}
+
+/* Deferred messages - queued server-side */
+.deferred-message {
+  margin-bottom: var(--space-3);
+}
+
+.deferred-message-bubble {
+  opacity: 0.7;
+  border-left: 3px solid var(--attention-color);
+  padding-left: var(--space-2);
+}
+
+.deferred-message-footer {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-top: var(--space-1);
+}
+
+.deferred-message-status {
+  font-size: var(--font-size-xs);
+  color: var(--attention-color);
+  font-style: italic;
+}
+
+.deferred-message-cancel {
+  background: none;
+  border: none;
+  color: var(--text-dimmed);
+  cursor: pointer;
+  font-size: 14px;
+  line-height: 1;
+  padding: 0 var(--space-1);
+  border-radius: var(--radius-sm);
+}
+
+.deferred-message-cancel:hover {
+  color: var(--error-color);
 }
 
 /* ==========================================================================

@@ -134,6 +134,7 @@ function SessionPageContent({
     pendingMessages,
     addPendingMessage,
     removePendingMessage,
+    deferredMessages,
     slashCommands,
     sessionTools,
     mcpServers,
@@ -399,6 +400,36 @@ function SessionPageContent({
       setProcessState("idle");
       const errorMsg = err instanceof Error ? err.message : "Unknown error";
       showToast(`Failed to send message: ${errorMsg}`, "error");
+    }
+  };
+
+  const handleQueue = async (text: string) => {
+    const tempId = addPendingMessage(text);
+    setScrollTrigger((prev) => prev + 1);
+
+    // Capture current attachments and clear optimistically
+    const currentAttachments = [...attachments];
+    setAttachments([]);
+
+    try {
+      const thinking = getThinkingSetting();
+      await api.queueMessage(
+        sessionId,
+        text,
+        permissionMode,
+        currentAttachments.length > 0 ? currentAttachments : undefined,
+        tempId,
+        thinking,
+        true, // deferred
+      );
+      draftControlsRef.current?.clearDraft();
+    } catch (err) {
+      console.error("Failed to queue deferred message:", err);
+      removePendingMessage(tempId);
+      draftControlsRef.current?.restoreFromStorage();
+      setAttachments(currentAttachments);
+      const errorMsg = err instanceof Error ? err.message : "Unknown error";
+      showToast(`Failed to queue message: ${errorMsg}`, "error");
     }
   };
 
@@ -943,6 +974,10 @@ function SessionPageContent({
                   isCompacting={isCompacting}
                   scrollTrigger={scrollTrigger}
                   pendingMessages={pendingMessages}
+                  deferredMessages={deferredMessages}
+                  onCancelDeferred={(tempId) =>
+                    api.cancelDeferredMessage(sessionId, tempId)
+                  }
                   markdownAugments={markdownAugments}
                   activeToolApproval={activeToolApproval}
                 />
@@ -1015,6 +1050,7 @@ function SessionPageContent({
             ) && (
               <MessageInput
                 onSend={handleSend}
+                onQueue={status.owner !== "none" ? handleQueue : undefined}
                 placeholder={
                   status.owner === "external"
                     ? "External session - send at your own risk..."

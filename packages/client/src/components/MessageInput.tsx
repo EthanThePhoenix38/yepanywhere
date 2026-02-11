@@ -37,6 +37,8 @@ function formatSize(bytes: number): string {
 
 interface Props {
   onSend: (text: string) => void;
+  /** Queue a deferred message (sent when agent's turn ends). Only provided when agent is running. */
+  onQueue?: (text: string) => void;
   disabled?: boolean;
   placeholder?: string;
   mode?: PermissionMode;
@@ -76,6 +78,7 @@ interface Props {
 
 export function MessageInput({
   onSend,
+  onQueue,
   disabled,
   placeholder,
   mode = "default",
@@ -164,6 +167,25 @@ export function MessageInput({
     }
   }, [text, disabled, controls, onSend, attachments.length]);
 
+  const handleQueue = useCallback(() => {
+    // Stop voice recording and get any pending interim text
+    const pendingVoice = voiceButtonRef.current?.stopAndFinalize() ?? "";
+
+    let finalText = text.trimEnd();
+    if (pendingVoice) {
+      finalText = finalText ? `${finalText} ${pendingVoice}` : pendingVoice;
+    }
+
+    const hasContent = finalText.trim() || attachments.length > 0;
+    if (hasContent && !disabled && onQueue) {
+      const message = finalText.trim();
+      controls.clearInput();
+      setInterimTranscript("");
+      onQueue(message);
+      textareaRef.current?.focus();
+    }
+  }, [text, disabled, controls, onQueue, attachments.length]);
+
   const handleKeyDown = (e: KeyboardEvent) => {
     // Ctrl+Space toggles voice input
     if (e.key === " " && e.ctrlKey && !e.shiftKey && !e.altKey) {
@@ -175,6 +197,13 @@ export function MessageInput({
     }
 
     if (e.key === "Enter") {
+      // Ctrl+Enter queues a deferred message when agent is running
+      if (onQueue && e.ctrlKey && !e.shiftKey) {
+        e.preventDefault();
+        handleQueue();
+        return;
+      }
+
       // On mobile (touch devices), Enter adds newline - must use send button
       // On desktop, Enter sends message, Shift/Ctrl+Enter adds newline
       const isMobile = hasCoarsePointer();
@@ -403,6 +432,7 @@ export function MessageInput({
             isThinking={isThinking}
             onStop={onStop}
             onSend={handleSubmit}
+            onQueue={onQueue ? handleQueue : undefined}
             canSend={!!(text.trim() || attachments.length > 0)}
             disabled={disabled}
           />

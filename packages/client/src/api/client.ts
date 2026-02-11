@@ -437,13 +437,29 @@ export const api = {
     attachments?: UploadedFile[],
     tempId?: string,
     thinking?: ThinkingOption,
+    deferred?: boolean,
   ) =>
-    fetchJSON<{ queued: boolean; restarted?: boolean; processId?: string }>(
-      `/sessions/${sessionId}/messages`,
-      {
-        method: "POST",
-        body: JSON.stringify({ message, mode, attachments, tempId, thinking }),
-      },
+    fetchJSON<{
+      queued: boolean;
+      restarted?: boolean;
+      processId?: string;
+      deferred?: boolean;
+    }>(`/sessions/${sessionId}/messages`, {
+      method: "POST",
+      body: JSON.stringify({
+        message,
+        mode,
+        attachments,
+        tempId,
+        thinking,
+        deferred,
+      }),
+    }),
+
+  cancelDeferredMessage: (sessionId: string, tempId: string) =>
+    fetchJSON<{ cancelled: boolean }>(
+      `/sessions/${sessionId}/deferred/${encodeURIComponent(tempId)}`,
+      { method: "DELETE" },
     ),
 
   abortProcess: (processId: string) =>

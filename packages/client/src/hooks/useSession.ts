@@ -45,6 +45,13 @@ export interface PendingMessage {
   timestamp: string;
 }
 
+/** Deferred message queued server-side, waiting for agent's turn to end */
+export interface DeferredMessage {
+  tempId?: string;
+  content: string;
+  timestamp: string;
+}
+
 export function useSession(
   projectId: string,
   sessionId: string,
@@ -78,6 +85,11 @@ export function useSession(
   // Pending messages queue - messages waiting for server confirmation
   // These are displayed separately from the main message list
   const [pendingMessages, setPendingMessages] = useState<PendingMessage[]>([]);
+
+  // Deferred messages queue - messages queued server-side waiting for agent's turn to end
+  const [deferredMessages, setDeferredMessages] = useState<DeferredMessage[]>(
+    [],
+  );
 
   // Compacting state - true when context is being compressed
   const [isCompacting, setIsCompacting] = useState(false);
@@ -695,10 +707,17 @@ export function useSession(
           // Clear pending request when state changes away from waiting-input
           setPendingInputRequest(null);
         }
+      } else if (data.eventType === "deferred-queue") {
+        const deferredData = data as {
+          eventType: string;
+          messages: DeferredMessage[];
+        };
+        setDeferredMessages(deferredData.messages ?? []);
       } else if (data.eventType === "complete") {
         setProcessState("idle");
         setStatus({ owner: "none" });
         setPendingInputRequest(null);
+        setDeferredMessages([]);
       } else if (data.eventType === "connected") {
         // Sync state and permission mode from connected event
         const connectedData = data as {
@@ -710,6 +729,7 @@ export function useSession(
           request?: InputRequest;
           provider?: ProviderName;
           model?: string;
+          deferredMessages?: DeferredMessage[];
         };
 
         // Update actual session ID if server reports a different one
@@ -765,6 +785,9 @@ export function useSession(
             };
           });
         }
+
+        // Sync deferred messages from connected event
+        setDeferredMessages(connectedData.deferredMessages ?? []);
 
         // Fetch messages from JSONL since last known message
         // This handles reconnection after long disconnects where the server's
@@ -914,6 +937,7 @@ export function useSession(
     pendingMessages, // Messages waiting for server confirmation
     addPendingMessage, // Add to pending queue, returns tempId
     removePendingMessage, // Remove from pending by tempId
+    deferredMessages, // Messages queued server-side waiting for agent turn to end
     slashCommands, // Available slash commands from init message
     sessionTools, // Available tools from init message
     mcpServers, // Available MCP servers from init message
