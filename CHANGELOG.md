@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.7] - 2025-02-13
+
+### Fixed
+- Fix relay connect URL dropping username query parameter during redirect
+
 ## [0.2.6] - 2025-02-09
 
 ### Fixed
