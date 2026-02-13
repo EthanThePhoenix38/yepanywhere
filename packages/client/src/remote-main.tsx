@@ -100,14 +100,6 @@ createRoot(rootElement).render(
             <Route path="/login" element={<HostPickerPage />} />
             <Route path="/login/direct" element={<DirectLoginPage />} />
             <Route path="/login/relay" element={<RelayLoginPage />} />
-            <Route
-              path="/direct"
-              element={<Navigate to="/login/direct" replace />}
-            />
-            <Route
-              path="/relay"
-              element={<Navigate to="/login/relay" replace />}
-            />
           </Route>
 
           {/* Direct mode — requires connection, no relay username in URL */}

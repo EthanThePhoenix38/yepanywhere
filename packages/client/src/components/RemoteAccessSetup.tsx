@@ -10,7 +10,7 @@ import { parseUserAgent } from "../lib/deviceDetection";
 import { QRCode } from "./QRCode";
 
 const DEFAULT_RELAY_URL = "wss://relay.yepanywhere.com/ws";
-const CONNECT_URL = "https://yepanywhere.com/remote/relay";
+const CONNECT_URL = "https://yepanywhere.com/remote/login/relay";
 
 export interface RemoteAccessSetupProps {
   /** Custom title (default: "Remote Access") */
