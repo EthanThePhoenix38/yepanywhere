@@ -11,7 +11,6 @@ export interface MessageInputToolbarProps {
   // Mode selector
   mode?: PermissionMode;
   onModeChange?: (mode: PermissionMode) => void;
-  isModePending?: boolean;
   isHeld?: boolean;
   onHoldChange?: (held: boolean) => void;
 
@@ -58,7 +57,6 @@ export interface MessageInputToolbarProps {
 export function MessageInputToolbar({
   mode = "default",
   onModeChange,
-  isModePending,
   isHeld,
   onHoldChange,
   supportsPermissionMode = true,
@@ -92,7 +90,6 @@ export function MessageInputToolbar({
           <ModeSelector
             mode={mode}
             onModeChange={onModeChange}
-            isModePending={isModePending}
             isHeld={isHeld}
             onHoldChange={onHoldChange}
           />

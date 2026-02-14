@@ -1845,12 +1845,6 @@ a.sidebar-nav-item {
   border-color: var(--primary-color);
 }
 
-.mode-pending-hint {
-  color: var(--text-dimmed);
-  font-size: var(--font-size-xs);
-  margin-left: 0.25rem;
-}
-
 /* Mode Selector Bottom Sheet */
 .mode-selector-overlay {
   position: fixed;

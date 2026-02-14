@@ -17,7 +17,7 @@ export interface ConnectionManagerConfig {
   staleThresholdMs?: number;
   /** Interval for checking stale connections (default: 10000ms) */
   staleCheckIntervalMs?: number;
-  /** Timeout waiting for pong response before forcing reconnect (default: 5000ms) */
+  /** Timeout waiting for pong response before forcing reconnect (default: 2000ms) */
   pongTimeoutMs?: number;
   /** Injectable timer interface for testing */
   timers?: TimerInterface;
@@ -49,6 +49,7 @@ export interface VisibilityInterface {
 type EventMap = {
   stateChange: (state: ConnectionState, prev: ConnectionState) => void;
   reconnectFailed: (error: Error) => void;
+  visibilityRestored: () => void;
 };
 
 const DEFAULT_CONFIG = {
@@ -58,7 +59,7 @@ const DEFAULT_CONFIG = {
   jitterFactor: 0.3,
   staleThresholdMs: 45000,
   staleCheckIntervalMs: 10000,
-  pongTimeoutMs: 5000,
+  pongTimeoutMs: 2000,
 } as const;
 
 /**
@@ -130,9 +131,11 @@ export class ConnectionManager {
   private _listeners: {
     stateChange: Set<EventMap["stateChange"]>;
     reconnectFailed: Set<EventMap["reconnectFailed"]>;
+    visibilityRestored: Set<EventMap["visibilityRestored"]>;
   } = {
     stateChange: new Set(),
     reconnectFailed: new Set(),
+    visibilityRestored: new Set(),
   };
 
   // Config
@@ -296,6 +299,10 @@ export class ConnectionManager {
    */
   on(event: "stateChange", cb: EventMap["stateChange"]): () => void;
   on(event: "reconnectFailed", cb: EventMap["reconnectFailed"]): () => void;
+  on(
+    event: "visibilityRestored",
+    cb: EventMap["visibilityRestored"],
+  ): () => void;
   on(event: keyof EventMap, cb: (...args: never[]) => void): () => void {
     const set = this._listeners[event] as Set<(...args: never[]) => void>;
     set.add(cb);
@@ -327,6 +334,12 @@ export class ConnectionManager {
   private _emitReconnectFailed(error: Error): void {
     for (const cb of this._listeners.reconnectFailed) {
       cb(error);
+    }
+  }
+
+  private _emitVisibilityRestored(): void {
+    for (const cb of this._listeners.visibilityRestored) {
+      cb();
     }
   }
 
@@ -457,6 +470,10 @@ export class ConnectionManager {
     const hiddenDuration =
       this._hiddenSince !== null ? this.timers.now() - this._hiddenSince : null;
     this._hiddenSince = null;
+
+    // Notify consumers immediately so they can refresh data in parallel
+    // with the ping/pong health check below.
+    this._emitVisibilityRestored();
 
     if (!this._sendPing) {
       // No ping function provided — skip connectivity check

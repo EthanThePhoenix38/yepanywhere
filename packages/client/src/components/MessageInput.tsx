@@ -43,7 +43,6 @@ interface Props {
   placeholder?: string;
   mode?: PermissionMode;
   onModeChange?: (mode: PermissionMode) => void;
-  isModePending?: boolean;
   isHeld?: boolean;
   onHoldChange?: (held: boolean) => void;
   isRunning?: boolean;
@@ -83,7 +82,6 @@ export function MessageInput({
   placeholder,
   mode = "default",
   onModeChange,
-  isModePending,
   isHeld,
   onHoldChange,
   isRunning,
@@ -412,7 +410,6 @@ export function MessageInput({
           <MessageInputToolbar
             mode={mode}
             onModeChange={onModeChange}
-            isModePending={isModePending}
             isHeld={isHeld}
             onHoldChange={onHoldChange}
             supportsPermissionMode={supportsPermissionMode}

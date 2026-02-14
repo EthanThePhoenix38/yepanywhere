@@ -23,7 +23,6 @@ interface ModeSelectorProps {
   mode: PermissionMode;
   onModeChange: (mode: PermissionMode) => void;
   disabled?: boolean;
-  isModePending?: boolean;
   /** Whether the session is currently held (soft pause) */
   isHeld?: boolean;
   /** Callback when hold state changes */
@@ -39,7 +38,6 @@ export function ModeSelector({
   mode,
   onModeChange,
   disabled,
-  isModePending,
   isHeld = false,
   onHoldChange,
 }: ModeSelectorProps) {
@@ -277,9 +275,6 @@ export function ModeSelector({
       >
         <span className={`mode-dot ${displayDotClass}`} />
         {displayLabel}
-        {isModePending && !isHeld && (
-          <span className="mode-pending-hint">(set on next message)</span>
-        )}
       </button>
       {desktopDropdown}
       {mobileSheet}

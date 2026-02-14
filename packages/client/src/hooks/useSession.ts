@@ -112,9 +112,6 @@ export function useSession(
   const [mcpServers, setMcpServers] = useState<string[]>([]);
   const lastKnownModeVersionRef = useRef<number>(0);
 
-  // Mode is pending when local differs from server-confirmed
-  const isModePending = localMode !== serverMode;
-
   // Apply server mode update only if version is >= our last known version
   // This syncs both local and server mode to the confirmed value
   const applyServerModeUpdate = useCallback(
@@ -944,7 +941,6 @@ export function useSession(
     pendingInputRequest,
     actualSessionId, // Real session ID from server (may differ from URL during temp→real transition)
     permissionMode: localMode, // UI-selected mode (sent with next message)
-    isModePending, // True when local mode differs from server-confirmed
     modeVersion,
     loading,
     error,

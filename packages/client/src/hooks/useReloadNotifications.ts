@@ -120,6 +120,13 @@ export function useReloadNotifications() {
       }),
     );
 
+    // On visibility restore, refresh data
+    unsubscribers.push(
+      activityBus.on("refresh", () => {
+        syncFromServer();
+      }),
+    );
+
     return () => {
       for (const unsub of unsubscribers) {
         unsub();

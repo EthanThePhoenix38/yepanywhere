@@ -158,6 +158,13 @@ export function useFileActivity(options: UseFileActivityOptions = {}) {
       }),
     );
 
+    // Visibility restore - refresh data without touching connection state
+    unsubscribers.push(
+      activityBus.on("refresh", () => {
+        onReconnectRef.current?.();
+      }),
+    );
+
     return () => {
       for (const unsub of unsubscribers) {
         unsub();

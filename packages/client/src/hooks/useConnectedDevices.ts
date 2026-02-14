@@ -97,10 +97,16 @@ export function useConnectedDevices() {
       fetchConnections();
     });
 
+    // Refetch on visibility restore
+    const unsubRefresh = activityBus.on("refresh", () => {
+      fetchConnections();
+    });
+
     return () => {
       unsubConnect();
       unsubDisconnect();
       unsubReconnect();
+      unsubRefresh();
     };
   }, [fetchConnections]);
 

@@ -350,6 +350,75 @@ describe("ConnectionManager", () => {
     });
   });
 
+  describe("visibilityRestored event", () => {
+    it("emits visibilityRestored when page becomes visible while connected", () => {
+      const { cm, reconnectFn, sendPing, visibility } = setup();
+      const restored: number[] = [];
+      cm.on("visibilityRestored", () => restored.push(1));
+      cm.start(reconnectFn, { sendPing });
+
+      visibility.hide();
+      visibility.show();
+
+      expect(restored).toHaveLength(1);
+    });
+
+    it("emits visibilityRestored even without sendPing", () => {
+      const { cm, reconnectFn, visibility } = setup();
+      const restored: number[] = [];
+      cm.on("visibilityRestored", () => restored.push(1));
+      cm.start(reconnectFn); // no sendPing
+
+      visibility.hide();
+      visibility.show();
+
+      expect(restored).toHaveLength(1);
+    });
+
+    it("does NOT emit visibilityRestored when reconnecting", () => {
+      const { cm, reconnectFn, sendPing, visibility } = setup();
+      const restored: number[] = [];
+      cm.on("visibilityRestored", () => restored.push(1));
+      cm.start(reconnectFn, { sendPing });
+
+      cm.handleClose();
+      expect(cm.state).toBe("reconnecting");
+
+      visibility.hide();
+      visibility.show();
+
+      expect(restored).toHaveLength(0);
+    });
+
+    it("does NOT emit visibilityRestored when disconnected", () => {
+      const { cm, reconnectFn, visibility } = setup();
+      const restored: number[] = [];
+      cm.on("visibilityRestored", () => restored.push(1));
+      // Don't start — stays disconnected
+
+      visibility.hide();
+      visibility.show();
+
+      expect(restored).toHaveLength(0);
+    });
+
+    it("emits on every visibility restore (no debounce)", () => {
+      const { cm, reconnectFn, sendPing, visibility } = setup();
+      const restored: number[] = [];
+      cm.on("visibilityRestored", () => restored.push(1));
+      cm.start(reconnectFn, { sendPing });
+
+      visibility.hide();
+      visibility.show();
+      visibility.hide();
+      visibility.show();
+      visibility.hide();
+      visibility.show();
+
+      expect(restored).toHaveLength(3);
+    });
+  });
+
   describe("visibility ping/pong", () => {
     it("sends ping when page becomes visible", () => {
       const { cm, reconnectFn, sendPing, visibility } = setup();
@@ -360,6 +429,22 @@ describe("ConnectionManager", () => {
 
       expect(sendPing).toHaveBeenCalledTimes(1);
       expect(sendPing).toHaveBeenCalledWith("1");
+    });
+
+    it("default pong timeout is 2000ms", () => {
+      const { cm, reconnectFn, sendPing, timers, visibility } = setup();
+      cm.start(reconnectFn, { sendPing });
+
+      visibility.hide();
+      visibility.show();
+
+      // Should still be connected at 1999ms
+      timers.advance(1999);
+      expect(cm.state).toBe("connected");
+
+      // Should reconnect at 2000ms
+      timers.advance(1);
+      expect(cm.state).toBe("reconnecting");
     });
 
     it("forces reconnect if pong times out", () => {

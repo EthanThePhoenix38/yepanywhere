@@ -153,6 +153,7 @@ interface ActivityEventMap {
   "backend-reloaded": undefined;
   "worker-activity-changed": WorkerActivityEvent;
   reconnect: undefined;
+  refresh: undefined;
 }
 
 export type ActivityEventType = keyof ActivityEventMap;
@@ -175,6 +176,7 @@ class ActivityBus {
   private _connected = false;
   private _connectionManagerStarted = false;
   private _stateChangeUnsub: (() => void) | null = null;
+  private _visibilityRestoredUnsub: (() => void) | null = null;
 
   get connected(): boolean {
     return this._connected;
@@ -222,6 +224,16 @@ class ActivityBus {
           this.connect();
         }
       });
+
+      // On visibility restore, emit refresh so hooks can fetch fresh data
+      this._visibilityRestoredUnsub = connectionManager.on(
+        "visibilityRestored",
+        () => {
+          if (this._connected) {
+            this.emit("refresh", undefined);
+          }
+        },
+      );
     }
 
     // Check for global connection (remote mode with SecureConnection)
@@ -329,6 +341,7 @@ class ActivityBus {
       "backend-reloaded",
       "worker-activity-changed",
       "reconnect",
+      "refresh",
     ].includes(type);
   }
 
@@ -340,6 +353,8 @@ class ActivityBus {
       this.wsSubscription.close();
       this.wsSubscription = null;
     }
+    this._visibilityRestoredUnsub?.();
+    this._visibilityRestoredUnsub = null;
     this._connected = false;
   }
 

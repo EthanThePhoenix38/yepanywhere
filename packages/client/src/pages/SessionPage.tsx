@@ -121,7 +121,6 @@ function SessionPageContent({
     pendingInputRequest,
     actualSessionId,
     permissionMode,
-    isModePending,
     loading,
     error,
     connected,
@@ -1021,7 +1020,6 @@ function SessionPageContent({
                   <MessageInputToolbar
                     mode={permissionMode}
                     onModeChange={setPermissionMode}
-                    isModePending={isModePending}
                     isHeld={holdModeEnabled ? isHeld : undefined}
                     onHoldChange={holdModeEnabled ? setHold : undefined}
                     supportsPermissionMode={supportsPermissionMode}
@@ -1060,7 +1058,6 @@ function SessionPageContent({
                 }
                 mode={permissionMode}
                 onModeChange={setPermissionMode}
-                isModePending={isModePending}
                 isHeld={holdModeEnabled ? isHeld : undefined}
                 onHoldChange={holdModeEnabled ? setHold : undefined}
                 supportsPermissionMode={supportsPermissionMode}
