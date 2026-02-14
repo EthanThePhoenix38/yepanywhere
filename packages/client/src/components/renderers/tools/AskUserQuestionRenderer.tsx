@@ -20,6 +20,10 @@ function QuestionDisplay({
   question: Question;
   selectedAnswer?: string;
 }) {
+  const isCustomAnswer =
+    selectedAnswer &&
+    !question.options.some((opt) => opt.label === selectedAnswer);
+
   return (
     <div className="question-item">
       <div className="question-header">
@@ -54,6 +58,15 @@ function QuestionDisplay({
             </li>
           );
         })}
+        {isCustomAnswer && (
+          <li className="question-option question-option-selected">
+            <span className="question-option-indicator">●</span>
+            <div className="question-option-content">
+              <span className="question-option-label">Other</span>
+              <span className="question-option-desc">{selectedAnswer}</span>
+            </div>
+          </li>
+        )}
       </ul>
     </div>
   );
