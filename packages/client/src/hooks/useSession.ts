@@ -487,11 +487,31 @@ export function useSession(
     [projectId, sessionId],
   );
 
+  // Handle activity bus reconnection (e.g., after phone screen wake).
+  // Catches up on messages and ownership changes that occurred while disconnected.
+  // Without this, a session that completed while the screen was off would show stale
+  // data because the session stream unsubscribes when ownership becomes "none" and
+  // nobody triggers fetchNewMessages().
+  const handleActivityReconnect = useCallback(async () => {
+    fetchNewMessages();
+    try {
+      const data = await api.getSessionMetadata(projectId, sessionId);
+      setStatus(data.ownership);
+      if (data.ownership.owner === "none") {
+        setProcessState("idle");
+        setPendingInputRequest(null);
+      }
+    } catch {
+      // Silent fail - non-critical
+    }
+  }, [projectId, sessionId, fetchNewMessages]);
+
   useFileActivity({
     onSessionStatusChange: handleSessionStatusChange,
     onFileChange: handleFileChange,
     onSessionUpdated: handleSessionUpdated,
     onProcessStateChange: handleProcessStateChange,
+    onReconnect: handleActivityReconnect,
   });
 
   // Cleanup throttle timers
