@@ -1048,7 +1048,11 @@ function SessionPageContent({
             ) && (
               <MessageInput
                 onSend={handleSend}
-                onQueue={status.owner !== "none" && processState !== "idle" ? handleQueue : undefined}
+                onQueue={
+                  status.owner !== "none" && processState !== "idle"
+                    ? handleQueue
+                    : undefined
+                }
                 placeholder={
                   status.owner === "external"
                     ? "External session - send at your own risk..."
