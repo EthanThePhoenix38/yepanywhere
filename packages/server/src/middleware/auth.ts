@@ -32,12 +32,14 @@ export function createAuthMiddleware(
   return async (c, next) => {
     // If auth is disabled by env var, always pass through
     if (authDisabled) {
+      c.set("authenticated", true);
       await next();
       return;
     }
 
     // If auth is not enabled in settings, pass through
     if (!authService.isEnabled()) {
+      c.set("authenticated", true);
       await next();
       return;
     }

@@ -1,12 +1,45 @@
 import type { MiddlewareHandler } from "hono";
 import { cors } from "hono/cors";
+import {
+  allowAllHosts,
+  isAllowedHost,
+  isAllowedOrigin,
+} from "./allowed-hosts.js";
 
-// Allow localhost (dev) and any *.ts.net (Tailscale)
-const isAllowedOrigin = (origin: string): boolean => {
-  if (!origin) return false;
-  if (origin.startsWith("http://localhost:")) return true;
-  if (origin.endsWith(".ts.net")) return true;
-  return false;
+/**
+ * Host header validation middleware.
+ * Protects against DNS rebinding attacks by ensuring the Host header
+ * matches an allowed hostname. Skipped when ALLOWED_HOSTS=*.
+ */
+export const hostCheckMiddleware: MiddlewareHandler = async (c, next) => {
+  if (allowAllHosts()) {
+    await next();
+    return;
+  }
+  const host = c.req.header("host");
+  if (!isAllowedHost(host)) {
+    console.warn(`[Security] Rejected request with Host: ${host}`);
+    const hostname = host ?? "(unknown)";
+    return c.text(
+      [
+        `Blocked request: "${hostname}" is not an allowed host.`,
+        "",
+        "To fix this, add it to the ALLOWED_HOSTS environment variable:",
+        "",
+        `  ALLOWED_HOSTS=${hostname.replace(/:\d+$/, "")}`,
+        "",
+        "Or allow all hosts (less secure):",
+        "",
+        "  ALLOWED_HOSTS=*",
+        "",
+        "Multiple hosts can be comma-separated:",
+        "",
+        `  ALLOWED_HOSTS=${hostname.replace(/:\d+$/, "")},other.example.com`,
+      ].join("\n"),
+      403,
+    );
+  }
+  await next();
 };
 
 export const corsMiddleware = cors({

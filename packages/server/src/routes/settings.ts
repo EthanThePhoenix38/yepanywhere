@@ -11,11 +11,13 @@ import type {
 
 export interface SettingsRoutesDeps {
   serverSettingsService: ServerSettingsService;
+  /** Callback to apply allowedHosts changes at runtime */
+  onAllowedHostsChanged?: (value: string | undefined) => void;
 }
 
 export function createSettingsRoutes(deps: SettingsRoutesDeps): Hono {
   const app = new Hono();
-  const { serverSettingsService } = deps;
+  const { serverSettingsService, onAllowedHostsChanged } = deps;
 
   /**
    * GET /api/settings
@@ -49,11 +51,30 @@ export function createSettingsRoutes(deps: SettingsRoutesDeps): Hono {
       updates.remoteExecutors = validExecutors;
     }
 
+    // Handle allowedHosts string ("*", comma-separated hostnames, or undefined to clear)
+    if ("allowedHosts" in body) {
+      if (
+        body.allowedHosts === undefined ||
+        body.allowedHosts === null ||
+        body.allowedHosts === ""
+      ) {
+        updates.allowedHosts = undefined;
+      } else if (typeof body.allowedHosts === "string") {
+        updates.allowedHosts = body.allowedHosts;
+      }
+    }
+
     if (Object.keys(updates).length === 0) {
       return c.json({ error: "At least one valid setting is required" }, 400);
     }
 
     const settings = await serverSettingsService.updateSettings(updates);
+
+    // Apply allowedHosts change to middleware at runtime
+    if ("allowedHosts" in updates && onAllowedHostsChanged) {
+      onAllowedHostsChanged(settings.allowedHosts);
+    }
+
     return c.json({ settings });
   });
 

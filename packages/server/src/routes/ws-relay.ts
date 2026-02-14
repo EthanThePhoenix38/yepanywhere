@@ -2,6 +2,7 @@ import type { HttpBindings } from "@hono/node-server";
 import type { Context, Hono } from "hono";
 import type { WSEvents } from "hono/ws";
 import type { WebSocket as RawWebSocket } from "ws";
+import { isAllowedOrigin } from "../middleware/allowed-hosts.js";
 import type {
   RemoteAccessService,
   RemoteSessionService,
@@ -73,35 +74,6 @@ export interface AcceptRelayConnectionDeps {
   connectedBrowsers?: ConnectedBrowsersService;
   /** Browser profile service for tracking connection origins (optional) */
   browserProfileService?: BrowserProfileService;
-}
-
-/**
- * Allowed origins for WebSocket connections.
- * Matches:
- * - localhost with any port (http/https)
- * - 127.0.0.1 with any port (http/https)
- * - LAN IPs (192.168.x.x, 10.x.x.x, 172.16-31.x.x)
- * - GitHub Pages (*.github.io)
- */
-const ALLOWED_ORIGIN_PATTERNS = [
-  /^https?:\/\/localhost(:\d+)?$/,
-  /^https?:\/\/127\.0\.0\.1(:\d+)?$/,
-  /^https?:\/\/192\.168\.\d{1,3}\.\d{1,3}(:\d+)?$/,
-  /^https?:\/\/10\.\d{1,3}\.\d{1,3}\.\d{1,3}(:\d+)?$/,
-  /^https?:\/\/172\.(1[6-9]|2\d|3[01])\.\d{1,3}\.\d{1,3}(:\d+)?$/,
-  /^https:\/\/[\w-]+\.github\.io$/,
-];
-
-/**
- * Check if an origin is allowed for WebSocket connections.
- * Allows null/undefined origin (same-origin requests) and matches against allowed patterns.
- */
-function isAllowedOrigin(origin: string | undefined): boolean {
-  // No origin header means same-origin request (allowed)
-  // Browsers send literal "null" string for about:blank, file://, etc.
-  if (!origin || origin === "null") return true;
-  // Check against allowed patterns
-  return ALLOWED_ORIGIN_PATTERNS.some((pattern) => pattern.test(origin));
 }
 
 /**

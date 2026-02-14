@@ -874,4 +874,6 @@ export interface ServerSettings {
   serviceWorkerEnabled: boolean;
   /** SSH host aliases for remote executors */
   remoteExecutors?: string[];
+  /** Allowed hostnames for host/origin validation. "*" = allow all, comma-separated = specific hosts. */
+  allowedHosts?: string;
 }

@@ -9,8 +9,13 @@ import type {
   ProjectMetadataService,
   SessionMetadataService,
 } from "./metadata/index.js";
+import { updateAllowedHosts } from "./middleware/allowed-hosts.js";
 import { createAuthMiddleware } from "./middleware/auth.js";
-import { corsMiddleware, requireCustomHeader } from "./middleware/security.js";
+import {
+  corsMiddleware,
+  hostCheckMiddleware,
+  requireCustomHeader,
+} from "./middleware/security.js";
 import type { NotificationService } from "./notifications/index.js";
 import {
   CODEX_SESSIONS_DIR,
@@ -164,7 +169,8 @@ export interface AppResult {
 export function createApp(options: AppOptions): AppResult {
   const app = new Hono<{ Bindings: HttpBindings }>();
 
-  // Security middleware: CORS + custom header requirement
+  // Security middleware: host validation, CORS, custom header requirement
+  app.use("/api/*", hostCheckMiddleware);
   app.use("/api/*", corsMiddleware);
   app.use("/api/*", requireCustomHeader);
 
@@ -459,6 +465,7 @@ export function createApp(options: AppOptions): AppResult {
       "/api/settings",
       createSettingsRoutes({
         serverSettingsService: options.serverSettingsService,
+        onAllowedHostsChanged: updateAllowedHosts,
       }),
     );
   }

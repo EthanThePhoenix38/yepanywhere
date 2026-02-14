@@ -1,10 +1,12 @@
 import { useState } from "react";
+import { api } from "../../api/client";
 import { FilterDropdown } from "../../components/FilterDropdown";
 import { useOptionalAuth } from "../../contexts/AuthContext";
 import { useOptionalRemoteConnection } from "../../contexts/RemoteConnectionContext";
 import { useDeveloperMode } from "../../hooks/useDeveloperMode";
 import { useNetworkBinding } from "../../hooks/useNetworkBinding";
 import { useServerInfo } from "../../hooks/useServerInfo";
+import { useServerSettings } from "../../hooks/useServerSettings";
 
 export function LocalAccessSettings() {
   const auth = useOptionalAuth();
@@ -18,6 +20,8 @@ export function LocalAccessSettings() {
     applying,
     updateBinding,
   } = useNetworkBinding();
+  const { settings: serverSettings, isLoading: settingsLoading } =
+    useServerSettings();
 
   // Network binding form state
   const [localhostPort, setLocalhostPort] = useState<string>("");
@@ -30,41 +34,96 @@ export function LocalAccessSettings() {
   const [authPassword, setAuthPassword] = useState("");
   const [authPasswordConfirm, setAuthPasswordConfirm] = useState("");
 
+  // Allowed hosts form state
+  const [allowAllHostsToggle, setAllowAllHostsToggle] = useState(false);
+  const [allowedHostsText, setAllowedHostsText] = useState("");
+
   // Form state
   const [formError, setFormError] = useState<string | null>(null);
   const [hasChanges, setHasChanges] = useState(false);
   const [isApplying, setIsApplying] = useState(false);
 
-  // Initialize form from binding and auth state when it loads
+  // Initialize form from binding, auth, and settings state when it loads
   const [formInitialized, setFormInitialized] = useState(false);
-  if (binding && auth && !formInitialized) {
+  if (binding && auth && serverSettings && !formInitialized) {
     setLocalhostPort(String(binding.localhost.port));
     setNetworkEnabled(binding.network.enabled);
     setSelectedInterface(binding.network.host ?? "");
     setRequirePassword(auth.authEnabled);
+    // Initialize allowed hosts from server settings
+    const ah = serverSettings.allowedHosts;
+    if (ah === "*") {
+      setAllowAllHostsToggle(true);
+      setAllowedHostsText("");
+    } else {
+      setAllowAllHostsToggle(false);
+      setAllowedHostsText(ah ?? "");
+    }
     setFormInitialized(true);
   }
 
-  // Track changes - includes auth changes
+  // Compute the effective allowedHosts value for comparison/saving
+  const getAllowedHostsValue = (
+    toggle: boolean,
+    text: string,
+  ): string | undefined => {
+    if (toggle) return "*";
+    const trimmed = text.trim();
+    return trimmed || undefined;
+  };
+
+  // Track changes - includes auth and allowed hosts changes
   const checkForChanges = (
     newPort: string,
     newNetworkEnabled: boolean,
     newInterface: string,
     newRequirePassword: boolean,
     newPassword: string,
+    newAllowAllHosts: boolean,
+    newAllowedHostsText: string,
   ) => {
-    if (!binding || !auth) return false;
+    if (!binding || !auth || !serverSettings) return false;
     const portChanged = newPort !== String(binding.localhost.port);
     const networkEnabledChanged = newNetworkEnabled !== binding.network.enabled;
     const interfaceChanged = newInterface !== (binding.network.host ?? "");
     const authChanged = newRequirePassword !== auth.authEnabled;
     const passwordEntered = newPassword.length > 0;
+    const newValue = getAllowedHostsValue(
+      newAllowAllHosts,
+      newAllowedHostsText,
+    );
+    const oldValue = serverSettings.allowedHosts;
+    const allowedHostsChanged = (newValue ?? "") !== (oldValue ?? "");
     return (
       portChanged ||
       networkEnabledChanged ||
       interfaceChanged ||
       authChanged ||
-      passwordEntered
+      passwordEntered ||
+      allowedHostsChanged
+    );
+  };
+
+  // Helper for onChange handlers
+  const updateHasChanges = (overrides: {
+    port?: string;
+    networkEnabled?: boolean;
+    iface?: string;
+    requirePw?: boolean;
+    password?: string;
+    allowAll?: boolean;
+    hostsText?: string;
+  }) => {
+    setHasChanges(
+      checkForChanges(
+        overrides.port ?? localhostPort,
+        overrides.networkEnabled ?? networkEnabled,
+        overrides.iface ?? selectedInterface,
+        overrides.requirePw ?? requirePassword,
+        overrides.password ?? authPassword,
+        overrides.allowAll ?? allowAllHostsToggle,
+        overrides.hostsText ?? allowedHostsText,
+      ),
     );
   };
 
@@ -121,6 +180,15 @@ export function LocalAccessSettings() {
         await auth.disableAuth();
       }
 
+      // Apply allowed hosts changes
+      const newAllowedHosts = getAllowedHostsValue(
+        allowAllHostsToggle,
+        allowedHostsText,
+      );
+      await api.updateServerSettings({
+        allowedHosts: newAllowedHosts ?? "",
+      });
+
       if (result.redirectUrl) {
         // Server changed port, redirect to new URL preserving current path
         const newUrl = new URL(result.redirectUrl);
@@ -143,7 +211,11 @@ export function LocalAccessSettings() {
   if (auth) {
     // Show loading state until data is ready
     const isLoading =
-      serverInfoLoading || bindingLoading || auth.isLoading || !formInitialized;
+      serverInfoLoading ||
+      bindingLoading ||
+      settingsLoading ||
+      auth.isLoading ||
+      !formInitialized;
 
     if (isLoading) {
       return (
@@ -256,15 +328,7 @@ export function LocalAccessSettings() {
                 value={localhostPort}
                 onChange={(e) => {
                   setLocalhostPort(e.target.value);
-                  setHasChanges(
-                    checkForChanges(
-                      e.target.value,
-                      networkEnabled,
-                      selectedInterface,
-                      requirePassword,
-                      authPassword,
-                    ),
-                  );
+                  updateHasChanges({ port: e.target.value });
                 }}
                 min={1}
                 max={65535}
@@ -290,15 +354,7 @@ export function LocalAccessSettings() {
                   checked={networkEnabled}
                   onChange={(e) => {
                     setNetworkEnabled(e.target.checked);
-                    setHasChanges(
-                      checkForChanges(
-                        localhostPort,
-                        e.target.checked,
-                        selectedInterface,
-                        requirePassword,
-                        authPassword,
-                      ),
-                    );
+                    updateHasChanges({ networkEnabled: e.target.checked });
                   }}
                 />
                 <span className="toggle-slider" />
@@ -329,15 +385,7 @@ export function LocalAccessSettings() {
                 onChange={(values) => {
                   const newInterface = values[0] ?? "";
                   setSelectedInterface(newInterface);
-                  setHasChanges(
-                    checkForChanges(
-                      localhostPort,
-                      networkEnabled,
-                      newInterface,
-                      requirePassword,
-                      authPassword,
-                    ),
-                  );
+                  updateHasChanges({ iface: newInterface });
                 }}
               />
             </div>
@@ -361,6 +409,49 @@ export function LocalAccessSettings() {
               </div>
             )}
 
+          {/* Allowed Hosts — applies even on localhost (reverse proxy may use different hostname) */}
+          <div className="settings-item">
+            <div className="settings-item-info">
+              <strong>Allow All Hostnames</strong>
+              <p>
+                Accept requests from any hostname (disables DNS rebinding
+                protection)
+              </p>
+            </div>
+            <label className="toggle-switch">
+              <input
+                type="checkbox"
+                checked={allowAllHostsToggle}
+                onChange={(e) => {
+                  setAllowAllHostsToggle(e.target.checked);
+                  updateHasChanges({ allowAll: e.target.checked });
+                }}
+              />
+              <span className="toggle-slider" />
+            </label>
+          </div>
+          {!allowAllHostsToggle && (
+            <div className="settings-item">
+              <div className="settings-item-info">
+                <strong>Allowed Hostnames</strong>
+                <p>Comma-separated list of additional allowed hostnames</p>
+              </div>
+              <input
+                type="text"
+                className="settings-input"
+                placeholder="mydomain.com, other.example.com"
+                value={allowedHostsText}
+                onChange={(e) => {
+                  setAllowedHostsText(e.target.value);
+                  updateHasChanges({ hostsText: e.target.value });
+                }}
+              />
+            </div>
+          )}
+          <p className="form-hint">
+            localhost, private IPs, and *.ts.net are always allowed.
+          </p>
+
           {/* Require Password toggle */}
           {!auth.authDisabledByEnv && (
             <div className="settings-item">
@@ -374,15 +465,7 @@ export function LocalAccessSettings() {
                   checked={requirePassword}
                   onChange={(e) => {
                     setRequirePassword(e.target.checked);
-                    setHasChanges(
-                      checkForChanges(
-                        localhostPort,
-                        networkEnabled,
-                        selectedInterface,
-                        e.target.checked,
-                        authPassword,
-                      ),
-                    );
+                    updateHasChanges({ requirePw: e.target.checked });
                   }}
                 />
                 <span className="toggle-slider" />
@@ -420,15 +503,7 @@ export function LocalAccessSettings() {
                   value={authPassword}
                   onChange={(e) => {
                     setAuthPassword(e.target.value);
-                    setHasChanges(
-                      checkForChanges(
-                        localhostPort,
-                        networkEnabled,
-                        selectedInterface,
-                        requirePassword,
-                        e.target.value,
-                      ),
-                    );
+                    updateHasChanges({ password: e.target.value });
                   }}
                   autoComplete="new-password"
                   placeholder={

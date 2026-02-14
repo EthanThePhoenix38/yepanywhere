@@ -25,6 +25,7 @@ import {
   ProjectMetadataService,
   SessionMetadataService,
 } from "./metadata/index.js";
+import { updateAllowedHosts } from "./middleware/allowed-hosts.js";
 import { NotificationService } from "./notifications/index.js";
 import { ProjectScanner } from "./projects/scanner.js";
 import { PushService, getOrCreateVapidKeys } from "./push/index.js";
@@ -242,6 +243,9 @@ async function startServer() {
   await remoteSessionService.initialize();
   await networkBindingService.initialize();
   await serverSettingsService.initialize();
+
+  // Seed allowed hosts middleware from persisted settings
+  updateAllowedHosts(serverSettingsService.getSetting("allowedHosts"));
 
   // Log auth status
   if (config.authDisabled) {
