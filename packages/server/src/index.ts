@@ -1,4 +1,4 @@
-import { exec } from "node:child_process";
+import { execFile } from "node:child_process";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
@@ -637,13 +637,32 @@ async function startServer() {
 
     if (config.openBrowser) {
       const platform = os.platform();
-      const cmd =
-        platform === "darwin"
-          ? "open"
-          : platform === "win32"
-            ? "start"
-            : "xdg-open";
-      exec(`${cmd} ${serverUrl}`, (err) => {
+      let cmd: string;
+      let args: string[];
+      if (platform === "darwin") {
+        cmd = "open";
+        args = [serverUrl];
+      } else if (platform === "win32") {
+        cmd = "cmd";
+        args = ["/c", "start", "", serverUrl];
+      } else {
+        // Detect WSL: use cmd.exe to open in Windows browser
+        let isWsl = false;
+        try {
+          isWsl = fs
+            .readFileSync("/proc/version", "utf-8")
+            .toLowerCase()
+            .includes("microsoft");
+        } catch {}
+        if (isWsl) {
+          cmd = "cmd.exe";
+          args = ["/c", "start", "", serverUrl];
+        } else {
+          cmd = "xdg-open";
+          args = [serverUrl];
+        }
+      }
+      execFile(cmd, args, (err) => {
         if (err) {
           console.warn(`Could not open browser: ${err.message}`);
         }

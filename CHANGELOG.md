@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.9] - 2025-02-15
+
+### Fixed
+- `--open` flag now opens the Windows browser when running under WSL
+
 ## [0.2.8] - 2025-02-15
 
 ### Added
