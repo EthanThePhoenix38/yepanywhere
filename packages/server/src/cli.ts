@@ -83,6 +83,7 @@ OPTIONS:
   --port <number>       Server port (default: 3400)
   --host <address>      Host/interface to bind to (default: localhost)
                         Use 0.0.0.0 to bind all interfaces
+  --open                Open the dashboard in your default browser on startup
   --auth-disable        Disable authentication (bypass auth even if enabled in settings)
                         Use this to recover if you forget your password
 
@@ -210,6 +211,13 @@ if (hostIndex !== -1) {
   process.env.CLI_HOST_OVERRIDE = "true";
   // Remove --host and its value from args
   args.splice(hostIndex, 2);
+}
+
+// Parse --open flag
+const openIndex = args.indexOf("--open");
+if (openIndex !== -1) {
+  process.env.OPEN_BROWSER = "true";
+  args.splice(openIndex, 1);
 }
 
 // Parse --auth-disable flag

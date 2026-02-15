@@ -1,4 +1,6 @@
+import { exec } from "node:child_process";
 import * as fs from "node:fs";
+import * as os from "node:os";
 import * as path from "node:path";
 import { serve } from "@hono/node-server";
 import { RESPONSE_ALREADY_SENT } from "@hono/node-server/utils/response";
@@ -628,9 +630,25 @@ async function startServer() {
       fs.writeFileSync(config.portFile, String(info.port));
     }
 
-    console.log(`Server running at http://127.0.0.1:${info.port}`);
+    const serverUrl = `http://127.0.0.1:${info.port}`;
+    console.log(`Server running at ${serverUrl}`);
     console.log(`Projects dir: ${config.claudeProjectsDir}`);
     console.log(`Permission mode: ${config.defaultPermissionMode}`);
+
+    if (config.openBrowser) {
+      const platform = os.platform();
+      const cmd =
+        platform === "darwin"
+          ? "open"
+          : platform === "win32"
+            ? "start"
+            : "xdg-open";
+      exec(`${cmd} ${serverUrl}`, (err) => {
+        if (err) {
+          console.warn(`Could not open browser: ${err.message}`);
+        }
+      });
+    }
 
     // Notify all connected clients that the backend has restarted
     // This allows other tabs to clear their "reload needed" banner

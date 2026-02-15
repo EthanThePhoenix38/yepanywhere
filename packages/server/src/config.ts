@@ -92,6 +92,8 @@ export interface Config {
   cliPortOverride: boolean;
   /** Whether host was explicitly set via CLI (prevents runtime changes) */
   cliHostOverride: boolean;
+  /** Whether to open the dashboard in the default browser on startup */
+  openBrowser: boolean;
 }
 
 /**
@@ -186,6 +188,7 @@ export function loadConfig(): Config {
       process.env.CLI_PORT_OVERRIDE === "true" ||
       process.env.PORT !== undefined,
     cliHostOverride: process.env.CLI_HOST_OVERRIDE === "true",
+    openBrowser: process.env.OPEN_BROWSER === "true",
   };
 }
 
