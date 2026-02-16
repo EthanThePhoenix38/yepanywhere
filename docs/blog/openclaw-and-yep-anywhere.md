@@ -1,6 +1,6 @@
-# OpenClaw and Yep Anywhere: Two Paths to the Same Future
+# Does Your AI Agent Have a Soul?
 
-Peter Steinberger just announced he's joining OpenAI. OpenClaw — the project that turned a Mac Mini into a personal AI agent — will move to a foundation and stay open source. As someone building in the adjacent space, here's my perspective on where these tools overlap, diverge, and where this is all heading.
+Peter Steinberger just [announced he's joining OpenAI](https://steipete.me/posts/2026/openclaw). OpenClaw — the project that turned a Mac Mini into a personal AI agent — will move to a foundation and stay open source. As someone building in the adjacent space, here's my perspective on where these tools overlap, diverge, and where this is all heading.
 
 ## What OpenClaw got right
 
@@ -55,6 +55,8 @@ Some ideas from OpenClaw's playbook we're considering for Yep Anywhere:
 **Skills.** Register tools globally or per-project — not a marketplace (that's where OpenClaw's security problems came from), but a simple config: "here's a shell command the agent can use." Personal skills, project skills, checked-in skills. Different scopes for different needs.
 
 ## The security question
+
+The [HN thread](https://news.ycombinator.com/item?id=47028013) about Peter's announcement is dominated by security concerns.
 
 Yep Anywhere's answer is layered: E2E encrypted relay (NaCl, XSalsa20-Poly1305), SRP authentication that never exposes your password to the relay server, minimal external dependencies, and human-in-the-loop approval when you want it. The relay server sees only opaque ciphertext. No skill marketplace to be poisoned.
 
