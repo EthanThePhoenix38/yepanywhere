@@ -144,6 +144,79 @@ describe("Codex Normalization", () => {
     });
   });
 
+  it('does not mark shell output as error when exit code is 0 and output text contains "failed"', () => {
+    const entries: CodexSessionEntry[] = [
+      {
+        type: "response_item",
+        timestamp: "2024-01-01T00:00:01Z",
+        payload: {
+          type: "function_call",
+          name: "shell_command",
+          call_id: "call-ok",
+          arguments: '{"command":"sed -n \\"1,240p\\" file.ts"}',
+        },
+      },
+      {
+        type: "response_item",
+        timestamp: "2024-01-01T00:00:02Z",
+        payload: {
+          type: "function_call_output",
+          call_id: "call-ok",
+          output:
+            'Exit code: 0\nWall time: 1.2 seconds\nOutput:\nconst statuses = ["pending", "running", "completed", "failed"];\n',
+        },
+      },
+    ];
+
+    const result = normalizeSession(buildLoadedSession(entries));
+    const toolResultContent = result.messages[1]?.message?.content;
+    const block = Array.isArray(toolResultContent)
+      ? toolResultContent[0]
+      : toolResultContent;
+
+    expect(block).toMatchObject({
+      type: "tool_result",
+      tool_use_id: "call-ok",
+    });
+    expect((block as { is_error?: boolean }).is_error).toBeUndefined();
+  });
+
+  it("marks shell output as error when exit code is non-zero even without error keywords", () => {
+    const entries: CodexSessionEntry[] = [
+      {
+        type: "response_item",
+        timestamp: "2024-01-01T00:00:01Z",
+        payload: {
+          type: "function_call",
+          name: "shell_command",
+          call_id: "call-fail",
+          arguments: '{"command":"some-command"}',
+        },
+      },
+      {
+        type: "response_item",
+        timestamp: "2024-01-01T00:00:02Z",
+        payload: {
+          type: "function_call_output",
+          call_id: "call-fail",
+          output: "Exit code: 2\nWall time: 0.3 seconds\nOutput:\n",
+        },
+      },
+    ];
+
+    const result = normalizeSession(buildLoadedSession(entries));
+    const toolResultContent = result.messages[1]?.message?.content;
+    const block = Array.isArray(toolResultContent)
+      ? toolResultContent[0]
+      : toolResultContent;
+
+    expect(block).toMatchObject({
+      type: "tool_result",
+      tool_use_id: "call-fail",
+      is_error: true,
+    });
+  });
+
   it("normalizes custom_tool_call and maps apply_patch to Edit", () => {
     const entries: CodexSessionEntry[] = [
       {

@@ -560,6 +560,54 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return !!value && typeof value === "object" && !Array.isArray(value);
 }
 
+function parseNumericExitCode(value: unknown): number | undefined {
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return Math.trunc(value);
+  }
+  if (typeof value === "string" && /^-?\d+$/.test(value.trim())) {
+    return Number.parseInt(value, 10);
+  }
+  return undefined;
+}
+
+function extractExitCodeFromRecord(
+  record: Record<string, unknown>,
+): number | undefined {
+  const direct = parseNumericExitCode(record.exit_code ?? record.exitCode);
+  if (direct !== undefined) {
+    return direct;
+  }
+
+  const metadata = record.metadata;
+  if (isRecord(metadata)) {
+    const nested = parseNumericExitCode(
+      metadata.exit_code ?? metadata.exitCode,
+    );
+    if (nested !== undefined) {
+      return nested;
+    }
+  }
+
+  return undefined;
+}
+
+function hasFailedStatus(record: Record<string, unknown>): boolean {
+  const status = record.status;
+  if (typeof status !== "string") {
+    return false;
+  }
+  const normalized = status.toLowerCase();
+  return normalized === "failed" || normalized === "error";
+}
+
+function extractExitCodeFromText(output: string): number | undefined {
+  const match = output.match(/(?:^|\n)\s*Exit code:\s*(-?\d+)\b/i);
+  if (!match?.[1]) {
+    return undefined;
+  }
+  return Number.parseInt(match[1], 10);
+}
+
 function normalizeCodexToolOutput(output: unknown): {
   content: string;
   structured?: unknown;
@@ -571,14 +619,21 @@ function normalizeCodexToolOutput(output: unknown): {
 
     try {
       structured = JSON.parse(output);
-      if (isRecord(structured) && structured.is_error === true) {
-        isError = true;
+      if (isRecord(structured)) {
+        const exitCode = extractExitCodeFromRecord(structured);
+        isError =
+          structured.is_error === true ||
+          (exitCode !== undefined && exitCode !== 0) ||
+          hasFailedStatus(structured);
       }
     } catch {
       structured = undefined;
-      const lower = output.toLowerCase();
-      if (lower.includes("error") || lower.includes("failed")) {
-        isError = true;
+      const exitCode = extractExitCodeFromText(output);
+      if (exitCode !== undefined) {
+        isError = exitCode !== 0;
+      } else {
+        // For plain text without exit metadata, only treat explicit error lines as failures.
+        isError = /(?:^|\n)\s*(error|fatal|failed):/i.test(output);
       }
     }
 
@@ -598,7 +653,11 @@ function normalizeCodexToolOutput(output: unknown): {
   }
 
   if (Array.isArray(output) || isRecord(output)) {
-    const isError = isRecord(output) && output.is_error === true;
+    const isError =
+      isRecord(output) &&
+      (output.is_error === true ||
+        (extractExitCodeFromRecord(output) ?? 0) !== 0 ||
+        hasFailedStatus(output));
     return {
       content: JSON.stringify(output, null, 2),
       structured: output,
