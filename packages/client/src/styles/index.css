@@ -1650,6 +1650,26 @@ a.sidebar-nav-item {
   border-color: var(--text-dimmed);
 }
 
+.session-setup-block {
+  margin-bottom: var(--space-3);
+}
+
+.session-setup-block .collapsible__summary {
+  display: inline-flex;
+  padding: 0.25rem 0.5rem;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  background: var(--bg-code);
+}
+
+.session-setup-block .collapsible__content {
+  margin-top: var(--space-2);
+}
+
+.session-setup-entry .message-user-prompt {
+  max-width: 100%;
+}
+
 /* All other messages (assistant responses, tool results) - indented, no background */
 
 /* Assistant turn container - wraps consecutive assistant items with timeline */

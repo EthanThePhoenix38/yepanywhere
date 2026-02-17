@@ -1,5 +1,6 @@
 import { memo, useCallback } from "react";
 import type { RenderItem } from "../types/renderItems";
+import { SessionSetupBlock } from "./blocks/SessionSetupBlock";
 import { TextBlock } from "./blocks/TextBlock";
 import { ThinkingBlock } from "./blocks/ThinkingBlock";
 import { ToolCallRow } from "./blocks/ToolCallRow";
@@ -71,6 +72,9 @@ export const RenderItemComponent = memo(function RenderItemComponent({
 
       case "user_prompt":
         return <UserPromptBlock content={item.content} />;
+
+      case "session_setup":
+        return <SessionSetupBlock title={item.title} prompts={item.prompts} />;
 
       case "system": {
         // Different styling for compacting vs completed compaction

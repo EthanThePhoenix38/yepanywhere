@@ -2,9 +2,11 @@ import type { MarkdownAugment } from "@yep-anywhere/shared";
 import type { ContentBlock, Message } from "../types";
 import type {
   RenderItem,
+  SessionSetupItem,
   SystemItem,
   ToolCallItem,
   ToolResultData,
+  UserPromptItem,
 } from "../types/renderItems";
 import { getMessageId } from "./mergeMessages";
 
@@ -59,7 +61,63 @@ export function preprocessMessages(
     processMessage(msg, items, pendingToolCalls, orphanedToolIds, augments);
   }
 
-  return items;
+  return collapseLeadingSessionSetup(items);
+}
+
+const SESSION_SETUP_PREFIXES = [
+  "# AGENTS.md instructions",
+  "<environment_context>",
+];
+
+function getPromptText(content: string | ContentBlock[]): string {
+  if (typeof content === "string") {
+    return content;
+  }
+  return content
+    .filter(
+      (block): block is ContentBlock & { type: "text"; text: string } =>
+        block.type === "text" && typeof block.text === "string",
+    )
+    .map((block) => block.text)
+    .join("\n");
+}
+
+function isSessionSetupPrompt(item: UserPromptItem): boolean {
+  const text = getPromptText(item.content).trimStart();
+  return SESSION_SETUP_PREFIXES.some((prefix) => text.startsWith(prefix));
+}
+
+function collapseLeadingSessionSetup(items: RenderItem[]): RenderItem[] {
+  const setupItems: UserPromptItem[] = [];
+  let index = 0;
+
+  while (index < items.length) {
+    const item = items[index];
+    if (!item || item.type !== "user_prompt" || !isSessionSetupPrompt(item)) {
+      break;
+    }
+    setupItems.push(item);
+    index += 1;
+  }
+
+  if (setupItems.length === 0) {
+    return items;
+  }
+
+  const firstSetupItem = setupItems[0];
+  if (!firstSetupItem) {
+    return items;
+  }
+
+  const collapsedItem: SessionSetupItem = {
+    type: "session_setup",
+    id: `session-setup-${firstSetupItem.id}`,
+    title: "Session setup",
+    prompts: setupItems.map((item) => item.content),
+    sourceMessages: setupItems.flatMap((item) => item.sourceMessages),
+  };
+
+  return [collapsedItem, ...items.slice(index)];
 }
 
 function processMessage(

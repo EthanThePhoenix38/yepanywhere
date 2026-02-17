@@ -20,7 +20,7 @@ function groupItemsIntoTurns(
   let currentAssistantGroup: RenderItem[] = [];
 
   for (const item of items) {
-    if (item.type === "user_prompt") {
+    if (item.type === "user_prompt" || item.type === "session_setup") {
       // Flush any pending assistant items
       if (currentAssistantGroup.length > 0) {
         groups.push({ isUserPrompt: false, items: currentAssistantGroup });

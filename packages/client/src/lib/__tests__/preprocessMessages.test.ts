@@ -156,6 +156,75 @@ describe("preprocessMessages", () => {
     });
   });
 
+  it("collapses leading session setup prompts into one item", () => {
+    const messages: Message[] = [
+      {
+        id: "msg-setup-1",
+        role: "user",
+        content: "# AGENTS.md instructions for /repo\n\n<INSTRUCTIONS>\nfoo",
+        timestamp: "2024-01-01T00:00:00Z",
+      },
+      {
+        id: "msg-setup-2",
+        role: "user",
+        content:
+          "<environment_context>\n  <cwd>/repo</cwd>\n</environment_context>",
+        timestamp: "2024-01-01T00:00:01Z",
+      },
+      {
+        id: "msg-user-1",
+        role: "user",
+        content: "Implement the requested change",
+        timestamp: "2024-01-01T00:00:02Z",
+      },
+    ];
+
+    const items = preprocessMessages(messages);
+
+    expect(items).toHaveLength(2);
+    expect(items[0]).toMatchObject({
+      type: "session_setup",
+      title: "Session setup",
+      prompts: [
+        "# AGENTS.md instructions for /repo\n\n<INSTRUCTIONS>\nfoo",
+        "<environment_context>\n  <cwd>/repo</cwd>\n</environment_context>",
+      ],
+    });
+    expect(items[1]).toMatchObject({
+      type: "user_prompt",
+      content: "Implement the requested change",
+    });
+  });
+
+  it("does not collapse setup-like prompts that are not at the session start", () => {
+    const messages: Message[] = [
+      {
+        id: "msg-user-1",
+        role: "user",
+        content: "normal first prompt",
+        timestamp: "2024-01-01T00:00:00Z",
+      },
+      {
+        id: "msg-setup-1",
+        role: "user",
+        content: "# AGENTS.md instructions for /repo",
+        timestamp: "2024-01-01T00:00:01Z",
+      },
+    ];
+
+    const items = preprocessMessages(messages);
+
+    expect(items).toHaveLength(2);
+    expect(items[0]).toMatchObject({
+      type: "user_prompt",
+      content: "normal first prompt",
+    });
+    expect(items[1]).toMatchObject({
+      type: "user_prompt",
+      content: "# AGENTS.md instructions for /repo",
+    });
+  });
+
   it("attaches markdown augment to assistant string content", () => {
     const messages: Message[] = [
       {

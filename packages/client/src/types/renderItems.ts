@@ -12,6 +12,7 @@ export type RenderItem =
   | ThinkingItem
   | ToolCallItem
   | UserPromptItem
+  | SessionSetupItem
   | SystemItem;
 
 /** Base fields shared by all render items */
@@ -60,6 +61,13 @@ export interface UserPromptItem extends RenderItemBase {
   type: "user_prompt";
   id: string;
   content: string | ContentBlock[];
+}
+
+export interface SessionSetupItem extends RenderItemBase {
+  type: "session_setup";
+  id: string;
+  title: string;
+  prompts: Array<string | ContentBlock[]>;
 }
 
 export interface SystemItem extends RenderItemBase {
