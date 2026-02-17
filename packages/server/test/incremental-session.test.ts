@@ -293,11 +293,13 @@ describe("Incremental Session Loading", () => {
         | {
             _rawPatch?: string;
             _structuredPatch?: unknown[];
+            _diffHtml?: string;
           }
         | undefined;
 
       expect(input?._rawPatch).toContain("*** Begin Patch");
       expect(input?._structuredPatch?.length).toBeGreaterThan(0);
+      expect(input?._diffHtml).toContain('class="line line-inserted"');
     });
 
     it("keeps raw patch fallback when parsing malformed patch text", async () => {
@@ -370,11 +372,13 @@ describe("Incremental Session Loading", () => {
         | {
             _rawPatch?: string;
             _structuredPatch?: unknown[];
+            _diffHtml?: string;
           }
         | undefined;
 
       expect(input?._rawPatch).toContain("*** Begin Patch");
       expect(input?._structuredPatch).toBeUndefined();
+      expect(input?._diffHtml).toBeUndefined();
     });
   });
 });

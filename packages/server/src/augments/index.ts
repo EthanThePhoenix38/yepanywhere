@@ -26,7 +26,11 @@ export {
 } from "./stream-coordinator.js";
 
 // Edit augments (unified diff computation and highlighting)
-export { computeEditAugment, type EditInput } from "./edit-augments.js";
+export {
+  computeEditAugment,
+  computeStructuredPatchDiffHtml,
+  type EditInput,
+} from "./edit-augments.js";
 
 // Write augments (syntax highlighting for written files)
 export {

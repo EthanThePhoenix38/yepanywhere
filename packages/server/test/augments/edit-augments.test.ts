@@ -3,6 +3,7 @@ import {
   type WordDiffSegment,
   __test__,
   computeEditAugment,
+  computeStructuredPatchDiffHtml,
 } from "../../src/augments/edit-augments.js";
 
 const {
@@ -272,6 +273,46 @@ describe("computeEditAugment", () => {
 
       expect(augment.structuredPatch.length).toBeGreaterThan(0);
     });
+  });
+});
+
+describe("computeStructuredPatchDiffHtml", () => {
+  it("generates highlighted diff HTML from parsed raw patch hunks", async () => {
+    const diffHtml = await computeStructuredPatchDiffHtml("/test/file.ts", [
+      {
+        oldStart: 42,
+        oldLines: 2,
+        newStart: 42,
+        newLines: 2,
+        lines: [
+          " function greet(name: string) {",
+          '-  return "hello";',
+          '+  return "hello " + name;',
+        ],
+      },
+    ]);
+
+    expect(diffHtml).toBeTruthy();
+    expect(diffHtml).toContain('class="line line-deleted"');
+    expect(diffHtml).toContain('class="line line-inserted"');
+    expect(diffHtml).toContain("<span style=");
+  });
+
+  it("falls back to diff highlighting when file language is unknown", async () => {
+    const diffHtml = await computeStructuredPatchDiffHtml("", [
+      {
+        oldStart: 1,
+        oldLines: 1,
+        newStart: 1,
+        newLines: 1,
+        lines: ["-foo", "+bar"],
+      },
+    ]);
+
+    expect(diffHtml).toBeTruthy();
+    expect(diffHtml).toContain("<pre");
+    expect(diffHtml).toContain('class="line line-deleted"');
+    expect(diffHtml).toContain('class="line line-inserted"');
   });
 });
 

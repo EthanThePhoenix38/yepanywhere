@@ -21,6 +21,7 @@ import {
   type WriteInputWithAugment,
   computeEditAugment,
   computeReadAugment,
+  computeStructuredPatchDiffHtml,
   computeWriteAugment,
 } from "../augments/index.js";
 import {
@@ -308,6 +309,28 @@ async function augmentEditInputs(messages: Message[]): Promise<void> {
           parsedPatch.structuredPatch.length > 0
         ) {
           targetInput._structuredPatch = parsedPatch.structuredPatch;
+        }
+
+        if (
+          !targetInput._diffHtml &&
+          targetInput._structuredPatch &&
+          targetInput._structuredPatch.length > 0
+        ) {
+          const patchHunks = targetInput._structuredPatch;
+          const filePathForHighlight =
+            targetInput.file_path || parsedPatch.filePath || "";
+
+          promises.push(
+            computeStructuredPatchDiffHtml(filePathForHighlight, patchHunks)
+              .then((diffHtml) => {
+                if (diffHtml) {
+                  targetInput._diffHtml = diffHtml;
+                }
+              })
+              .catch(() => {
+                // Ignore augment computation errors
+              }),
+          );
         }
       }
     }

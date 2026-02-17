@@ -104,6 +104,39 @@ describe("EditRenderer collapsed preview fallback", () => {
     expect(screen.getByText("+const x = 2;")).toBeDefined();
   });
 
+  it("renders server-provided highlighted diff HTML when available", () => {
+    const input = {
+      _structuredPatch: [
+        {
+          oldStart: 1,
+          oldLines: 1,
+          newStart: 1,
+          newLines: 1,
+          lines: ["-const x = 1;", "+const x = 2;"],
+        },
+      ],
+      _diffHtml:
+        '<pre class="shiki"><code class="language-ts"><span class="line line-deleted"><span class="diff-prefix">-</span><span style="color:var(--shiki-token-keyword)">const</span> x = 1;</span>\n<span class="line line-inserted"><span class="diff-prefix">+</span><span style="color:var(--shiki-token-keyword)">const</span> x = 2;</span></code></pre>',
+    };
+
+    const { container } = render(
+      <div>
+        {renderCollapsedPreview(
+          input as never,
+          { ok: true } as never,
+          false,
+          renderContext,
+        )}
+      </div>,
+    );
+
+    expect(screen.queryByText("Computing diff...")).toBeNull();
+    expect(
+      container.querySelector(".highlighted-diff .line-inserted"),
+    ).toBeTruthy();
+    expect(screen.getAllByText(/const/)).toHaveLength(2);
+  });
+
   it("renders stable fallback text when completed row has no patch data", () => {
     const input = {};
 

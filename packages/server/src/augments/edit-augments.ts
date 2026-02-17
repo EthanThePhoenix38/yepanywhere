@@ -22,6 +22,13 @@ export interface EditInput {
   new_string: string;
 }
 
+interface DiffHtmlInput {
+  oldString: string;
+  newString: string;
+  hunks: PatchHunk[];
+  filePath: string;
+}
+
 /**
  * Convert jsdiff patch hunks to our PatchHunk format.
  * jsdiff hunks have the same structure but we need to add line prefixes.
@@ -61,6 +68,86 @@ function patchToUnifiedText(hunks: PatchHunk[]): string {
   }
 
   return lines.join("\n");
+}
+
+function countOldLinesInHunk(lines: string[]): number {
+  let count = 0;
+  for (const line of lines) {
+    const prefix = line[0];
+    if (prefix === " " || prefix === "-") {
+      count++;
+    }
+  }
+  return count;
+}
+
+function countNewLinesInHunk(lines: string[]): number {
+  let count = 0;
+  for (const line of lines) {
+    const prefix = line[0];
+    if (prefix === " " || prefix === "+") {
+      count++;
+    }
+  }
+  return count;
+}
+
+interface SyntheticDiffInput {
+  oldString: string;
+  newString: string;
+  hunks: PatchHunk[];
+}
+
+function buildSyntheticDiffInput(hunks: PatchHunk[]): SyntheticDiffInput {
+  const oldLines: string[] = [];
+  const newLines: string[] = [];
+  const normalizedHunks: PatchHunk[] = [];
+
+  let nextOldStart = 1;
+  let nextNewStart = 1;
+
+  for (const hunk of hunks) {
+    const filteredLines = hunk.lines.filter((line) => {
+      const prefix = line[0];
+      return prefix === " " || prefix === "-" || prefix === "+";
+    });
+
+    if (filteredLines.length === 0) {
+      continue;
+    }
+
+    for (const line of filteredLines) {
+      const prefix = line[0];
+      const content = line.slice(1);
+
+      if (prefix === " " || prefix === "-") {
+        oldLines.push(content);
+      }
+      if (prefix === " " || prefix === "+") {
+        newLines.push(content);
+      }
+    }
+
+    const oldLinesCount = countOldLinesInHunk(filteredLines);
+    const newLinesCount = countNewLinesInHunk(filteredLines);
+
+    normalizedHunks.push({
+      oldStart: nextOldStart,
+      oldLines: oldLinesCount,
+      newStart: nextNewStart,
+      newLines: newLinesCount,
+      lines: filteredLines,
+    });
+
+    nextOldStart += oldLinesCount;
+    nextNewStart += newLinesCount;
+  }
+
+  return {
+    oldString: oldLines.join("\n"),
+    newString: newLines.join("\n"),
+    hunks: normalizedHunks,
+  };
 }
 
 /**
@@ -299,6 +386,61 @@ async function highlightDiffWithSyntax(
   return `<pre class="shiki"><code class="language-${lang}">${resultLines.join("\n")}</code></pre>`;
 }
 
+async function buildDiffHtmlWithFallback({
+  oldString,
+  newString,
+  hunks,
+  filePath,
+}: DiffHtmlInput): Promise<string> {
+  // Try syntax-highlighted diff first (highlights code with file's language)
+  let diffHtml = await highlightDiffWithSyntax(
+    oldString,
+    newString,
+    hunks,
+    filePath,
+  );
+
+  // Fall back to diff-only highlighting if syntax highlighting fails
+  if (!diffHtml) {
+    const diffText = patchToUnifiedText(hunks);
+    const highlightResult = await highlightCode(diffText, "diff");
+    if (highlightResult) {
+      // Post-process to add line type classes for background colors
+      diffHtml = addDiffLineClasses(highlightResult.html);
+    } else {
+      // Fallback to plain text wrapped in pre/code
+      diffHtml = `<pre class="shiki"><code class="language-diff">${escapeHtml(diffText)}</code></pre>`;
+    }
+  }
+
+  return diffHtml;
+}
+
+/**
+ * Compute diff HTML from a parsed structured patch without original file text.
+ * Used for persisted Codex apply_patch rows.
+ */
+export async function computeStructuredPatchDiffHtml(
+  filePath: string,
+  structuredPatch: PatchHunk[],
+): Promise<string | null> {
+  if (structuredPatch.length === 0) {
+    return null;
+  }
+
+  const synthetic = buildSyntheticDiffInput(structuredPatch);
+  if (synthetic.hunks.length === 0) {
+    return null;
+  }
+
+  return buildDiffHtmlWithFallback({
+    oldString: synthetic.oldString,
+    newString: synthetic.newString,
+    hunks: synthetic.hunks,
+    filePath,
+  });
+}
+
 /**
  * Compute an edit augment for an Edit tool_use.
  *
@@ -328,26 +470,12 @@ export async function computeEditAugment(
   // Convert hunks to our format
   const structuredPatchResult = convertHunks(patch.hunks);
 
-  // Try syntax-highlighted diff first (highlights code with file's language)
-  let diffHtml = await highlightDiffWithSyntax(
-    old_string,
-    new_string,
-    structuredPatchResult,
-    file_path,
-  );
-
-  // Fall back to diff-only highlighting if syntax highlighting fails
-  if (!diffHtml) {
-    const diffText = patchToUnifiedText(structuredPatchResult);
-    const highlightResult = await highlightCode(diffText, "diff");
-    if (highlightResult) {
-      // Post-process to add line type classes for background colors
-      diffHtml = addDiffLineClasses(highlightResult.html);
-    } else {
-      // Fallback to plain text wrapped in pre/code
-      diffHtml = `<pre class="shiki"><code class="language-diff">${escapeHtml(diffText)}</code></pre>`;
-    }
-  }
+  const diffHtml = await buildDiffHtmlWithFallback({
+    oldString: old_string,
+    newString: new_string,
+    hunks: structuredPatchResult,
+    filePath: file_path,
+  });
 
   return {
     toolUseId,
@@ -872,6 +1000,7 @@ export const __test__ = {
   addDiffLineClasses,
   convertHunks,
   patchToUnifiedText,
+  buildSyntheticDiffInput,
   escapeHtml,
   computeWordDiff,
   findReplacePairs,
