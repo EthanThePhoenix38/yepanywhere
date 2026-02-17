@@ -19,6 +19,7 @@ const MAX_VISIBLE_LINES = 12;
 interface EditInputWithAugment extends EditInput {
   _structuredPatch?: PatchHunk[];
   _diffHtml?: string;
+  _rawPatch?: string;
 }
 
 /**
@@ -63,6 +64,20 @@ function computeChangeSummary(structuredPatch: PatchHunk[]): string | null {
     return `Removed ${deletions} line${deletions !== 1 ? "s" : ""}`;
   }
   return null;
+}
+
+function truncateByLines(
+  text: string,
+  maxLines: number,
+): { text: string; truncated: boolean } {
+  const lines = text.split("\n");
+  if (lines.length <= maxLines) {
+    return { text, truncated: false };
+  }
+  return {
+    text: lines.slice(0, maxLines).join("\n"),
+    truncated: true,
+  };
 }
 
 /**
@@ -167,6 +182,44 @@ const DiffHunk = memo(function DiffHunk({ hunk }: { hunk: PatchHunk }) {
   );
 });
 
+function RawPatchPreview({
+  rawPatch,
+  truncateLines,
+}: {
+  rawPatch: string;
+  truncateLines?: number;
+}) {
+  const preview = useMemo(() => {
+    if (!truncateLines) {
+      return { text: rawPatch, truncated: false };
+    }
+    return truncateByLines(rawPatch, truncateLines);
+  }, [rawPatch, truncateLines]);
+
+  return (
+    <div
+      className={`diff-view-container ${preview.truncated ? "truncated" : ""}`}
+    >
+      <div className="diff-view">
+        <pre className="code-block">
+          <code>{preview.text}</code>
+        </pre>
+      </div>
+      {preview.truncated && <div className="diff-fade-overlay" />}
+    </div>
+  );
+}
+
+function RawPatchModalContent({ rawPatch }: { rawPatch: string }) {
+  return (
+    <div className="diff-modal-content">
+      <pre className="code-block">
+        <code>{rawPatch}</code>
+      </pre>
+    </div>
+  );
+}
+
 /**
  * Edit tool use - shows file path and diff preview
  * Reads augment data directly from input._structuredPatch and input._diffHtml.
@@ -174,6 +227,13 @@ const DiffHunk = memo(function DiffHunk({ hunk }: { hunk: PatchHunk }) {
 function EditToolUse({ input }: { input: EditInputWithAugment }) {
   // Show loading state if augment data not yet available
   if (!input._structuredPatch || input._structuredPatch.length === 0) {
+    if (input._rawPatch) {
+      return (
+        <div className="edit-result">
+          <RawPatchPreview rawPatch={input._rawPatch} />
+        </div>
+      );
+    }
     return (
       <div className="edit-result">
         <div className="edit-loading">Computing diff...</div>
@@ -380,6 +440,7 @@ function EditCollapsedPreview({
 
   // Get diffHtml from input augment (only used for tool_use display)
   const diffHtml = input._diffHtml;
+  const rawPatch = input._rawPatch;
 
   if (isError) {
     // Extract error message - can be a string or object with content
@@ -484,11 +545,56 @@ function EditCollapsedPreview({
     );
   }
 
-  // Require structuredPatch - show loading if not available
+  // Pending edit without augment data yet
   if (structuredPatch.length === 0) {
+    if (result === undefined) {
+      return (
+        <div className="edit-collapsed-preview">
+          <div className="edit-loading">Computing diff...</div>
+        </div>
+      );
+    }
+
+    if (rawPatch) {
+      const rawPatchPreview = truncateByLines(rawPatch, MAX_VISIBLE_LINES);
+      return (
+        <>
+          <div className="edit-collapsed-preview">
+            {showValidationWarning && validationErrors && (
+              <SchemaWarning toolName="Edit" errors={validationErrors} />
+            )}
+            <RawPatchPreview
+              rawPatch={rawPatch}
+              truncateLines={MAX_VISIBLE_LINES}
+            />
+            {rawPatchPreview.truncated && (
+              <button
+                type="button"
+                className="diff-expand-button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setIsModalOpen(true);
+                }}
+              >
+                Show full patch
+              </button>
+            )}
+          </div>
+          {isModalOpen && (
+            <Modal
+              title={<span className="file-path">{fileName}</span>}
+              onClose={handleClose}
+            >
+              <RawPatchModalContent rawPatch={rawPatch} />
+            </Modal>
+          )}
+        </>
+      );
+    }
+
     return (
       <div className="edit-collapsed-preview">
-        <div className="edit-loading">Computing diff...</div>
+        <span>Patch preview unavailable</span>
       </div>
     );
   }

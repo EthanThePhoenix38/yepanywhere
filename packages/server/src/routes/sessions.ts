@@ -10,6 +10,10 @@ import {
 } from "@yep-anywhere/shared";
 import { Hono } from "hono";
 import {
+  extractRawPatchFromEditInput,
+  parseRawEditPatch,
+} from "../augments/edit-raw-patch.js";
+import {
   type EditInputWithAugment,
   type ExitPlanModeInput,
   type ExitPlanModeResult,
@@ -235,10 +239,17 @@ async function augmentEditInputs(messages: Message[]): Promise<void> {
         block.id &&
         block.input
       ) {
-        const input = block.input as EditInputWithAugment;
-        // Validate required fields and hasn't been augmented yet
+        const rawInput = block.input;
+        const input =
+          typeof rawInput === "object" &&
+          rawInput !== null &&
+          !Array.isArray(rawInput)
+            ? (rawInput as EditInputWithAugment)
+            : undefined;
+
+        // Classic Claude Edit shape: compute augment from old/new strings.
         if (
-          input.file_path &&
+          input?.file_path &&
           typeof input.old_string === "string" &&
           typeof input.new_string === "string" &&
           !input._structuredPatch
@@ -258,6 +269,45 @@ async function augmentEditInputs(messages: Message[]): Promise<void> {
                 // Ignore augment computation errors
               }),
           );
+          continue;
+        }
+
+        // Codex apply_patch shape: preserve raw patch and parse server-side if possible.
+        const rawPatch = extractRawPatchFromEditInput(rawInput);
+        if (!rawPatch) {
+          continue;
+        }
+
+        const targetInput =
+          input ??
+          ({
+            file_path: "",
+            old_string: "",
+            new_string: "",
+          } as EditInputWithAugment);
+
+        if (!input) {
+          block.input = targetInput;
+        }
+
+        if (!targetInput._rawPatch) {
+          targetInput._rawPatch = rawPatch;
+        }
+
+        const parsedPatch = parseRawEditPatch(rawPatch);
+        if (!parsedPatch) {
+          continue;
+        }
+
+        if (!targetInput.file_path && parsedPatch.filePath) {
+          targetInput.file_path = parsedPatch.filePath;
+        }
+
+        if (
+          !targetInput._structuredPatch &&
+          parsedPatch.structuredPatch.length > 0
+        ) {
+          targetInput._structuredPatch = parsedPatch.structuredPatch;
         }
       }
     }

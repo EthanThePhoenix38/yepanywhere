@@ -44,6 +44,7 @@ export interface EditInputWithAugment extends EditInput {
     lines: string[];
   }>;
   _diffHtml?: string;
+  _rawPatch?: string;
 }
 
 /** Write tool_use input with embedded augment data */
