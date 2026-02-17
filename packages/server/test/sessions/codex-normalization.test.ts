@@ -257,6 +257,105 @@ describe("Codex Normalization", () => {
     expect(toolResultMessage?.toolUseResult).toMatchObject({ ok: true });
   });
 
+  it("preserves Codex input_image blocks without dumping data URLs into text", () => {
+    const entries: CodexSessionEntry[] = [
+      {
+        type: "response_item",
+        timestamp: "2024-01-01T00:00:01Z",
+        payload: {
+          type: "message",
+          role: "user",
+          content: [
+            {
+              type: "input_text",
+              text: "Please review this.\n<image>\nThanks.",
+            },
+            {
+              type: "input_image",
+              image_url: "data:image/png;base64,AAAA",
+            },
+          ],
+        },
+      },
+    ];
+
+    const result = normalizeSession(buildLoadedSession(entries));
+    expect(result.messages).toHaveLength(1);
+
+    const content = result.messages[0]?.message?.content;
+    expect(Array.isArray(content)).toBe(true);
+
+    const blocks = Array.isArray(content) ? content : [];
+    const text = blocks
+      .filter((block) => block.type === "text")
+      .map((block) => block.text ?? "")
+      .join("\n");
+    const inputImageBlock = blocks.find(
+      (block) => block.type === "input_image",
+    );
+
+    expect(text).toContain("<image>");
+    expect(text).not.toContain("data:image/png;base64");
+    expect(inputImageBlock).toMatchObject({
+      type: "input_image",
+      mime_type: "image/png",
+    });
+    expect(
+      (inputImageBlock as { image_url?: string } | undefined)?.image_url,
+    ).toBeUndefined();
+  });
+
+  it("does not add encrypted reasoning placeholder when summary is present", () => {
+    const entries: CodexSessionEntry[] = [
+      {
+        type: "response_item",
+        timestamp: "2024-01-01T00:00:01Z",
+        payload: {
+          type: "reasoning",
+          summary: [{ type: "summary_text", text: "Clarifying next step" }],
+          encrypted_content: "encrypted-payload",
+        },
+      },
+    ];
+
+    const result = normalizeSession(buildLoadedSession(entries));
+    expect(result.messages).toHaveLength(1);
+
+    const content = result.messages[0]?.message?.content;
+    const blocks = Array.isArray(content) ? content : [];
+
+    expect(blocks).toHaveLength(1);
+    expect(blocks[0]).toMatchObject({
+      type: "thinking",
+      thinking: "Clarifying next step",
+    });
+  });
+
+  it("adds informative encrypted reasoning fallback when no summary is present", () => {
+    const entries: CodexSessionEntry[] = [
+      {
+        type: "response_item",
+        timestamp: "2024-01-01T00:00:01Z",
+        payload: {
+          type: "reasoning",
+          encrypted_content: "encrypted-payload",
+        },
+      },
+    ];
+
+    const result = normalizeSession(buildLoadedSession(entries));
+    expect(result.messages).toHaveLength(1);
+
+    const content = result.messages[0]?.message?.content;
+    const blocks = Array.isArray(content) ? content : [];
+
+    expect(blocks).toHaveLength(1);
+    expect(blocks[0]).toMatchObject({
+      type: "text",
+      text: "Reasoning details are encrypted by Codex and unavailable in session logs.",
+    });
+  });
+
   it("skips developer messages from the normalized transcript", () => {
     const entries: CodexSessionEntry[] = [
       {

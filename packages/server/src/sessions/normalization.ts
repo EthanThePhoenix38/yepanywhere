@@ -312,25 +312,26 @@ function convertCodexMessagePayload(
   uuid: string,
   timestamp: string,
 ): Message {
-  const fullText = payload.content
-    .map((block) => {
-      if ("text" in block && typeof block.text === "string") {
-        return block.text;
-      }
-      if (block.type === "input_image") {
-        const label =
-          typeof block.file_path === "string"
-            ? `[Image input: ${block.file_path}]`
-            : typeof block.image_url === "string"
-              ? `[Image input: ${block.image_url}]`
-              : "[Image input]";
-        return `\n${label}\n`;
-      }
-      return "";
-    })
-    .join("");
+  const content: ContentBlock[] = [];
 
-  if (!fullText.trim()) {
+  const fullText = payload.content
+    .map((block) =>
+      "text" in block && typeof block.text === "string" ? block.text : "",
+    )
+    .join("");
+  if (fullText.trim()) {
+    content.push({
+      type: "text",
+      text: fullText,
+    });
+  }
+
+  for (const block of payload.content) {
+    if (block.type !== "input_image") continue;
+    content.push(normalizeCodexInputImageBlock(block));
+  }
+
+  if (content.length === 0) {
     return {
       uuid,
       type: payload.role,
@@ -341,13 +342,6 @@ function convertCodexMessagePayload(
       timestamp,
     };
   }
-
-  const content: ContentBlock[] = [
-    {
-      type: "text",
-      text: fullText,
-    },
-  ];
 
   return {
     uuid,
@@ -379,10 +373,10 @@ function convertCodexReasoningPayload(
     });
   }
 
-  if (payload.encrypted_content) {
+  if (payload.encrypted_content && !summaryText) {
     content.push({
       type: "text",
-      text: "[Encrypted reasoning content]",
+      text: "Reasoning details are encrypted by Codex and unavailable in session logs.",
     });
   }
 
@@ -395,6 +389,62 @@ function convertCodexReasoningPayload(
     },
     timestamp,
   };
+}
+
+type CodexInputImageBlock = Extract<
+  CodexMessagePayload["content"][number],
+  { type: "input_image" }
+>;
+
+function normalizeCodexInputImageBlock(
+  block: CodexInputImageBlock,
+): ContentBlock {
+  const normalized: ContentBlock = { type: "input_image" };
+
+  const filePath =
+    typeof block.file_path === "string" ? block.file_path.trim() : "";
+  if (filePath) {
+    normalized.file_path = filePath;
+  }
+
+  const mimeType = resolveCodexInputImageMimeType(block);
+  if (mimeType) {
+    normalized.mime_type = mimeType;
+  }
+
+  const imageUrl =
+    typeof block.image_url === "string" ? block.image_url.trim() : "";
+  if (imageUrl && !isDataUrl(imageUrl)) {
+    normalized.image_url = imageUrl;
+  }
+
+  return normalized;
+}
+
+function resolveCodexInputImageMimeType(
+  block: CodexInputImageBlock,
+): string | undefined {
+  const explicitMime =
+    typeof block.mime_type === "string" ? block.mime_type.trim() : "";
+  if (explicitMime) {
+    return explicitMime;
+  }
+
+  if (typeof block.image_url !== "string") {
+    return undefined;
+  }
+
+  const dataUrlMime = parseDataUrlMimeType(block.image_url);
+  return dataUrlMime || undefined;
+}
+
+function isDataUrl(value: string): boolean {
+  return value.startsWith("data:");
+}
+
+function parseDataUrlMimeType(dataUrl: string): string | null {
+  const match = /^data:([^;,]+)[;,]/i.exec(dataUrl);
+  return match?.[1] ?? null;
 }
 
 function convertCodexFunctionCallPayload(
