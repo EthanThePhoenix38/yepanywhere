@@ -42,7 +42,7 @@ function defaultContext(browser: Browser) {
   return browser.contexts()[0] ?? null;
 }
 
-/** Get a page by targetId, or the first available page. */
+/** Get a page by targetId, or the most recently opened page. */
 async function getPage(
   browser: Browser,
   targetId?: string,
@@ -66,7 +66,7 @@ async function getPage(
     throw new Error(`Tab not found: ${targetId}`);
   }
 
-  const page = pages[0];
+  const page = pages.at(-1);
   if (!page) throw new Error("No pages available");
   return { page, targetId: await getTargetId(page) };
 }
