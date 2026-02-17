@@ -1,12 +1,15 @@
 import type {
   ClaudeSessionEntry,
+  CodexCompactedEntry,
+  CodexCustomToolCallOutputPayload,
+  CodexCustomToolCallPayload,
   CodexEventMsgEntry,
-  CodexFunctionCallOutputPayload,
   CodexFunctionCallPayload,
   CodexMessagePayload,
   CodexReasoningPayload,
   CodexResponseItemEntry,
   CodexSessionEntry,
+  CodexWebSearchCallPayload,
   GeminiAssistantMessage,
   GeminiSessionMessage,
   GeminiUserMessage,
@@ -25,11 +28,12 @@ import {
 } from "./dag.js";
 import type { LoadedSession } from "./types.js";
 
-interface CodexPendingCall {
-  name: string;
-  arguments: string;
-  timestamp: string;
-}
+const CODEX_TOOL_NAME_ALIASES: Record<string, string> = {
+  shell_command: "Bash",
+  apply_patch: "Edit",
+  web_search_call: "WebSearch",
+  search_query: "WebSearch",
+};
 
 /**
  * Normalize a UnifiedSession into the generic Session format expected by the frontend.
@@ -207,19 +211,30 @@ function convertCodexEntries(entries: CodexSessionEntry[]): Message[] {
   let messageIndex = 0;
   const hasResponseItemUser = hasCodexResponseItemUserMessages(entries);
 
-  // Track function calls for pairing with outputs
-  const pendingCalls = new Map<string, CodexPendingCall>();
-
   for (const entry of entries) {
     if (entry.type === "response_item") {
-      const msg = convertCodexResponseItem(entry, messageIndex++, pendingCalls);
+      const msg = convertCodexResponseItem(entry, messageIndex++);
+      if (msg) {
+        messages.push(msg);
+      }
+    } else if (entry.type === "compacted") {
+      const msg = convertCodexCompactedEntry(entry, messageIndex++);
       if (msg) {
         messages.push(msg);
       }
     } else if (entry.type === "event_msg") {
-      // Only process user_message events - agent_message events are
-      // duplicates of the response_item data (streaming tokens)
-      if (entry.payload.type === "user_message" && !hasResponseItemUser) {
+      const shouldIncludeUserMessage =
+        entry.payload.type === "user_message" && !hasResponseItemUser;
+      const shouldIncludeTurnAborted = entry.payload.type === "turn_aborted";
+      const shouldIncludeContextCompacted =
+        entry.payload.type === "context_compacted";
+      // Skip agent_message and agent_reasoning events when response_item exists;
+      // those are streaming artifacts that duplicate full response data.
+      if (
+        shouldIncludeUserMessage ||
+        shouldIncludeTurnAborted ||
+        shouldIncludeContextCompacted
+      ) {
         const msg = convertCodexEventMsg(entry, messageIndex++);
         if (msg) {
           messages.push(msg);
@@ -245,32 +260,44 @@ function hasCodexResponseItemUserMessages(
 function convertCodexResponseItem(
   entry: CodexResponseItemEntry,
   index: number,
-  pendingCalls: Map<string, CodexPendingCall>,
 ): Message | null {
   const payload = entry.payload;
   const uuid = `codex-${index}-${entry.timestamp}`;
 
   switch (payload.type) {
     case "message":
+      if (payload.role === "developer") {
+        return null;
+      }
       return convertCodexMessagePayload(payload, uuid, entry.timestamp);
 
     case "reasoning":
       return convertCodexReasoningPayload(payload, uuid, entry.timestamp);
 
     case "function_call":
-      pendingCalls.set(payload.call_id, {
-        name: payload.name,
-        arguments: payload.arguments,
-        timestamp: entry.timestamp,
-      });
       return convertCodexFunctionCallPayload(payload, uuid, entry.timestamp);
 
     case "function_call_output":
-      return convertCodexFunctionCallOutputPayload(
-        payload,
+      return convertCodexToolCallOutputPayload(
+        payload.call_id,
+        payload.output,
         uuid,
         entry.timestamp,
       );
+
+    case "custom_tool_call":
+      return convertCodexCustomToolCallPayload(payload, uuid, entry.timestamp);
+
+    case "custom_tool_call_output":
+      return convertCodexToolCallOutputPayload(
+        payload.call_id ?? `${uuid}-custom-tool-result`,
+        payload.output,
+        uuid,
+        entry.timestamp,
+      );
+
+    case "web_search_call":
+      return convertCodexWebSearchCallPayload(payload, uuid, entry.timestamp);
 
     case "ghost_snapshot":
       return null;
@@ -285,7 +312,23 @@ function convertCodexMessagePayload(
   uuid: string,
   timestamp: string,
 ): Message {
-  const fullText = payload.content.map((c) => c.text).join("");
+  const fullText = payload.content
+    .map((block) => {
+      if ("text" in block && typeof block.text === "string") {
+        return block.text;
+      }
+      if (block.type === "input_image") {
+        const label =
+          typeof block.file_path === "string"
+            ? `[Image input: ${block.file_path}]`
+            : typeof block.image_url === "string"
+              ? `[Image input: ${block.image_url}]`
+              : "[Image input]";
+        return `\n${label}\n`;
+      }
+      return "";
+    })
+    .join("");
 
   if (!fullText.trim()) {
     return {
@@ -359,18 +402,14 @@ function convertCodexFunctionCallPayload(
   uuid: string,
   timestamp: string,
 ): Message {
-  let input: unknown;
-  try {
-    input = JSON.parse(payload.arguments);
-  } catch {
-    input = { raw: payload.arguments };
-  }
+  const input = parseCodexToolArguments(payload.arguments);
+  const toolName = canonicalizeCodexToolName(payload.name);
 
   const content: ContentBlock[] = [
     {
       type: "tool_use",
       id: payload.call_id,
-      name: payload.name,
+      name: toolName,
       input,
     },
   ];
@@ -382,23 +421,205 @@ function convertCodexFunctionCallPayload(
       role: "assistant",
       content,
     },
+    codexToolName: payload.name,
     timestamp,
   };
 }
 
-function convertCodexFunctionCallOutputPayload(
-  payload: CodexFunctionCallOutputPayload,
+function convertCodexCustomToolCallPayload(
+  payload: CodexCustomToolCallPayload,
   uuid: string,
   timestamp: string,
 ): Message {
+  const callId = payload.call_id ?? payload.id ?? `${uuid}-custom-tool`;
+  const rawToolName = payload.name ?? "custom_tool_call";
+  const toolName = canonicalizeCodexToolName(rawToolName);
+  const input =
+    payload.input !== undefined
+      ? payload.input
+      : parseCodexToolArguments(payload.arguments);
+
+  const content: ContentBlock[] = [
+    {
+      type: "tool_use",
+      id: callId,
+      name: toolName,
+      input,
+    },
+  ];
+
   return {
     uuid,
-    type: "tool_result",
-    toolUseResult: {
-      tool_use_id: payload.call_id,
-      content: payload.output,
+    type: "assistant",
+    message: {
+      role: "assistant",
+      content,
     },
+    codexToolName: rawToolName,
     timestamp,
+  };
+}
+
+function convertCodexWebSearchCallPayload(
+  payload: CodexWebSearchCallPayload,
+  uuid: string,
+  timestamp: string,
+): Message {
+  const callId = payload.call_id ?? payload.id ?? `${uuid}-web-search`;
+  const rawToolName = payload.name ?? payload.type;
+  const toolName = canonicalizeCodexToolName(rawToolName);
+
+  const parsedArguments = parseCodexToolArguments(payload.arguments);
+  let input: Record<string, unknown>;
+
+  if (isRecord(payload.input)) {
+    input = { ...payload.input };
+  } else if (isRecord(parsedArguments)) {
+    input = { ...parsedArguments };
+  } else {
+    input = {};
+  }
+
+  if (typeof payload.query === "string" && typeof input.query !== "string") {
+    input.query = payload.query;
+  }
+
+  if (payload.action !== undefined && input.action === undefined) {
+    input.action = payload.action;
+  }
+
+  const content: ContentBlock[] = [
+    {
+      type: "tool_use",
+      id: callId,
+      name: toolName,
+      input,
+    },
+  ];
+
+  return {
+    uuid,
+    type: "assistant",
+    message: {
+      role: "assistant",
+      content,
+    },
+    codexToolName: rawToolName,
+    timestamp,
+  };
+}
+
+function convertCodexToolCallOutputPayload(
+  callId: string,
+  output: unknown,
+  uuid: string,
+  timestamp: string,
+): Message {
+  const normalized = normalizeCodexToolOutput(output);
+  const toolResult: ContentBlock = {
+    type: "tool_result",
+    tool_use_id: callId,
+    content: normalized.content,
+    ...(normalized.isError && { is_error: true }),
+  };
+
+  return {
+    uuid,
+    type: "user",
+    message: {
+      role: "user",
+      content: [toolResult],
+    },
+    ...(normalized.structured !== undefined && {
+      toolUseResult: normalized.structured,
+    }),
+    timestamp,
+  };
+}
+
+function parseCodexToolArguments(argumentsText?: string): unknown {
+  if (!argumentsText) {
+    return {};
+  }
+  try {
+    return JSON.parse(argumentsText);
+  } catch {
+    return { raw: argumentsText };
+  }
+}
+
+function canonicalizeCodexToolName(name: string): string {
+  return (
+    CODEX_TOOL_NAME_ALIASES[name] ??
+    CODEX_TOOL_NAME_ALIASES[name.toLowerCase()] ??
+    name
+  );
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return !!value && typeof value === "object" && !Array.isArray(value);
+}
+
+function normalizeCodexToolOutput(output: unknown): {
+  content: string;
+  structured?: unknown;
+  isError: boolean;
+} {
+  if (typeof output === "string") {
+    let structured: unknown;
+    let isError = false;
+
+    try {
+      structured = JSON.parse(output);
+      if (isRecord(structured) && structured.is_error === true) {
+        isError = true;
+      }
+    } catch {
+      structured = undefined;
+      const lower = output.toLowerCase();
+      if (lower.includes("error") || lower.includes("failed")) {
+        isError = true;
+      }
+    }
+
+    return { content: output, structured, isError };
+  }
+
+  if (output === null || output === undefined) {
+    return { content: "", isError: false };
+  }
+
+  if (typeof output === "number" || typeof output === "boolean") {
+    return {
+      content: String(output),
+      structured: output,
+      isError: false,
+    };
+  }
+
+  if (Array.isArray(output) || isRecord(output)) {
+    const isError = isRecord(output) && output.is_error === true;
+    return {
+      content: JSON.stringify(output, null, 2),
+      structured: output,
+      isError,
+    };
+  }
+
+  return { content: String(output), isError: false };
+}
+
+function convertCodexCompactedEntry(
+  entry: CodexCompactedEntry,
+  index: number,
+): Message {
+  const uuid = `codex-compacted-${index}-${entry.timestamp}`;
+  return {
+    uuid,
+    type: "system",
+    subtype: "compact_boundary",
+    content: entry.payload.message || "Context compacted",
+    timestamp: entry.timestamp,
   };
 }
 
@@ -442,6 +663,27 @@ function convertCodexEventMsg(
         },
         timestamp: entry.timestamp,
       };
+
+    case "turn_aborted":
+      return {
+        uuid,
+        type: "system",
+        subtype: "turn_aborted",
+        content: payload.reason ?? payload.message ?? "Turn aborted",
+        timestamp: entry.timestamp,
+      };
+
+    case "context_compacted":
+      return {
+        uuid,
+        type: "system",
+        subtype: "compact_boundary",
+        content: "Context compacted",
+        timestamp: entry.timestamp,
+      };
+
+    case "item_completed":
+      return null;
 
     default:
       return null;

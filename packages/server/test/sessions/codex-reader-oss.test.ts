@@ -153,4 +153,50 @@ describe("CodexSessionReader - OSS Support", () => {
     );
     expect(summary?.provider).toBe("codex");
   });
+
+  it("excludes developer messages from messageCount", async () => {
+    const sessionId = "developer-filter";
+    const now = new Date().toISOString();
+    const lines = [
+      JSON.stringify({
+        type: "session_meta",
+        timestamp: now,
+        payload: {
+          id: sessionId,
+          cwd: "/test/project",
+          timestamp: now,
+          model_provider: "openai",
+        },
+      }),
+      JSON.stringify({
+        type: "response_item",
+        timestamp: now,
+        payload: {
+          type: "message",
+          role: "developer",
+          content: [{ type: "input_text", text: "internal instructions" }],
+        },
+      }),
+      JSON.stringify({
+        type: "response_item",
+        timestamp: now,
+        payload: {
+          type: "message",
+          role: "assistant",
+          content: [{ type: "output_text", text: "visible response" }],
+        },
+      }),
+    ];
+
+    await writeFile(
+      join(testDir, `${sessionId}.jsonl`),
+      `${lines.join("\n")}\n`,
+    );
+
+    const summary = await reader.getSessionSummary(
+      sessionId,
+      "test-project" as UrlProjectId,
+    );
+    expect(summary?.messageCount).toBe(1);
+  });
 });

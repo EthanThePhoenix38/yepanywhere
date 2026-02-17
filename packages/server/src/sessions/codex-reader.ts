@@ -434,7 +434,12 @@ export class CodexSessionReader implements ISessionReader {
         }
       } else if (entry.type === "response_item") {
         if (entry.payload.type === "message") {
-          count++;
+          if (
+            entry.payload.role === "user" ||
+            entry.payload.role === "assistant"
+          ) {
+            count++;
+          }
         }
       }
     }
@@ -651,6 +656,9 @@ export class CodexSessionReader implements ISessionReader {
 
     switch (payload.type) {
       case "message":
+        if (payload.role === "developer") {
+          return null;
+        }
         return this.convertMessagePayload(payload, uuid, entry.timestamp);
 
       case "reasoning":

@@ -308,6 +308,26 @@ describe("preprocessMessages", () => {
     }
   });
 
+  it("renders turn_aborted system messages", () => {
+    const messages: Message[] = [
+      {
+        id: "msg-1",
+        type: "system",
+        subtype: "turn_aborted",
+        content: "approval denied",
+        timestamp: "2024-01-01T00:00:00Z",
+      },
+    ];
+
+    const items = preprocessMessages(messages);
+    expect(items).toHaveLength(1);
+    expect(items[0]).toMatchObject({
+      type: "system",
+      subtype: "turn_aborted",
+      content: "approval denied",
+    });
+  });
+
   describe("orphaned tool handling", () => {
     it("marks orphaned tool_use as aborted", () => {
       const messages: Message[] = [

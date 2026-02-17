@@ -2,6 +2,21 @@ import type { ReactNode } from "react";
 import type { RenderContext } from "../types";
 import type { ToolRenderer } from "./types";
 
+const TOOL_NAME_ALIASES: Record<string, string> = {
+  shell_command: "Bash",
+  apply_patch: "Edit",
+  web_search_call: "WebSearch",
+  search_query: "WebSearch",
+};
+
+function canonicalizeToolName(toolName: string): string {
+  return (
+    TOOL_NAME_ALIASES[toolName] ??
+    TOOL_NAME_ALIASES[toolName.toLowerCase()] ??
+    toolName
+  );
+}
+
 /**
  * Registry for tool-specific renderers
  */
@@ -18,7 +33,8 @@ class ToolRendererRegistry {
   }
 
   get(toolName: string): ToolRenderer {
-    return this.tools.get(toolName) || this.fallback;
+    const canonicalToolName = canonicalizeToolName(toolName);
+    return this.tools.get(canonicalToolName) || this.fallback;
   }
 
   renderToolUse(

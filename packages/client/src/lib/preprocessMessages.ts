@@ -75,13 +75,17 @@ function processMessage(
   if (msg.type === "system") {
     const subtype = (msg as { subtype?: string }).subtype ?? "unknown";
     // Render compact_boundary as a visible system message
-    if (subtype === "compact_boundary") {
+    if (subtype === "compact_boundary" || subtype === "turn_aborted") {
       const systemItem: SystemItem = {
         type: "system",
         id: msgId,
         subtype,
         content:
-          typeof msg.content === "string" ? msg.content : "Context compacted",
+          typeof msg.content === "string"
+            ? msg.content
+            : subtype === "turn_aborted"
+              ? "Turn aborted"
+              : "Context compacted",
         sourceMessages: [msg],
       };
       items.push(systemItem);

@@ -22,10 +22,15 @@ interface EditInputWithAugment extends EditInput {
 }
 
 /**
- * Extract filename from path
+ * Extract filename from path.
+ * Some Codex tool aliases (e.g. apply_patch -> Edit) may not include file_path.
  */
-function getFileName(filePath: string): string {
-  return filePath.split("/").pop() || filePath;
+function getFileName(filePath?: string): string {
+  if (typeof filePath !== "string") return "Patch";
+  const trimmed = filePath.trim();
+  if (!trimmed) return "Patch";
+  const segments = trimmed.split(/[\\/]/);
+  return segments[segments.length - 1] || trimmed;
 }
 
 /**

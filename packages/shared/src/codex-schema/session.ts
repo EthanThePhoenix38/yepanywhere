@@ -67,13 +67,30 @@ export const CodexOutputTextContentSchema = z.object({
 });
 
 /**
+ * Input image content block in user/developer messages.
+ * Persisted shape can vary, so we keep this permissive.
+ */
+export const CodexInputImageContentSchema = z
+  .object({
+    type: z.literal("input_image"),
+    image_url: z.string().optional(),
+    file_path: z.string().optional(),
+    mime_type: z.string().optional(),
+  })
+  .passthrough();
+
+/**
  * User or assistant message payload.
  */
 export const CodexMessagePayloadSchema = z.object({
   type: z.literal("message"),
-  role: z.enum(["user", "assistant"]),
+  role: z.enum(["user", "assistant", "developer"]),
   content: z.array(
-    z.union([CodexInputTextContentSchema, CodexOutputTextContentSchema]),
+    z.union([
+      CodexInputTextContentSchema,
+      CodexOutputTextContentSchema,
+      CodexInputImageContentSchema,
+    ]),
   ),
 });
 
@@ -127,6 +144,59 @@ export type CodexFunctionCallOutputPayload = z.infer<
 >;
 
 /**
+ * Custom tool call payload (Codex-specific persisted format).
+ */
+export const CodexCustomToolCallPayloadSchema = z
+  .object({
+    type: z.literal("custom_tool_call"),
+    call_id: z.string().optional(),
+    id: z.string().optional(),
+    name: z.string().optional(),
+    arguments: z.string().optional(),
+    input: z.unknown().optional(),
+  })
+  .passthrough();
+
+export type CodexCustomToolCallPayload = z.infer<
+  typeof CodexCustomToolCallPayloadSchema
+>;
+
+/**
+ * Custom tool call output payload (Codex-specific persisted format).
+ */
+export const CodexCustomToolCallOutputPayloadSchema = z
+  .object({
+    type: z.literal("custom_tool_call_output"),
+    call_id: z.string().optional(),
+    output: z.unknown().optional(),
+  })
+  .passthrough();
+
+export type CodexCustomToolCallOutputPayload = z.infer<
+  typeof CodexCustomToolCallOutputPayloadSchema
+>;
+
+/**
+ * Web search call payload.
+ */
+export const CodexWebSearchCallPayloadSchema = z
+  .object({
+    type: z.literal("web_search_call"),
+    call_id: z.string().optional(),
+    id: z.string().optional(),
+    name: z.string().optional(),
+    query: z.string().optional(),
+    arguments: z.string().optional(),
+    input: z.unknown().optional(),
+    action: z.unknown().optional(),
+  })
+  .passthrough();
+
+export type CodexWebSearchCallPayload = z.infer<
+  typeof CodexWebSearchCallPayloadSchema
+>;
+
+/**
  * Ghost commit snapshot for git state tracking.
  */
 export const CodexGhostSnapshotPayloadSchema = z.object({
@@ -151,6 +221,9 @@ export const CodexResponseItemPayloadSchema = z.discriminatedUnion("type", [
   CodexReasoningPayloadSchema,
   CodexFunctionCallPayloadSchema,
   CodexFunctionCallOutputPayloadSchema,
+  CodexCustomToolCallPayloadSchema,
+  CodexCustomToolCallOutputPayloadSchema,
+  CodexWebSearchCallPayloadSchema,
   CodexGhostSnapshotPayloadSchema,
 ]);
 
@@ -260,6 +333,38 @@ export const CodexTokenCountEventSchema = z.object({
 });
 
 /**
+ * Context compacted event.
+ */
+export const CodexContextCompactedEventSchema = z.object({
+  type: z.literal("context_compacted"),
+});
+
+/**
+ * Generic item completion event.
+ */
+export const CodexItemCompletedEventSchema = z
+  .object({
+    type: z.literal("item_completed"),
+    thread_id: z.string().optional(),
+    turn_id: z.string().optional(),
+    item: z.unknown().optional(),
+  })
+  .passthrough();
+
+/**
+ * Turn aborted event.
+ */
+export const CodexTurnAbortedEventSchema = z
+  .object({
+    type: z.literal("turn_aborted"),
+    reason: z.string().optional(),
+    message: z.string().optional(),
+  })
+  .passthrough();
+
+export type CodexTurnAbortedEvent = z.infer<typeof CodexTurnAbortedEventSchema>;
+
+/**
  * Union of event message types.
  */
 export const CodexEventMsgPayloadSchema = z.discriminatedUnion("type", [
@@ -267,6 +372,9 @@ export const CodexEventMsgPayloadSchema = z.discriminatedUnion("type", [
   CodexAgentMessageEventSchema,
   CodexAgentReasoningEventSchema,
   CodexTokenCountEventSchema,
+  CodexContextCompactedEventSchema,
+  CodexItemCompletedEventSchema,
+  CodexTurnAbortedEventSchema,
 ]);
 
 export type CodexEventMsgPayload = z.infer<typeof CodexEventMsgPayloadSchema>;
@@ -278,6 +386,30 @@ export const CodexEventMsgEntrySchema = z.object({
 });
 
 export type CodexEventMsgEntry = z.infer<typeof CodexEventMsgEntrySchema>;
+
+// =============================================================================
+// Compaction Entries
+// =============================================================================
+
+/**
+ * Compaction payload for persisted replacement history snapshots.
+ */
+export const CodexCompactedPayloadSchema = z
+  .object({
+    message: z.string().optional(),
+    replacement_history: z.array(z.unknown()).optional(),
+  })
+  .passthrough();
+
+export type CodexCompactedPayload = z.infer<typeof CodexCompactedPayloadSchema>;
+
+export const CodexCompactedEntrySchema = z.object({
+  timestamp: z.string(),
+  type: z.literal("compacted"),
+  payload: CodexCompactedPayloadSchema,
+});
+
+export type CodexCompactedEntry = z.infer<typeof CodexCompactedEntrySchema>;
 
 // =============================================================================
 // Turn Context
@@ -328,6 +460,7 @@ export const CodexSessionEntrySchema = z.discriminatedUnion("type", [
   CodexSessionMetaEntrySchema,
   CodexResponseItemEntrySchema,
   CodexEventMsgEntrySchema,
+  CodexCompactedEntrySchema,
   CodexTurnContextEntrySchema,
 ]);
 
