@@ -5,10 +5,11 @@
  * The SDK reads auth from ~/.codex/auth.json automatically.
  */
 
-import { execSync } from "node:child_process";
+import { execSync, spawn } from "node:child_process";
 import {
   Codex,
   type CodexOptions,
+  type ModelReasoningEffort,
   type Thread,
   type ThreadEvent,
   type ThreadItem,
@@ -27,6 +28,45 @@ import type {
 } from "./types.js";
 
 const log = getLogger().child({ component: "codex-provider" });
+
+const MODEL_CACHE_TTL_MS = 60 * 60 * 1000;
+const MODEL_LIST_TIMEOUT_MS = 8000;
+const APP_SERVER_INIT_REQUEST_ID = 1;
+const APP_SERVER_MODEL_LIST_REQUEST_ID = 2;
+
+const PREFERRED_MODEL_ORDER = [
+  "gpt-5.3-codex",
+  "gpt-5.2-codex",
+  "gpt-5.1-codex-max",
+  "gpt-5.2",
+  "gpt-5.1-codex-mini",
+] as const;
+
+const FALLBACK_CODEX_MODELS: ModelInfo[] = [
+  { id: "gpt-5.3-codex", name: "GPT-5.3-Codex" },
+  { id: "gpt-5.2-codex", name: "GPT-5.2-Codex" },
+  { id: "gpt-5.1-codex-max", name: "GPT-5.1-Codex-Max" },
+  { id: "gpt-5.2", name: "GPT-5.2" },
+  { id: "gpt-5.1-codex-mini", name: "GPT-5.1-Codex-Mini" },
+];
+
+interface JsonRpcError {
+  message?: string;
+}
+
+interface JsonRpcResponse {
+  id?: number;
+  result?: unknown;
+  error?: JsonRpcError;
+}
+
+interface AppServerModel {
+  id: string;
+  model?: string;
+  displayName?: string;
+  description?: string;
+  upgrade?: string | null;
+}
 
 /**
  * Configuration for Codex provider.
@@ -50,11 +90,12 @@ export class CodexProvider implements AgentProvider {
   readonly name = "codex" as const;
   readonly displayName = "Codex";
   readonly supportsPermissionMode = false;
-  readonly supportsThinkingToggle = false;
+  readonly supportsThinkingToggle = true;
   readonly supportsSlashCommands = false;
 
   private readonly config: CodexProviderConfig;
   private codexInstance: Codex | null = null;
+  private modelCache: { models: ModelInfo[]; expiresAt: number } | null = null;
 
   constructor(config: CodexProviderConfig = {}) {
     this.config = config;
@@ -125,17 +166,256 @@ export class CodexProvider implements AgentProvider {
 
   /**
    * Get available models for Codex cloud.
-   * Returns hardcoded list of known Codex models.
-   * See: https://developers.openai.com/codex/models/
+   * Queries Codex app-server's model/list endpoint with a static fallback.
    */
   async getAvailableModels(): Promise<ModelInfo[]> {
-    // Codex cloud models - see https://developers.openai.com/codex/models/
-    return [
-      { id: "gpt-5.2-codex", name: "GPT-5.2 Codex" },
-      { id: "gpt-5-codex", name: "GPT-5 Codex" },
-      { id: "gpt-5-codex-mini", name: "GPT-5 Codex Mini" },
-      { id: "codex-mini-latest", name: "Codex Mini" },
-    ];
+    const now = Date.now();
+    if (this.modelCache && this.modelCache.expiresAt > now) {
+      return this.modelCache.models;
+    }
+
+    let models: ModelInfo[] = [];
+    if (this.isCodexCliInstalled()) {
+      models = await this.getModelsFromAppServer();
+    }
+
+    if (models.length === 0) {
+      models = FALLBACK_CODEX_MODELS;
+    }
+
+    this.modelCache = {
+      models,
+      expiresAt: now + MODEL_CACHE_TTL_MS,
+    };
+
+    return models;
+  }
+
+  private async getModelsFromAppServer(): Promise<ModelInfo[]> {
+    try {
+      const appServerModels = await this.requestAppServerModelList();
+      return this.normalizeModelList(appServerModels);
+    } catch (error) {
+      log.warn(
+        { error },
+        "Failed to query Codex app-server model list, using fallback models",
+      );
+      return [];
+    }
+  }
+
+  private requestAppServerModelList(): Promise<AppServerModel[]> {
+    return new Promise((resolve, reject) => {
+      const codexCommand = this.config.codexPath ?? "codex";
+      const child = spawn(
+        codexCommand,
+        ["app-server", "--listen", "stdio://"],
+        {
+          stdio: ["pipe", "pipe", "pipe"],
+        },
+      );
+
+      let settled = false;
+      let stdoutBuffer = "";
+      const stderrChunks: string[] = [];
+
+      const finish = (handler: () => void) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timeoutHandle);
+        try {
+          child.kill("SIGTERM");
+        } catch {
+          // Ignore - process may have already exited.
+        }
+        handler();
+      };
+
+      const parseAndHandleLine = (line: string) => {
+        let message: JsonRpcResponse;
+        try {
+          message = JSON.parse(line) as JsonRpcResponse;
+        } catch {
+          return;
+        }
+
+        if (message.id === APP_SERVER_INIT_REQUEST_ID) {
+          if (message.error) {
+            const errorMessage =
+              message.error.message ?? "Codex app-server initialize failed";
+            finish(() => reject(new Error(errorMessage)));
+            return;
+          }
+
+          child.stdin.write(
+            `${JSON.stringify({ jsonrpc: "2.0", method: "initialized" })}\n`,
+          );
+          child.stdin.write(
+            `${JSON.stringify({
+              jsonrpc: "2.0",
+              id: APP_SERVER_MODEL_LIST_REQUEST_ID,
+              method: "model/list",
+              params: { limit: 100 },
+            })}\n`,
+          );
+          return;
+        }
+
+        if (message.id !== APP_SERVER_MODEL_LIST_REQUEST_ID) {
+          return;
+        }
+
+        if (message.error) {
+          const errorMessage =
+            message.error.message ?? "Codex app-server model/list failed";
+          finish(() => reject(new Error(errorMessage)));
+          return;
+        }
+
+        const result = message.result as { data?: unknown[] } | undefined;
+        const data = Array.isArray(result?.data) ? result.data : [];
+        const models: AppServerModel[] = [];
+
+        for (const item of data) {
+          if (!item || typeof item !== "object") continue;
+          const model = item as AppServerModel;
+          if (typeof model.id !== "string") continue;
+          models.push(model);
+        }
+
+        finish(() => resolve(models));
+      };
+
+      const timeoutHandle = setTimeout(() => {
+        const stderr = stderrChunks.join("").trim();
+        finish(() =>
+          reject(
+            new Error(
+              stderr
+                ? `Timed out querying Codex app-server model list: ${stderr}`
+                : "Timed out querying Codex app-server model list",
+            ),
+          ),
+        );
+      }, MODEL_LIST_TIMEOUT_MS);
+
+      child.stdout.on("data", (chunk: Buffer) => {
+        stdoutBuffer += chunk.toString("utf-8");
+        const lines = stdoutBuffer.split("\n");
+        stdoutBuffer = lines.pop() ?? "";
+        for (const raw of lines) {
+          const line = raw.trim();
+          if (!line) continue;
+          parseAndHandleLine(line);
+        }
+      });
+
+      child.stderr.on("data", (chunk: Buffer) => {
+        stderrChunks.push(chunk.toString("utf-8"));
+      });
+
+      child.on("error", (error) => {
+        finish(() => reject(error));
+      });
+
+      child.on("exit", (code, signal) => {
+        if (settled) return;
+        const stderr = stderrChunks.join("").trim();
+        const details = stderr ? ` stderr: ${stderr}` : "";
+        finish(() =>
+          reject(
+            new Error(
+              `Codex app-server exited before model/list response (code=${code ?? "null"}, signal=${signal ?? "null"}).${details}`,
+            ),
+          ),
+        );
+      });
+
+      child.stdin.write(
+        `${JSON.stringify({
+          jsonrpc: "2.0",
+          id: APP_SERVER_INIT_REQUEST_ID,
+          method: "initialize",
+          params: {
+            clientInfo: {
+              name: "yep-anywhere",
+              version: "dev",
+            },
+          },
+        })}\n`,
+      );
+    });
+  }
+
+  private normalizeModelList(models: AppServerModel[]): ModelInfo[] {
+    const orderLookup = new Map<string, number>(
+      PREFERRED_MODEL_ORDER.map((id, idx) => [id, idx]),
+    );
+    const deduped = new Map<string, ModelInfo>();
+
+    for (const model of models) {
+      const modelId = (model.model || model.id || "").trim();
+      if (!modelId) continue;
+
+      deduped.set(modelId, {
+        id: modelId,
+        name: this.formatModelName(model.displayName || modelId),
+        description: model.description,
+      });
+
+      const upgradeId = model.upgrade?.trim();
+      if (upgradeId && !deduped.has(upgradeId)) {
+        deduped.set(upgradeId, {
+          id: upgradeId,
+          name: this.formatModelName(upgradeId),
+        });
+      }
+    }
+
+    return [...deduped.values()]
+      .map((model, index) => ({
+        model,
+        index,
+        rank: orderLookup.get(model.id) ?? PREFERRED_MODEL_ORDER.length + index,
+      }))
+      .sort((a, b) => a.rank - b.rank)
+      .map((entry) => entry.model);
+  }
+
+  private formatModelName(value: string): string {
+    return value
+      .trim()
+      .split("-")
+      .map((part) => {
+        const lower = part.toLowerCase();
+        if (lower === "gpt") return "GPT";
+        if (lower === "codex") return "Codex";
+        if (lower === "mini") return "Mini";
+        if (lower === "max") return "Max";
+        if (lower.length === 0) return "";
+        return lower.charAt(0).toUpperCase() + lower.slice(1);
+      })
+      .join("-");
+  }
+
+  private mapThinkingTokensToReasoningEffort(
+    maxThinkingTokens?: number,
+  ): ModelReasoningEffort {
+    // Our UI exposes thinking as off/light/medium/thorough token budgets.
+    // Codex SDK expects reasoning effort levels instead of token counts.
+    if (!maxThinkingTokens || maxThinkingTokens <= 0) {
+      return "minimal";
+    }
+    if (maxThinkingTokens <= 4096) {
+      return "low";
+    }
+    if (maxThinkingTokens <= 16384) {
+      return "medium";
+    }
+    if (maxThinkingTokens <= 32768) {
+      return "high";
+    }
+    return "xhigh";
   }
 
   /**
@@ -177,6 +457,8 @@ export class CodexProvider implements AgentProvider {
     if (options.model) {
       threadOptions.model = options.model;
     }
+    threadOptions.modelReasoningEffort =
+      this.mapThinkingTokensToReasoningEffort(options.maxThinkingTokens);
 
     // Map permission mode to sandbox mode
     if (options.permissionMode === "bypassPermissions") {
