@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useNavigate } from "react-router-dom";
 import { useProjects } from "../hooks/useProjects";
+import { useRemoteBasePath } from "../hooks/useRemoteBasePath";
 import type { Project } from "../types";
 
 const DESKTOP_BREAKPOINT = 769;
@@ -31,6 +32,7 @@ export function ProjectSelector({
   const buttonRef = useRef<HTMLButtonElement>(null);
   const sheetRef = useRef<HTMLDivElement>(null);
   const navigate = useNavigate();
+  const basePath = useRemoteBasePath();
 
   const { projects, loading } = useProjects();
 
@@ -50,7 +52,9 @@ export function ProjectSelector({
       if (onProjectChange) {
         onProjectChange(project);
       } else {
-        navigate(`/new-session?projectId=${encodeURIComponent(project.id)}`);
+        navigate(
+          `${basePath}/new-session?projectId=${encodeURIComponent(project.id)}`,
+        );
       }
     }
     setIsOpen(false);

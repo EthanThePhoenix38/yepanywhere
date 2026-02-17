@@ -1,4 +1,5 @@
 import { useNavigate } from "react-router-dom";
+import { useRemoteBasePath } from "../../../hooks/useRemoteBasePath";
 import type { OnboardingStepProps } from "../types";
 
 /**
@@ -11,10 +12,11 @@ export function RemoteAccessStep({
   isLastStep,
 }: OnboardingStepProps) {
   const navigate = useNavigate();
+  const basePath = useRemoteBasePath();
 
   const handleGoToSettings = () => {
     onNext(); // Complete onboarding first
-    navigate("/settings/remote");
+    navigate(`${basePath}/settings/remote`);
   };
 
   return (

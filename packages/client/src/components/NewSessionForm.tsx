@@ -30,6 +30,7 @@ import {
   getDefaultProvider,
   useProviders,
 } from "../hooks/useProviders";
+import { useRemoteBasePath } from "../hooks/useRemoteBasePath";
 import { useRemoteExecutors } from "../hooks/useRemoteExecutors";
 import { hasCoarsePointer } from "../lib/deviceDetection";
 import type { PermissionMode } from "../types";
@@ -93,6 +94,7 @@ export function NewSessionForm({
   compact = false,
 }: NewSessionFormProps) {
   const navigate = useNavigate();
+  const basePath = useRemoteBasePath();
   const [message, setMessage, draftControls] = useDraftPersistence(
     `draft-new-session-${projectId}`,
   );
@@ -370,7 +372,7 @@ export function NewSessionForm({
       // without waiting for getSession to complete
       // Also pass initial message as optimistic title (session name = first message)
       // Pass model/provider so ProviderBadge can render immediately
-      navigate(`/projects/${projectId}/sessions/${sessionId}`, {
+      navigate(`${basePath}/projects/${projectId}/sessions/${sessionId}`, {
         state: {
           initialStatus: { state: "owned", processId },
           initialTitle: trimmedMessage,

@@ -1,6 +1,7 @@
 import { useNavigate, useParams } from "react-router-dom";
 import { PageHeader } from "../../components/PageHeader";
 import { useReloadNotifications } from "../../hooks/useReloadNotifications";
+import { useRemoteBasePath } from "../../hooks/useRemoteBasePath";
 import { useNavigationLayout } from "../../layouts";
 import { AboutSettings } from "./AboutSettings";
 import { AppearanceSettings } from "./AppearanceSettings";
@@ -64,6 +65,7 @@ function SettingsCategoryItem({
 export function SettingsLayout() {
   const { category } = useParams<{ category?: string }>();
   const navigate = useNavigate();
+  const basePath = useRemoteBasePath();
   const { openSidebar, isWideScreen, toggleSidebar, isSidebarCollapsed } =
     useNavigationLayout();
   const { isManualReloadMode } = useReloadNotifications();
@@ -78,11 +80,11 @@ export function SettingsLayout() {
     category || (isWideScreen ? categories[0]?.id : undefined);
 
   const handleCategoryClick = (categoryId: string) => {
-    navigate(`/settings/${categoryId}`);
+    navigate(`${basePath}/settings/${categoryId}`);
   };
 
   const handleBack = () => {
-    navigate("/settings");
+    navigate(`${basePath}/settings`);
   };
 
   // Get the component for the current category
