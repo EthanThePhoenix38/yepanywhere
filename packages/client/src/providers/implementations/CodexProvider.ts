@@ -18,7 +18,6 @@ export class CodexProvider implements Provider {
       "OpenAI's Codex CLI. Full editing capabilities with cloud-based reasoning.",
     limitations: [
       "Edit details not visible (black box)",
-      "No out-of-band tool approval",
       "Best for fire-and-forget tasks",
     ],
     website: "https://openai.com/index/introducing-codex/",

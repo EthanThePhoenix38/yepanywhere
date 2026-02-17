@@ -45,6 +45,9 @@ docs/tasks/schema-report.json
 # Codex sample sessions (local dev data)
 codex-sample-sessions/
 
+# Large local Codex protocol dumps (script now keeps only provider subset)
+packages/server/generated/codex-app-server/
+
 # Text files in repo root
 /*.txt
 

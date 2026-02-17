@@ -1,25 +1,39 @@
 /**
- * Codex Provider implementation using @openai/codex-sdk.
+ * Codex Provider implementation using codex app-server JSON-RPC.
  *
- * Uses the official Codex SDK for programmatic agent control.
- * The SDK reads auth from ~/.codex/auth.json automatically.
+ * Uses `codex app-server --listen stdio://` for turn execution so we can handle
+ * server-initiated permission requests (command/file approval).
  */
 
-import { execSync, spawn } from "node:child_process";
-import {
-  Codex,
-  type CodexOptions,
-  type ModelReasoningEffort,
-  type Thread,
-  type ThreadEvent,
-  type ThreadItem,
-  type ThreadOptions,
-} from "@openai/codex-sdk";
+import { type ChildProcess, execSync, spawn } from "node:child_process";
 import type { ModelInfo } from "@yep-anywhere/shared";
 import { getLogger } from "../../logging/logger.js";
 import { whichCommand } from "../cli-detection.js";
 import { MessageQueue } from "../messageQueue.js";
 import type { SDKMessage, UserMessage } from "../types.js";
+import type { ToolApprovalResult } from "../types.js";
+import type {
+  AskForApproval as CodexAskForApproval,
+  ErrorNotification as CodexErrorNotification,
+  ItemCompletedNotification as CodexItemCompletedNotification,
+  ItemStartedNotification as CodexItemStartedNotification,
+  SandboxMode as CodexSandboxMode,
+  ThreadItem as CodexThreadItem,
+  CommandExecutionApprovalDecision,
+  CommandExecutionRequestApprovalParams,
+  FileChangeApprovalDecision,
+  FileChangeRequestApprovalParams,
+  ThreadResumeParams,
+  ThreadResumeResponse,
+  ThreadStartParams,
+  ThreadStartResponse,
+  ThreadTokenUsageUpdatedNotification,
+  ToolRequestUserInputParams,
+  ToolRequestUserInputResponse,
+  TurnCompletedNotification,
+  TurnStartParams,
+  TurnStartResponse,
+} from "./codex-protocol/index.js";
 import type {
   AgentProvider,
   AgentSession,
@@ -50,14 +64,27 @@ const FALLBACK_CODEX_MODELS: ModelInfo[] = [
   { id: "gpt-5.1-codex-mini", name: "GPT-5.1-Codex-Mini" },
 ];
 
+type JsonRpcId = string | number;
+
 interface JsonRpcError {
   message?: string;
+  code?: number;
+  data?: unknown;
 }
 
 interface JsonRpcResponse {
-  id?: number;
+  id?: JsonRpcId;
   result?: unknown;
   error?: JsonRpcError;
+}
+
+interface JsonRpcNotification {
+  method: string;
+  params?: unknown;
+}
+
+interface JsonRpcServerRequest extends JsonRpcNotification {
+  id: JsonRpcId;
 }
 
 interface AppServerModel {
@@ -67,6 +94,52 @@ interface AppServerModel {
   description?: string;
   upgrade?: string | null;
 }
+
+interface TokenUsageSnapshot {
+  inputTokens: number;
+  outputTokens: number;
+  cachedInputTokens: number;
+}
+
+interface NormalizedFileChange {
+  path: string;
+  kind: "add" | "delete" | "update";
+}
+
+type NormalizedThreadItem =
+  | { id: string; type: "reasoning"; text: string }
+  | { id: string; type: "agent_message"; text: string }
+  | {
+      id: string;
+      type: "command_execution";
+      command: string;
+      aggregated_output: string;
+      exit_code?: number;
+      status: string;
+    }
+  | {
+      id: string;
+      type: "file_change";
+      changes: NormalizedFileChange[];
+      status: string;
+    }
+  | {
+      id: string;
+      type: "mcp_tool_call";
+      server: string;
+      tool: string;
+      arguments: unknown;
+      result?: unknown;
+      error?: { message: string };
+      status: string;
+    }
+  | { id: string; type: "web_search"; query: string }
+  | {
+      id: string;
+      type: "todo_list";
+      items: Array<{ text: string; completed: boolean }>;
+    }
+  | { id: string; type: "error"; message: string };
 
 /**
  * Configuration for Codex provider.
@@ -80,47 +153,357 @@ export interface CodexProviderConfig {
   apiKey?: string;
 }
 
+class AsyncQueue<T> {
+  private items: T[] = [];
+  private waiters: Array<{
+    resolve: (value: T) => void;
+    reject: (error: Error) => void;
+    signal?: AbortSignal;
+    onAbort?: () => void;
+  }> = [];
+  private closedError: Error | null = null;
+
+  push(item: T): void {
+    if (this.closedError) return;
+    const waiter = this.waiters.shift();
+    if (waiter) {
+      if (waiter.signal && waiter.onAbort) {
+        waiter.signal.removeEventListener("abort", waiter.onAbort);
+      }
+      waiter.resolve(item);
+      return;
+    }
+    this.items.push(item);
+  }
+
+  close(error?: Error): void {
+    if (this.closedError) return;
+    this.closedError = error ?? new Error("Queue closed");
+    for (const waiter of this.waiters) {
+      if (waiter.signal && waiter.onAbort) {
+        waiter.signal.removeEventListener("abort", waiter.onAbort);
+      }
+      waiter.reject(this.closedError);
+    }
+    this.waiters = [];
+    this.items = [];
+  }
+
+  async shift(signal?: AbortSignal): Promise<T> {
+    if (this.items.length > 0) {
+      const item = this.items.shift();
+      if (item === undefined) {
+        throw new Error("Queue underflow");
+      }
+      return item;
+    }
+
+    if (this.closedError) {
+      throw this.closedError;
+    }
+
+    return await new Promise<T>((resolve, reject) => {
+      const waiter: {
+        resolve: (value: T) => void;
+        reject: (error: Error) => void;
+        signal?: AbortSignal;
+        onAbort?: () => void;
+      } = { resolve, reject, signal };
+
+      if (signal) {
+        const onAbort = () => {
+          this.waiters = this.waiters.filter((w) => w !== waiter);
+          reject(new Error("Operation aborted"));
+        };
+        waiter.onAbort = onAbort;
+        signal.addEventListener("abort", onAbort, { once: true });
+      }
+
+      this.waiters.push(waiter);
+    });
+  }
+}
+
+type AppServerRequestHandler = (
+  request: JsonRpcServerRequest,
+) => Promise<unknown>;
+
+class CodexAppServerClient {
+  private process: ChildProcess | null = null;
+  private stdoutBuffer = "";
+  private nextRequestId = 1;
+  private readonly pendingRequests = new Map<
+    JsonRpcId,
+    {
+      resolve: (result: unknown) => void;
+      reject: (error: Error) => void;
+    }
+  >();
+  private readonly notifications = new AsyncQueue<JsonRpcNotification>();
+  private onServerRequest: AppServerRequestHandler | null = null;
+  private closed = false;
+
+  constructor(
+    private readonly command: string,
+    private readonly cwd: string,
+    private readonly env: NodeJS.ProcessEnv,
+  ) {}
+
+  setServerRequestHandler(handler: AppServerRequestHandler): void {
+    this.onServerRequest = handler;
+  }
+
+  async connect(): Promise<void> {
+    if (this.process) {
+      throw new Error("Codex app-server already connected");
+    }
+
+    const child = spawn(this.command, ["app-server", "--listen", "stdio://"], {
+      cwd: this.cwd,
+      stdio: ["pipe", "pipe", "pipe"],
+      env: this.env,
+    });
+
+    this.process = child;
+
+    child.stdout?.on("data", (chunk: Buffer) => {
+      this.stdoutBuffer += chunk.toString("utf-8");
+      const lines = this.stdoutBuffer.split("\n");
+      this.stdoutBuffer = lines.pop() ?? "";
+      for (const raw of lines) {
+        const line = raw.trim();
+        if (!line) continue;
+        this.handleJsonRpcLine(line);
+      }
+    });
+
+    child.stderr?.on("data", (chunk: Buffer) => {
+      const stderr = chunk.toString("utf-8").trim();
+      if (stderr) {
+        log.debug({ stderr }, "codex app-server stderr");
+      }
+    });
+
+    child.on("error", (error) => {
+      this.handleProcessClose(error);
+    });
+
+    child.on("exit", (code, signal) => {
+      this.handleProcessClose(
+        new Error(
+          `Codex app-server exited (code=${code ?? "null"}, signal=${signal ?? "null"})`,
+        ),
+      );
+    });
+
+    await new Promise<void>((resolve, reject) => {
+      const onSpawn = () => {
+        child.off("error", onError);
+        resolve();
+      };
+      const onError = (error: Error) => {
+        child.off("spawn", onSpawn);
+        reject(error);
+      };
+      child.once("spawn", onSpawn);
+      child.once("error", onError);
+    });
+  }
+
+  private handleJsonRpcLine(line: string): void {
+    let message: Record<string, unknown>;
+    try {
+      message = JSON.parse(line) as Record<string, unknown>;
+    } catch {
+      log.debug({ line }, "Ignoring non-JSON app-server line");
+      return;
+    }
+
+    const method =
+      typeof message.method === "string" ? (message.method as string) : null;
+    const hasId =
+      typeof message.id === "string" || typeof message.id === "number";
+
+    // Server request/notification
+    if (method) {
+      if (hasId) {
+        const request: JsonRpcServerRequest = {
+          id: message.id as JsonRpcId,
+          method,
+          params: message.params,
+        };
+        this.handleServerRequest(request);
+        return;
+      }
+
+      this.notifications.push({ method, params: message.params });
+      return;
+    }
+
+    // Response to our request
+    if (hasId) {
+      const id = message.id as JsonRpcId;
+      const pending = this.pendingRequests.get(id);
+      if (!pending) {
+        return;
+      }
+      this.pendingRequests.delete(id);
+
+      if (message.error && typeof message.error === "object") {
+        const error = message.error as JsonRpcError;
+        pending.reject(new Error(error.message ?? "JSON-RPC request failed"));
+        return;
+      }
+
+      pending.resolve(message.result);
+    }
+  }
+
+  private handleServerRequest(request: JsonRpcServerRequest): void {
+    const respond = (payload: Record<string, unknown>) => {
+      this.sendRaw({
+        jsonrpc: "2.0",
+        id: request.id,
+        ...payload,
+      });
+    };
+
+    if (!this.onServerRequest) {
+      respond({
+        error: {
+          code: -32601,
+          message: `Unhandled server request: ${request.method}`,
+        },
+      });
+      return;
+    }
+
+    void this.onServerRequest(request)
+      .then((result) => {
+        respond({ result: result ?? {} });
+      })
+      .catch((error) => {
+        respond({
+          error: {
+            code: -32000,
+            message:
+              error instanceof Error ? error.message : "Server request failed",
+          },
+        });
+      });
+  }
+
+  async request<T>(method: string, params?: unknown): Promise<T> {
+    if (this.closed) {
+      throw new Error("Codex app-server client is closed");
+    }
+
+    const id = this.nextRequestId++;
+
+    const resultPromise = new Promise<T>((resolve, reject) => {
+      this.pendingRequests.set(id, {
+        resolve: (result) => resolve(result as T),
+        reject,
+      });
+    });
+
+    this.sendRaw({
+      jsonrpc: "2.0",
+      id,
+      method,
+      params,
+    });
+
+    return await resultPromise;
+  }
+
+  notify(method: string, params?: unknown): void {
+    this.sendRaw({
+      jsonrpc: "2.0",
+      method,
+      ...(params === undefined ? {} : { params }),
+    });
+  }
+
+  async nextNotification(signal?: AbortSignal): Promise<JsonRpcNotification> {
+    return await this.notifications.shift(signal);
+  }
+
+  close(): void {
+    if (this.closed) return;
+    this.closed = true;
+
+    const closeError = new Error("Codex app-server client closed");
+    for (const pending of this.pendingRequests.values()) {
+      pending.reject(closeError);
+    }
+    this.pendingRequests.clear();
+    this.notifications.close(closeError);
+
+    if (this.process && !this.process.killed) {
+      try {
+        this.process.kill("SIGTERM");
+      } catch {
+        // Ignore process shutdown errors.
+      }
+    }
+
+    this.process = null;
+  }
+
+  private handleProcessClose(error: Error): void {
+    if (this.closed) return;
+    this.closed = true;
+
+    for (const pending of this.pendingRequests.values()) {
+      pending.reject(error);
+    }
+    this.pendingRequests.clear();
+
+    // Emit a terminal error notification so consumers can surface it.
+    this.notifications.push({
+      method: "error",
+      params: {
+        error: { message: error.message },
+        willRetry: false,
+      },
+    });
+    this.notifications.close(error);
+    this.process = null;
+  }
+
+  private sendRaw(payload: Record<string, unknown>): void {
+    if (!this.process?.stdin || this.closed) {
+      return;
+    }
+
+    try {
+      this.process.stdin.write(`${JSON.stringify(payload)}\n`);
+    } catch (error) {
+      this.handleProcessClose(
+        error instanceof Error
+          ? error
+          : new Error("Failed to write to codex app-server stdin"),
+      );
+    }
+  }
+}
+
 /**
- * Codex Provider implementation using the official SDK.
- *
- * Uses `@openai/codex-sdk` for streaming agent responses.
- * Auth is handled by the SDK reading from ~/.codex/auth.json.
+ * Codex Provider implementation using app-server JSON-RPC.
  */
 export class CodexProvider implements AgentProvider {
   readonly name = "codex" as const;
   readonly displayName = "Codex";
-  readonly supportsPermissionMode = false;
+  readonly supportsPermissionMode = true;
   readonly supportsThinkingToggle = true;
   readonly supportsSlashCommands = false;
 
   private readonly config: CodexProviderConfig;
-  private codexInstance: Codex | null = null;
   private modelCache: { models: ModelInfo[]; expiresAt: number } | null = null;
 
   constructor(config: CodexProviderConfig = {}) {
     this.config = config;
-  }
-
-  /**
-   * Get or create the Codex SDK instance.
-   */
-  private getCodex(): Codex {
-    if (!this.codexInstance) {
-      const options: CodexOptions = {};
-
-      if (this.config.codexPath) {
-        options.codexPathOverride = this.config.codexPath;
-      }
-      if (this.config.baseUrl) {
-        options.baseUrl = this.config.baseUrl;
-      }
-      if (this.config.apiKey) {
-        options.apiKey = this.config.apiKey;
-      }
-
-      this.codexInstance = new Codex(options);
-    }
-    return this.codexInstance;
   }
 
   /**
@@ -143,6 +526,20 @@ export class CodexProvider implements AgentProvider {
   }
 
   /**
+   * Build environment overrides for Codex subprocesses.
+   */
+  private getCodexEnv(): NodeJS.ProcessEnv {
+    const env: NodeJS.ProcessEnv = { ...process.env };
+    if (this.config.baseUrl) {
+      env.OPENAI_BASE_URL = this.config.baseUrl;
+    }
+    if (this.config.apiKey) {
+      env.OPENAI_API_KEY = this.config.apiKey;
+    }
+    return env;
+  }
+
+  /**
    * Check if Codex is authenticated.
    */
   async isAuthenticated(): Promise<boolean> {
@@ -153,7 +550,6 @@ export class CodexProvider implements AgentProvider {
   /**
    * Get detailed authentication status.
    * If Codex CLI is installed, assume it's authenticated.
-   * The SDK handles auth internally and will error at session start if not authenticated.
    */
   async getAuthStatus(): Promise<AuthStatus> {
     const installed = this.isCodexCliInstalled();
@@ -212,6 +608,7 @@ export class CodexProvider implements AgentProvider {
         ["app-server", "--listen", "stdio://"],
         {
           stdio: ["pipe", "pipe", "pipe"],
+          env: this.getCodexEnv(),
         },
       );
 
@@ -341,6 +738,7 @@ export class CodexProvider implements AgentProvider {
               name: "yep-anywhere",
               version: "dev",
             },
+            capabilities: null,
           },
         })}\n`,
       );
@@ -400,9 +798,7 @@ export class CodexProvider implements AgentProvider {
 
   private mapThinkingTokensToReasoningEffort(
     maxThinkingTokens?: number,
-  ): ModelReasoningEffort {
-    // Our UI exposes thinking as off/light/medium/thorough token budgets.
-    // Codex SDK expects reasoning effort levels instead of token counts.
+  ): "none" | "minimal" | "low" | "medium" | "high" | "xhigh" {
     if (!maxThinkingTokens || maxThinkingTokens <= 0) {
       return "minimal";
     }
@@ -418,6 +814,32 @@ export class CodexProvider implements AgentProvider {
     return "xhigh";
   }
 
+  private mapPermissionModeToThreadPolicy(
+    permissionMode?: StartSessionOptions["permissionMode"],
+  ): {
+    approvalPolicy: CodexAskForApproval;
+    sandbox: CodexSandboxMode;
+  } {
+    if (permissionMode === "bypassPermissions") {
+      return {
+        approvalPolicy: "never",
+        sandbox: "danger-full-access",
+      };
+    }
+
+    if (permissionMode === "plan") {
+      return {
+        approvalPolicy: "on-request",
+        sandbox: "read-only",
+      };
+    }
+
+    return {
+      approvalPolicy: "on-request",
+      sandbox: "workspace-write",
+    };
+  }
+
   /**
    * Start a new Codex session.
    */
@@ -430,306 +852,806 @@ export class CodexProvider implements AgentProvider {
       queue.push(options.initialMessage);
     }
 
-    const iterator = this.runSession(options, queue, abortController.signal);
+    let activeClient: CodexAppServerClient | null = null;
+    const iterator = this.runSession(
+      options,
+      queue,
+      abortController.signal,
+      (client) => {
+        activeClient = client;
+      },
+    );
 
     return {
       iterator,
       queue,
-      abort: () => abortController.abort(),
+      abort: () => {
+        abortController.abort();
+        activeClient?.close();
+      },
     };
   }
 
   /**
-   * Main session loop using the SDK.
+   * Main session loop using codex app-server.
    */
   private async *runSession(
     options: StartSessionOptions,
     queue: MessageQueue,
     signal: AbortSignal,
+    setActiveClient: (client: CodexAppServerClient) => void,
   ): AsyncIterableIterator<SDKMessage> {
-    const codex = this.getCodex();
+    const codexCommand = this.config.codexPath ?? "codex";
+    const appServer = new CodexAppServerClient(
+      codexCommand,
+      options.cwd,
+      this.getCodexEnv(),
+    );
+    setActiveClient(appServer);
 
-    // Build thread options
-    const threadOptions: ThreadOptions = {
-      workingDirectory: options.cwd,
-    };
-
-    if (options.model) {
-      threadOptions.model = options.model;
-    }
-    threadOptions.modelReasoningEffort =
-      this.mapThinkingTokensToReasoningEffort(options.maxThinkingTokens);
-
-    // Map permission mode to sandbox mode
-    if (options.permissionMode === "bypassPermissions") {
-      threadOptions.sandboxMode = "danger-full-access";
-      threadOptions.approvalPolicy = "never";
-    } else {
-      threadOptions.sandboxMode = "workspace-write";
-      threadOptions.approvalPolicy = "on-failure";
-    }
-
-    // Start or resume thread
-    let thread: Thread;
-    if (options.resumeSessionId) {
-      log.debug(
-        { resumeSessionId: options.resumeSessionId },
-        "Resuming thread",
-      );
-      thread = codex.resumeThread(options.resumeSessionId, threadOptions);
-    } else {
-      log.debug({ threadOptions }, "Starting new thread");
-      thread = codex.startThread(threadOptions);
-    }
-
-    // Session ID - will be set from thread.started event
-    // For resume, we already have the real ID
     let sessionId = options.resumeSessionId ?? "";
-    let initEmitted = !!options.resumeSessionId;
+    const usageByTurnId = new Map<string, TokenUsageSnapshot>();
 
-    // Turn counter for generating unique UUIDs
-    // Codex SDK reuses item_0, item_1, etc. within each turn, so we need
-    // to combine with turn number to create globally unique IDs
-    let turnNumber = 0;
+    appServer.setServerRequestHandler(async (request) => {
+      return await this.handleServerRequestApproval(request, options, signal);
+    });
 
-    // If resuming, emit init immediately with known ID
-    if (options.resumeSessionId) {
+    try {
+      await appServer.connect();
+
+      await appServer.request<{ userAgent: string }>("initialize", {
+        clientInfo: {
+          name: "yep-anywhere",
+          version: "dev",
+        },
+        capabilities: null,
+      });
+      appServer.notify("initialized");
+
+      const policy = this.mapPermissionModeToThreadPolicy(
+        options.permissionMode,
+      );
+
+      const threadResumeParams: ThreadResumeParams = {
+        threadId: options.resumeSessionId ?? sessionId,
+        model: options.model ?? null,
+        cwd: options.cwd,
+        approvalPolicy: policy.approvalPolicy,
+        sandbox: policy.sandbox,
+      };
+      const threadStartParams: ThreadStartParams = {
+        model: options.model ?? null,
+        cwd: options.cwd,
+        approvalPolicy: policy.approvalPolicy,
+        sandbox: policy.sandbox,
+        experimentalRawEvents: false,
+      };
+      const threadResult: ThreadResumeResponse | ThreadStartResponse =
+        options.resumeSessionId
+          ? await appServer.request<ThreadResumeResponse>(
+              "thread/resume",
+              threadResumeParams,
+            )
+          : await appServer.request<ThreadStartResponse>(
+              "thread/start",
+              threadStartParams,
+            );
+
+      sessionId = threadResult.thread.id;
+
+      // Emit init immediately with the real session ID.
       yield {
         type: "system",
         subtype: "init",
         session_id: sessionId,
         cwd: options.cwd,
       } as SDKMessage;
-    }
 
-    // Process messages from the queue
-    log.debug("Starting message queue processing");
-    const messageGen = queue.generator();
+      const messageGen = queue.generator();
 
-    for await (const message of messageGen) {
-      log.debug({ messageType: typeof message }, "Received message from queue");
-      if (signal.aborted) {
-        log.debug("Signal aborted, breaking message loop");
-        break;
-      }
-
-      // Extract text from user message
-      const userPrompt = this.extractTextFromMessage(message);
-      if (!userPrompt) {
-        log.debug("No text extracted from message, skipping");
-        continue;
-      }
-      log.debug(
-        { userPromptLength: userPrompt.length },
-        "Extracted user prompt",
-      );
-
-      // Emit user message with UUID from queue to enable deduplication
-      // The UUID was set by Process.queueMessage() and passed through MessageQueue
-      const userMsgSessionId = sessionId || `pending-${Date.now()}`;
-      yield {
-        type: "user",
-        uuid: message.uuid,
-        session_id: userMsgSessionId,
-        message: {
-          role: "user",
-          content: userPrompt,
-        },
-      } as SDKMessage;
-
-      // Increment turn number for this new turn
-      turnNumber++;
-
-      // Run a turn with the SDK
-      try {
-        log.debug("Calling thread.runStreamed");
-        const { events } = await thread.runStreamed(userPrompt, {
-          signal,
-        });
-        log.debug("Got events iterator, starting event loop");
-
-        // Process streaming events
-        let eventCount = 0;
-        for await (const event of events) {
-          eventCount++;
-          log.debug(
-            { eventType: event.type, eventCount },
-            "Received SDK event",
-          );
-          if (signal.aborted) {
-            log.debug("Signal aborted during event processing");
-            break;
-          }
-
-          // Update session ID from thread.started and emit init if needed
-          if (event.type === "thread.started") {
-            sessionId = event.thread_id;
-            log.debug(
-              { newSessionId: sessionId },
-              "Updated session ID from thread.started",
-            );
-
-            // Emit init message now that we have the real session ID
-            // This is critical - we delay init until we have the real ID so that
-            // waitForSessionId() returns the correct ID to the client
-            if (!initEmitted) {
-              initEmitted = true;
-              log.debug({ sessionId }, "Emitting init with real session ID");
-              yield {
-                type: "system",
-                subtype: "init",
-                session_id: sessionId,
-                cwd: options.cwd,
-              } as SDKMessage;
-            }
-          }
-
-          // Convert event to SDKMessage(s) - skip thread.started as we handle it above
-          if (event.type !== "thread.started") {
-            const messages = this.convertEventToSDKMessages(
-              event,
-              sessionId,
-              turnNumber,
-            );
-            log.debug(
-              { eventType: event.type, messageCount: messages.length },
-              "Converted event to SDKMessages",
-            );
-            for (const msg of messages) {
-              yield msg;
-            }
-          }
+      for await (const message of messageGen) {
+        if (signal.aborted) {
+          break;
         }
-        log.debug(
-          { totalEvents: eventCount },
-          "Finished processing events for turn",
+
+        const userPrompt = this.extractTextFromMessage(message);
+        if (!userPrompt) {
+          continue;
+        }
+
+        // Emit user message with UUID from queue to enable deduplication.
+        yield {
+          type: "user",
+          uuid: message.uuid,
+          session_id: sessionId,
+          message: {
+            role: "user",
+            content: userPrompt,
+          },
+        } as SDKMessage;
+
+        const turnStartParams: TurnStartParams = {
+          threadId: sessionId,
+          input: [{ type: "text", text: userPrompt, text_elements: [] }],
+          effort: this.mapThinkingTokensToReasoningEffort(
+            options.maxThinkingTokens,
+          ),
+        };
+        const turnResult = await appServer.request<TurnStartResponse>(
+          "turn/start",
+          turnStartParams,
         );
 
-        // Emit result after each turn to signal the Process that we're idle
-        // This matches what the Claude SDK does after each turn
-        log.debug({ sessionId }, "Emitting result after turn");
+        const activeTurnId = turnResult.turn.id;
+        let turnComplete = turnResult.turn.status !== "inProgress";
+        let emittedTurnError = false;
+
+        while (!turnComplete && !signal.aborted) {
+          const notification = await appServer.nextNotification(signal);
+
+          if (notification.method === "thread/tokenUsage/updated") {
+            const usage = this.extractTurnUsage(notification.params);
+            if (usage) {
+              usageByTurnId.set(usage.turnId, usage.snapshot);
+            }
+          }
+
+          const messages = this.convertNotificationToSDKMessages(
+            notification,
+            sessionId,
+            usageByTurnId,
+          );
+          for (const msg of messages) {
+            yield msg;
+          }
+
+          if (this.isTurnTerminalNotification(notification, activeTurnId)) {
+            if (notification.method === "error") {
+              emittedTurnError = true;
+            }
+            turnComplete = true;
+          }
+        }
+
+        // If turn failed without an emitted error notification, surface start response error.
+        if (
+          !emittedTurnError &&
+          turnResult.turn.status === "failed" &&
+          turnResult.turn.error?.message
+        ) {
+          yield {
+            type: "error",
+            session_id: sessionId,
+            error: turnResult.turn.error.message,
+          } as SDKMessage;
+        }
+
         yield {
           type: "result",
           session_id: sessionId,
         } as SDKMessage;
-      } catch (error) {
-        log.error({ error }, "Error during turn");
-        if (signal.aborted) break;
-
+      }
+    } catch (error) {
+      log.error({ error }, "Error in codex app-server session");
+      if (!signal.aborted) {
         yield {
           type: "error",
           session_id: sessionId,
           error: error instanceof Error ? error.message : String(error),
         } as SDKMessage;
       }
+    } finally {
+      appServer.close();
     }
 
-    log.debug({ sessionId }, "Message loop ended, emitting result");
-    // Emit result message when done
     yield {
       type: "result",
       session_id: sessionId,
     } as SDKMessage;
-    log.debug({ sessionId }, "Session complete");
   }
 
-  /**
-   * Convert a Codex SDK event to SDKMessage(s).
-   */
-  private convertEventToSDKMessages(
-    event: ThreadEvent,
+  private isTurnTerminalNotification(
+    notification: JsonRpcNotification,
+    turnId: string,
+  ): boolean {
+    if (notification.method === "turn/completed") {
+      const params = this.asTurnCompletedNotification(notification.params);
+      return params?.turn.id === turnId;
+    }
+
+    if (notification.method === "error") {
+      const params = this.asErrorNotification(notification.params);
+      return params?.turnId === turnId && !params.willRetry;
+    }
+
+    return false;
+  }
+
+  private extractTurnUsage(params: unknown): {
+    turnId: string;
+    snapshot: TokenUsageSnapshot;
+  } | null {
+    const notification = this.asThreadTokenUsageUpdatedNotification(params);
+    if (!notification) return null;
+
+    return {
+      turnId: notification.turnId,
+      snapshot: {
+        inputTokens: notification.tokenUsage.last.inputTokens,
+        outputTokens: notification.tokenUsage.last.outputTokens,
+        cachedInputTokens: notification.tokenUsage.last.cachedInputTokens,
+      },
+    };
+  }
+
+  private async handleServerRequestApproval(
+    request: JsonRpcServerRequest,
+    options: StartSessionOptions,
+    signal: AbortSignal,
+  ): Promise<unknown> {
+    const params =
+      request.params && typeof request.params === "object"
+        ? (request.params as Record<string, unknown>)
+        : {};
+
+    switch (request.method) {
+      case "item/commandExecution/requestApproval": {
+        const commandParams = this.asCommandExecutionRequestApprovalParams(
+          request.params,
+        );
+        if (!commandParams) {
+          return { decision: "decline" as CommandExecutionApprovalDecision };
+        }
+        const toolInput = {
+          command: commandParams.command,
+          cwd: commandParams.cwd,
+          reason: commandParams.reason,
+          commandActions: commandParams.commandActions ?? [],
+          proposedExecpolicyAmendment:
+            commandParams.proposedExecpolicyAmendment ?? null,
+          threadId: commandParams.threadId,
+          turnId: commandParams.turnId,
+          itemId: commandParams.itemId,
+        };
+        const decision: CommandExecutionApprovalDecision =
+          await this.resolveApprovalDecision(
+            options,
+            "Bash",
+            toolInput,
+            signal,
+            "accept",
+            "decline",
+          );
+        return { decision };
+      }
+
+      case "item/fileChange/requestApproval": {
+        const fileParams = this.asFileChangeRequestApprovalParams(
+          request.params,
+        );
+        if (!fileParams) {
+          return { decision: "decline" as FileChangeApprovalDecision };
+        }
+        const grantRoot = fileParams.grantRoot ?? null;
+        const toolInput = {
+          file_path: grantRoot ?? undefined,
+          reason: fileParams.reason ?? null,
+          grantRoot,
+          threadId: fileParams.threadId,
+          turnId: fileParams.turnId,
+          itemId: fileParams.itemId,
+        };
+        const decision: FileChangeApprovalDecision =
+          await this.resolveApprovalDecision(
+            options,
+            "Edit",
+            toolInput,
+            signal,
+            "accept",
+            "decline",
+          );
+        return { decision };
+      }
+
+      // Backward-compatible protocol variants.
+      case "execCommandApproval": {
+        const commandParts = Array.isArray(params.command)
+          ? params.command.filter(
+              (part): part is string => typeof part === "string",
+            )
+          : [];
+        const toolInput = {
+          command: commandParts.join(" "),
+          cwd: this.getOptionalString(params.cwd),
+          reason: this.getOptionalString(params.reason),
+          parsedCmd: Array.isArray(params.parsedCmd) ? params.parsedCmd : [],
+          callId: this.getOptionalString(params.callId),
+        };
+        const decision = await this.resolveApprovalDecision(
+          options,
+          "Bash",
+          toolInput,
+          signal,
+          "approved",
+          "denied",
+        );
+        return { decision };
+      }
+
+      case "applyPatchApproval": {
+        const fileChanges =
+          params.fileChanges && typeof params.fileChanges === "object"
+            ? (params.fileChanges as Record<string, unknown>)
+            : {};
+        const paths = Object.keys(fileChanges);
+        const toolInput = {
+          changes: paths.map((path) => ({ path, kind: "update" })),
+          reason: this.getOptionalString(params.reason),
+          grantRoot: this.getOptionalString(params.grantRoot),
+          callId: this.getOptionalString(params.callId),
+        };
+        const decision = await this.resolveApprovalDecision(
+          options,
+          "Edit",
+          toolInput,
+          signal,
+          "approved",
+          "denied",
+        );
+        return { decision };
+      }
+
+      case "item/tool/requestUserInput": {
+        const requestInput = this.asToolRequestUserInputParams(request.params);
+        const questions = requestInput?.questions ?? [];
+
+        // MVP: return empty answers so request can complete without blocking.
+        const answers: ToolRequestUserInputResponse["answers"] = {};
+        for (const question of questions) {
+          answers[question.id] = { answers: [] };
+        }
+        log.warn(
+          { questionCount: questions.length },
+          "Codex requested tool user input; returning empty answers in MVP",
+        );
+        const response: ToolRequestUserInputResponse = { answers };
+        return response;
+      }
+
+      default: {
+        log.warn({ method: request.method }, "Unhandled codex server request");
+        return {};
+      }
+    }
+  }
+
+  private async resolveApprovalDecision<TDecision extends string>(
+    options: StartSessionOptions,
+    toolName: string,
+    toolInput: unknown,
+    signal: AbortSignal,
+    allowDecision: TDecision,
+    denyDecision: TDecision,
+  ): Promise<TDecision> {
+    if (!options.onToolApproval) {
+      return denyDecision;
+    }
+
+    let result: ToolApprovalResult;
+    try {
+      result = await options.onToolApproval(toolName, toolInput, { signal });
+    } catch {
+      return denyDecision;
+    }
+
+    return result.behavior === "allow" ? allowDecision : denyDecision;
+  }
+
+  private convertNotificationToSDKMessages(
+    notification: JsonRpcNotification,
     sessionId: string,
-    turnNumber: number,
+    usageByTurnId: Map<string, TokenUsageSnapshot>,
   ): SDKMessage[] {
-    switch (event.type) {
-      case "thread.started": {
-        return [
-          {
-            type: "system",
-            subtype: "init",
-            session_id: event.thread_id,
-          } as SDKMessage,
-        ];
-      }
+    switch (notification.method) {
+      case "turn/completed": {
+        const params = this.asTurnCompletedNotification(notification.params);
+        const turnId = params?.turn.id ?? null;
+        const usage = turnId ? usageByTurnId.get(turnId) : undefined;
 
-      case "turn.started": {
-        return [];
-      }
-
-      case "turn.completed": {
         return [
           {
             type: "system",
             subtype: "turn_complete",
             session_id: sessionId,
-            usage: {
-              input_tokens: event.usage.input_tokens,
-              output_tokens: event.usage.output_tokens,
-              cached_input_tokens: event.usage.cached_input_tokens,
-            },
+            usage: usage
+              ? {
+                  input_tokens: usage.inputTokens,
+                  output_tokens: usage.outputTokens,
+                  cached_input_tokens: usage.cachedInputTokens,
+                }
+              : undefined,
           } as SDKMessage,
         ];
-      }
-
-      case "turn.failed": {
-        return [
-          {
-            type: "error",
-            session_id: sessionId,
-            error: event.error.message,
-          } as SDKMessage,
-        ];
-      }
-
-      case "item.started":
-      case "item.updated": {
-        // For streaming updates, emit partial messages
-        return this.convertItemToSDKMessages(
-          event.item,
-          sessionId,
-          turnNumber,
-          false,
-        );
-      }
-
-      case "item.completed": {
-        return this.convertItemToSDKMessages(
-          event.item,
-          sessionId,
-          turnNumber,
-          true,
-        );
       }
 
       case "error": {
+        const params = this.asErrorNotification(notification.params);
+        const errorMessage = params?.error.message;
+        const message =
+          (typeof errorMessage === "string" && errorMessage) ||
+          (typeof (notification.params as { message?: unknown })?.message ===
+          "string"
+            ? (notification.params as { message: string }).message
+            : "Codex turn failed");
+
         return [
           {
             type: "error",
             session_id: sessionId,
-            error: event.message,
+            error: message,
           } as SDKMessage,
         ];
       }
 
-      default: {
-        return [];
+      case "item/started":
+      case "item/completed": {
+        const params =
+          notification.method === "item/started"
+            ? this.asItemStartedNotification(notification.params)
+            : this.asItemCompletedNotification(notification.params);
+        if (!params) return [];
+
+        const normalized = this.normalizeThreadItem(params.item);
+        if (!normalized) {
+          return [];
+        }
+
+        const turnId = params.turnId;
+
+        return this.convertItemToSDKMessages(
+          normalized,
+          sessionId,
+          turnId,
+          notification.method === "item/completed",
+        );
       }
+
+      default:
+        return [];
     }
   }
 
+  private normalizeThreadItem(
+    item: CodexThreadItem | Record<string, unknown>,
+  ): NormalizedThreadItem | null {
+    const itemRecord = item as Record<string, unknown>;
+    const id = this.getOptionalString(itemRecord.id);
+    const type = this.getOptionalString(itemRecord.type);
+    if (!id || !type) {
+      return null;
+    }
+
+    const normalizedType = type.replace(/[A-Z]/g, (m) => `_${m.toLowerCase()}`);
+
+    switch (normalizedType) {
+      case "reasoning": {
+        const text = this.getReasoningText(itemRecord);
+        if (!text) return null;
+        return { id, type: "reasoning", text };
+      }
+
+      case "agent_message":
+      case "plan": {
+        const text = this.getOptionalString(itemRecord.text) ?? "";
+        return { id, type: "agent_message", text };
+      }
+
+      case "command_execution": {
+        return {
+          id,
+          type: "command_execution",
+          command: this.getOptionalString(itemRecord.command) ?? "",
+          aggregated_output:
+            this.getOptionalString(itemRecord.aggregated_output) ??
+            this.getOptionalString(itemRecord.aggregatedOutput) ??
+            "",
+          exit_code:
+            this.getOptionalNumber(itemRecord.exit_code) ??
+            this.getOptionalNumber(itemRecord.exitCode) ??
+            undefined,
+          status: this.normalizeStatus(itemRecord.status),
+        };
+      }
+
+      case "file_change": {
+        const changesRaw = Array.isArray(itemRecord.changes)
+          ? itemRecord.changes
+          : [];
+        const changes: NormalizedFileChange[] = [];
+        for (const change of changesRaw) {
+          if (!change || typeof change !== "object") continue;
+          const record = change as Record<string, unknown>;
+          const path = this.getOptionalString(record.path);
+          if (!path) continue;
+
+          let kind: "add" | "delete" | "update" = "update";
+          const rawKind = record.kind;
+          if (typeof rawKind === "string") {
+            if (
+              rawKind === "add" ||
+              rawKind === "delete" ||
+              rawKind === "update"
+            ) {
+              kind = rawKind;
+            }
+          } else if (rawKind && typeof rawKind === "object") {
+            const rawType = this.getOptionalString(
+              (rawKind as Record<string, unknown>).type,
+            );
+            if (
+              rawType === "add" ||
+              rawType === "delete" ||
+              rawType === "update"
+            ) {
+              kind = rawType;
+            }
+          }
+
+          changes.push({ path, kind });
+        }
+
+        return {
+          id,
+          type: "file_change",
+          changes,
+          status: this.normalizeStatus(itemRecord.status),
+        };
+      }
+
+      case "mcp_tool_call": {
+        const errorObj =
+          itemRecord.error && typeof itemRecord.error === "object"
+            ? (itemRecord.error as Record<string, unknown>)
+            : null;
+
+        return {
+          id,
+          type: "mcp_tool_call",
+          server: this.getOptionalString(itemRecord.server) ?? "unknown",
+          tool: this.getOptionalString(itemRecord.tool) ?? "unknown",
+          arguments: itemRecord.arguments,
+          result: itemRecord.result,
+          error:
+            this.getOptionalString(errorObj?.message) !== null
+              ? { message: this.getOptionalString(errorObj?.message) ?? "" }
+              : undefined,
+          status: this.normalizeStatus(itemRecord.status),
+        };
+      }
+
+      case "web_search": {
+        return {
+          id,
+          type: "web_search",
+          query: this.getOptionalString(itemRecord.query) ?? "",
+        };
+      }
+
+      case "todo_list": {
+        const items = Array.isArray(itemRecord.items)
+          ? itemRecord.items
+              .map((entry: unknown) => {
+                if (!entry || typeof entry !== "object") return null;
+                const record = entry as Record<string, unknown>;
+                const text = this.getOptionalString(record.text);
+                if (!text) return null;
+                return {
+                  text,
+                  completed: record.completed === true,
+                };
+              })
+              .filter(
+                (
+                  entry: unknown,
+                ): entry is { text: string; completed: boolean } =>
+                  entry !== null,
+              )
+          : [];
+        return {
+          id,
+          type: "todo_list",
+          items,
+        };
+      }
+
+      case "error": {
+        const message =
+          this.getOptionalString(itemRecord.message) ?? "Codex error";
+        return {
+          id,
+          type: "error",
+          message,
+        };
+      }
+
+      default:
+        return null;
+    }
+  }
+
+  private getReasoningText(item: Record<string, unknown>): string {
+    const text = this.getOptionalString(item.text);
+    if (text) return text;
+
+    const content = Array.isArray(item.content)
+      ? item.content.filter((part): part is string => typeof part === "string")
+      : [];
+    if (content.length > 0) {
+      return content.join("\n");
+    }
+
+    const summary = Array.isArray(item.summary)
+      ? item.summary.filter((part): part is string => typeof part === "string")
+      : [];
+    if (summary.length > 0) {
+      return summary.join("\n");
+    }
+
+    return "";
+  }
+
+  private normalizeStatus(status: unknown): string {
+    if (typeof status !== "string") return "unknown";
+    return status.replace(/[A-Z]/g, (m) => `_${m.toLowerCase()}`);
+  }
+
+  private asTurnCompletedNotification(
+    params: unknown,
+  ): TurnCompletedNotification | null {
+    if (!params || typeof params !== "object") return null;
+    const record = params as Record<string, unknown>;
+    if (
+      typeof record.threadId !== "string" ||
+      !record.turn ||
+      typeof record.turn !== "object" ||
+      typeof (record.turn as { id?: unknown }).id !== "string"
+    ) {
+      return null;
+    }
+    return params as TurnCompletedNotification;
+  }
+
+  private asErrorNotification(params: unknown): CodexErrorNotification | null {
+    if (!params || typeof params !== "object") return null;
+    const record = params as Record<string, unknown>;
+    if (
+      typeof record.threadId !== "string" ||
+      typeof record.turnId !== "string" ||
+      typeof record.willRetry !== "boolean" ||
+      !record.error ||
+      typeof record.error !== "object" ||
+      typeof (record.error as { message?: unknown }).message !== "string"
+    ) {
+      return null;
+    }
+    return params as CodexErrorNotification;
+  }
+
+  private asThreadTokenUsageUpdatedNotification(
+    params: unknown,
+  ): ThreadTokenUsageUpdatedNotification | null {
+    if (!params || typeof params !== "object") return null;
+    const record = params as Record<string, unknown>;
+    const tokenUsage =
+      record.tokenUsage && typeof record.tokenUsage === "object"
+        ? (record.tokenUsage as Record<string, unknown>)
+        : null;
+    const last =
+      tokenUsage?.last && typeof tokenUsage.last === "object"
+        ? (tokenUsage.last as Record<string, unknown>)
+        : null;
+    if (
+      typeof record.threadId !== "string" ||
+      typeof record.turnId !== "string" ||
+      !last ||
+      typeof last.inputTokens !== "number" ||
+      typeof last.outputTokens !== "number" ||
+      typeof last.cachedInputTokens !== "number"
+    ) {
+      return null;
+    }
+    return params as ThreadTokenUsageUpdatedNotification;
+  }
+
+  private asCommandExecutionRequestApprovalParams(
+    params: unknown,
+  ): CommandExecutionRequestApprovalParams | null {
+    if (!params || typeof params !== "object") return null;
+    const record = params as Record<string, unknown>;
+    if (
+      typeof record.threadId !== "string" ||
+      typeof record.turnId !== "string" ||
+      typeof record.itemId !== "string"
+    ) {
+      return null;
+    }
+    return params as CommandExecutionRequestApprovalParams;
+  }
+
+  private asFileChangeRequestApprovalParams(
+    params: unknown,
+  ): FileChangeRequestApprovalParams | null {
+    if (!params || typeof params !== "object") return null;
+    const record = params as Record<string, unknown>;
+    if (
+      typeof record.threadId !== "string" ||
+      typeof record.turnId !== "string" ||
+      typeof record.itemId !== "string"
+    ) {
+      return null;
+    }
+    return params as FileChangeRequestApprovalParams;
+  }
+
+  private asToolRequestUserInputParams(
+    params: unknown,
+  ): ToolRequestUserInputParams | null {
+    if (!params || typeof params !== "object") return null;
+    const record = params as Record<string, unknown>;
+    if (
+      typeof record.threadId !== "string" ||
+      typeof record.turnId !== "string" ||
+      typeof record.itemId !== "string" ||
+      !Array.isArray(record.questions)
+    ) {
+      return null;
+    }
+    return params as ToolRequestUserInputParams;
+  }
+
+  private asItemStartedNotification(
+    params: unknown,
+  ): CodexItemStartedNotification | null {
+    if (!params || typeof params !== "object") return null;
+    const record = params as Record<string, unknown>;
+    if (
+      typeof record.threadId !== "string" ||
+      typeof record.turnId !== "string" ||
+      !record.item ||
+      typeof record.item !== "object"
+    ) {
+      return null;
+    }
+    return params as CodexItemStartedNotification;
+  }
+
+  private asItemCompletedNotification(
+    params: unknown,
+  ): CodexItemCompletedNotification | null {
+    if (!params || typeof params !== "object") return null;
+    const record = params as Record<string, unknown>;
+    if (
+      typeof record.threadId !== "string" ||
+      typeof record.turnId !== "string" ||
+      !record.item ||
+      typeof record.item !== "object"
+    ) {
+      return null;
+    }
+    return params as CodexItemCompletedNotification;
+  }
+
   /**
-   * Convert a ThreadItem to SDKMessage(s).
-   * Uses turnNumber to create unique UUIDs since Codex SDK reuses item_0, item_1 per turn.
+   * Convert a normalized thread item to SDKMessage(s).
    */
   private convertItemToSDKMessages(
-    item: ThreadItem,
+    item: NormalizedThreadItem,
     sessionId: string,
-    turnNumber: number,
+    turnId: string,
     isComplete: boolean,
   ): SDKMessage[] {
-    // Create unique UUID by combining item.id with turn number
-    // This prevents UUID collisions across turns (item_0-turn1, item_0-turn2, etc.)
-    const uuid = `${item.id}-turn${turnNumber}`;
+    // Create unique UUID by combining item.id with turn ID.
+    const uuid = `${item.id}-${turnId}`;
 
     switch (item.type) {
       case "reasoning": {
@@ -788,10 +1710,14 @@ export class CodexProvider implements AgentProvider {
 
         // If completed, emit tool_result
         if (isComplete && item.status !== "in_progress") {
-          const output =
-            item.exit_code === 0
-              ? item.aggregated_output || "(no output)"
-              : `Exit code: ${item.exit_code}\n${item.aggregated_output}`;
+          let output: string;
+          if (item.status === "declined") {
+            output = "Command execution was declined.";
+          } else if (item.exit_code === undefined || item.exit_code === 0) {
+            output = item.aggregated_output || "(no output)";
+          } else {
+            output = `Exit code: ${item.exit_code}\n${item.aggregated_output}`;
+          }
 
           messages.push({
             type: "user",
@@ -813,7 +1739,6 @@ export class CodexProvider implements AgentProvider {
       }
 
       case "file_change": {
-        // Emit as a tool use for file operations
         const changesSummary = item.changes
           .map((c) => `${c.kind}: ${c.path}`)
           .join("\n");
@@ -849,7 +1774,9 @@ export class CodexProvider implements AgentProvider {
                         content:
                           item.status === "completed"
                             ? `File changes applied:\n${changesSummary}`
-                            : `File changes failed:\n${changesSummary}`,
+                            : item.status === "declined"
+                              ? `File changes declined:\n${changesSummary}`
+                              : `File changes failed:\n${changesSummary}`,
                       },
                     ],
                   },
@@ -924,7 +1851,6 @@ export class CodexProvider implements AgentProvider {
       }
 
       case "todo_list": {
-        // Emit todo list as a system message
         return [
           {
             type: "system",
@@ -947,9 +1873,8 @@ export class CodexProvider implements AgentProvider {
         ];
       }
 
-      default: {
+      default:
         return [];
-      }
     }
   }
 
@@ -997,6 +1922,14 @@ export class CodexProvider implements AgentProvider {
     }
 
     return "";
+  }
+
+  private getOptionalString(value: unknown): string | null {
+    return typeof value === "string" ? value : null;
+  }
+
+  private getOptionalNumber(value: unknown): number | null {
+    return typeof value === "number" && Number.isFinite(value) ? value : null;
   }
 }
 

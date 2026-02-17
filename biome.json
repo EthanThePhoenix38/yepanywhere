@@ -14,7 +14,9 @@
       "*.d.ts",
 
       "docs/tasks",
-      "branding"
+      "branding",
+      "packages/server/generated/codex-app-server",
+      "packages/server/src/sdk/providers/codex-protocol/generated"
     ]
   },
   "formatter": {

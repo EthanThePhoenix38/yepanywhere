@@ -2,6 +2,7 @@ import { execFile } from "node:child_process";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
+import { fileURLToPath } from "node:url";
 import { serve } from "@hono/node-server";
 import { RESPONSE_ALREADY_SENT } from "@hono/node-server/utils/response";
 import { createNodeWebSocket } from "@hono/node-ws";
@@ -39,7 +40,7 @@ import {
 import { createUploadRoutes } from "./routes/upload.js";
 import { createWsRelayRoutes } from "./routes/ws-relay.js";
 import { createAcceptRelayConnection } from "./routes/ws-relay.js";
-import { detectClaudeCli } from "./sdk/cli-detection.js";
+import { detectClaudeCli, detectCodexCli } from "./sdk/cli-detection.js";
 import { initMessageLogger } from "./sdk/messageLogger.js";
 import { RealClaudeSDK } from "./sdk/real.js";
 import {
@@ -143,6 +144,73 @@ if (cliInfo.found) {
       : "Install: curl -fsSL https://claude.ai/install.sh | bash",
   );
 }
+
+function parseCodexVersion(raw: string | undefined): string | null {
+  if (!raw) return null;
+  const match = raw.match(/\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?/);
+  return match ? match[0] : null;
+}
+
+function readExpectedCodexVersionFromPackageJson(): string | null {
+  const candidatePaths = [
+    path.resolve(
+      path.dirname(fileURLToPath(import.meta.url)),
+      "../../../package.json",
+    ),
+    path.resolve(process.cwd(), "package.json"),
+  ];
+
+  for (const packageJsonPath of candidatePaths) {
+    try {
+      if (!fs.existsSync(packageJsonPath)) {
+        continue;
+      }
+
+      const parsed = JSON.parse(
+        fs.readFileSync(packageJsonPath, "utf-8"),
+      ) as unknown;
+      if (!parsed || typeof parsed !== "object") {
+        continue;
+      }
+
+      const root = parsed as {
+        yepAnywhere?: { codexCli?: { expectedVersion?: string } };
+      };
+      const expected = root.yepAnywhere?.codexCli?.expectedVersion;
+      if (typeof expected === "string" && expected.trim().length > 0) {
+        return expected.trim();
+      }
+    } catch {
+      // Ignore malformed/unavailable package.json and try next candidate path.
+    }
+  }
+
+  return null;
+}
+
+function warnIfCodexVersionMismatch(): void {
+  const expectedRaw = readExpectedCodexVersionFromPackageJson();
+  if (!expectedRaw) {
+    return;
+  }
+
+  const expected = parseCodexVersion(expectedRaw) ?? expectedRaw;
+  const codexInfo = detectCodexCli();
+  if (!codexInfo.found || !codexInfo.version) {
+    return;
+  }
+
+  const actual = parseCodexVersion(codexInfo.version) ?? codexInfo.version;
+  if (actual === expected) {
+    return;
+  }
+
+  console.warn(
+    `[Codex] Version mismatch: expected ${expected} (package.json yepAnywhere.codexCli.expectedVersion), detected ${actual}. Codex behavior may be unpredictable until versions align.`,
+  );
+}
+
+warnIfCodexVersionMismatch();
 
 // Create the real SDK
 const realSdk = new RealClaudeSDK();
