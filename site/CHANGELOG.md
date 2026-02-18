@@ -6,6 +6,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [site-v1.3.0] - 2026-02-18
+
+### Changed
+- Highlight Codex Desktop as fully supported alongside Claude Code
+- Update hero, announcement banner, features, and FAQ for multi-provider messaging
+- Update page title and meta description to mention Codex
+
 ## [site-v1.2.0] - 2026-02-16
 
 ### Added

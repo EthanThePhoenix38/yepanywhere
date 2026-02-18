@@ -3,8 +3,8 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Yep Anywhere - Mobile supervision for Claude Code agents</title>
-  <meta name="description" content="A polished web interface for managing Claude Code agents. Works great on mobile and desktop.">
+  <title>Yep Anywhere - Mobile supervision for Claude Code and Codex agents</title>
+  <meta name="description" content="A polished web interface for managing Claude Code and Codex agents. Works great on mobile and desktop.">
   <link rel="icon" type="image/x-icon" href="favicon.ico">
   <link rel="icon" type="image/svg+xml" href="icon.svg">
   <link rel="apple-touch-icon" href="icon-192.png">
@@ -445,16 +445,16 @@
 
   <div class="announcement">
     <div class="announcement-content">
-      <span class="announcement-badge">New</span>
-      <p>Remote relay is now live! Access your agents from anywhere with end-to-end encryption. <a href="/public-relay.html">Read the announcement</a></p>
+      <span class="announcement-badge">New in v0.3</span>
+      <p>Codex Desktop support is here! Supervise Claude Code and Codex side by side. <a href="#faq">Learn more</a></p>
     </div>
   </div>
 
   <main>
     <section class="hero">
       <div class="container">
-        <h1>Supervise Claude Code from anywhere</h1>
-        <p>A polished web interface for managing Claude Code agents. Walk away from your desk and keep your agents productive from your phone.</p>
+        <h1>Supervise your coding agents from anywhere</h1>
+        <p>A polished web interface for Claude Code and Codex. Walk away from your desk and keep your agents productive from your phone.</p>
         <div class="cta-buttons">
           <a href="/remote" class="btn btn-primary">Log In to Your Server</a>
           <a href="#install" class="btn btn-secondary">Get Started</a>
@@ -471,7 +471,7 @@
         <div class="value-prop-grid">
           <div class="value-prop">
             <h3>Seamless handoff</h3>
-            <p>Work at your desk, walk away, continue exactly where you left off. No friction. Your agent keeps running on your dev machine while you supervise from the couch, the coffee shop, or the school pickup line.</p>
+            <p>Work at your desk, walk away, continue exactly where you left off. No friction. Your agents keep running on your dev machine while you supervise from the couch, the coffee shop, or the school pickup line.</p>
           </div>
           <div class="value-prop">
             <h3>Your desk follows you</h3>
@@ -479,7 +479,7 @@
           </div>
           <div class="value-prop">
             <h3>Share files from anywhere</h3>
-            <p>Upload images, screenshots, and documents directly from your phone. Snap a photo of a whiteboard sketch, share an error screenshot, or attach design mockups — your agent sees exactly what you see.</p>
+            <p>Upload images, screenshots, and documents directly from your phone. Snap a photo of a whiteboard sketch, share an error screenshot, or attach design mockups — your agents see exactly what you see.</p>
           </div>
           <div class="value-prop">
             <h3>Multi-session sanity</h3>
@@ -540,15 +540,15 @@
           </div>
           <div class="feature-card">
             <h3>Server-owned processes</h3>
-            <p>Claude runs on your dev machine. Client disconnects don't interrupt work. Pick up where you left off.</p>
+            <p>Agents run on your dev machine. Client disconnects don't interrupt work. Pick up where you left off.</p>
           </div>
           <div class="feature-card">
             <h3>Push notifications</h3>
             <p>Get notified when approval is needed. Uses VAPID with no third-party server required.</p>
           </div>
           <div class="feature-card">
-            <h3>Interop first</h3>
-            <p>View sessions running in Claude CLI or VS Code in real time, or resume them later from your phone.</p>
+            <h3>Claude Code + Codex</h3>
+            <p>Full support for both Claude Code and Codex Desktop. Start sessions, approve tools, and view diffs — same workflow for both providers.</p>
           </div>
           <div class="feature-card">
             <h3>Voice input</h3>
@@ -559,8 +559,8 @@
             <p>Access from anywhere via our free public relay. End-to-end encrypted — we can't see your data. No accounts needed.</p>
           </div>
           <div class="feature-card">
-            <h3>Remote executors (experimental)</h3>
-            <p>Run Claude on VMs, containers, or other machines via SSH. One Yep Anywhere install manages agents across all your dev environments.</p>
+            <h3>Session interop</h3>
+            <p>View sessions started in the CLI or VS Code in real time, or resume them from your phone. Works for both Claude Code and Codex.</p>
           </div>
         </div>
       </div>
@@ -586,7 +586,7 @@
           </div>
         </div>
         <p style="color: var(--text-secondary); margin-top: 16px; text-align: center;">
-          Then open <strong>http://localhost:3400</strong> in your browser. The app auto-detects installed CLI agents.
+          Then open <strong>http://localhost:3400</strong> in your browser. Yep Anywhere auto-detects Claude Code and Codex.
         </p>
       </div>
     </section>
@@ -597,12 +597,12 @@
 
         <div class="faq-item">
           <h3>What is this?</h3>
-          <p>A web interface for Claude Code. Like the VS Code extension, but accessible from any device and designed for multi-session workflows.</p>
+          <p>A web interface for Claude Code and Codex. Like the VS Code extension, but accessible from any device and designed for multi-session workflows.</p>
         </div>
 
         <div class="faq-item">
-          <h3>Do I need Claude CLI installed?</h3>
-          <p>Yes, you need Claude Code (or another supported agent like Codex) installed. Yep Anywhere provides a better interface for managing these agents.</p>
+          <h3>Which agents do I need?</h3>
+          <p>Install Claude Code, Codex Desktop, or both. Yep Anywhere auto-detects installed agents and provides a unified interface for managing them.</p>
         </div>
 
         <div class="faq-item">
@@ -617,17 +617,17 @@
 
         <div class="faq-item">
           <h3>Can I see sessions started in the terminal?</h3>
-          <p>Yes! Yep Anywhere shows all Claude sessions on your machine, including those started from the CLI or VS Code extension. You can view them in real-time (read-only) or resume them.</p>
+          <p>Yes! Yep Anywhere shows all Claude Code and Codex sessions on your machine, including those started from the CLI or VS Code. You can view them in real-time or resume them.</p>
         </div>
 
         <div class="faq-item">
           <h3>Can I manage agents on multiple machines?</h3>
-          <p>Yes! Add SSH host aliases in Settings to run Claude on VMs, containers, or remote servers. Sessions sync back via rsync so you get unified history across all your dev environments — filter by machine, see everything in one dashboard. Just needs Claude installed on the remote machine and SSH access. This feature is experimental.</p>
+          <p>Yes! Add SSH host aliases in Settings to run agents on VMs, containers, or remote servers. Sessions sync back via rsync so you get unified history across all your dev environments — filter by machine, see everything in one dashboard. This feature is experimental.</p>
         </div>
 
         <div class="faq-item">
           <h3>What providers are supported?</h3>
-          <p>Claude Code (full support), Codex (limited visibility), Codex-OSS (local models), and OpenCode (experimental). See the <a href="https://github.com/kzahel/yepanywhere#supported-providers">README</a> for details.</p>
+          <p>Claude Code (full support), Codex Desktop (full support), and OpenCode (experimental). See the <a href="https://github.com/kzahel/yepanywhere#supported-providers">README</a> for details.</p>
         </div>
 
         <div class="faq-item">
