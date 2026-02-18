@@ -72,6 +72,11 @@ export interface AgentSession {
   /** Session ID if available immediately (some providers provide later via messages) */
   sessionId?: string;
   /**
+   * Steer an active turn with additional user input.
+   * Returns true when steered immediately, false when caller should enqueue instead.
+   */
+  steer?: (message: UserMessage) => Promise<boolean>;
+  /**
    * Change max thinking tokens without restarting the session.
    * Pass null to disable thinking mode.
    * Only supported by Claude SDK 0.2.7+.

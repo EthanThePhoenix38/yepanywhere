@@ -255,6 +255,7 @@ export type UpdatePlanResult = string | { message?: string };
 export interface WriteStdinInput {
   session_id?: string | number;
   chars?: string;
+  linked_command?: string;
 }
 
 export type WriteStdinResult = string | { content?: string };

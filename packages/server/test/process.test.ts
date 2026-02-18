@@ -140,6 +140,58 @@ describe("Process", () => {
 
       expect(process.queueDepth).toBe(2);
     });
+
+    it("prefers steerFn for in-turn messages when available", async () => {
+      const iterator: AsyncIterator<SDKMessage> = {
+        next: () => new Promise(() => {}),
+      };
+      const queue = new MessageQueue();
+      const steerFn = vi.fn(async () => true);
+
+      const process = new Process(iterator, {
+        projectPath: "/test",
+        projectId: "proj-1",
+        sessionId: "sess-1",
+        idleTimeoutMs: 100,
+        queue,
+        steerFn,
+      });
+
+      const result = process.queueMessage({ text: "steer me" });
+
+      expect(result.success).toBe(true);
+      expect(result.position).toBe(0);
+      expect(steerFn).toHaveBeenCalledTimes(1);
+      expect(process.queueDepth).toBe(0);
+
+      await process.abort();
+    });
+
+    it("falls back to queue when steerFn returns false", async () => {
+      const iterator: AsyncIterator<SDKMessage> = {
+        next: () => new Promise(() => {}),
+      };
+      const queue = new MessageQueue();
+      const steerFn = vi.fn(async () => false);
+
+      const process = new Process(iterator, {
+        projectPath: "/test",
+        projectId: "proj-1",
+        sessionId: "sess-1",
+        idleTimeoutMs: 100,
+        queue,
+        steerFn,
+      });
+
+      const result = process.queueMessage({ text: "fallback me" });
+      expect(result.success).toBe(true);
+      expect(result.position).toBe(0);
+
+      await Promise.resolve();
+      expect(process.queueDepth).toBe(1);
+
+      await process.abort();
+    });
   });
 
   describe("getInfo", () => {

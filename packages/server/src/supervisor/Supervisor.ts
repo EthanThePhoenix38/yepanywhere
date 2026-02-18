@@ -1,5 +1,9 @@
 import { randomUUID } from "node:crypto";
-import type { ProviderName, UrlProjectId } from "@yep-anywhere/shared";
+import {
+  type ProviderName,
+  SESSION_TITLE_MAX_LENGTH,
+  type UrlProjectId,
+} from "@yep-anywhere/shared";
 import type { AgentActivity, PendingInputType } from "@yep-anywhere/shared";
 import { getLogger } from "../logging/logger.js";
 import { getProvider } from "../sdk/providers/index.js";
@@ -16,6 +20,7 @@ import type {
   SessionAbortedEvent,
   SessionCreatedEvent,
   SessionStatusEvent,
+  SessionUpdatedEvent,
   WorkerActivityEvent,
 } from "../watcher/EventBus.js";
 import { Process, type ProcessConstructorOptions } from "./Process.js";
@@ -75,6 +80,15 @@ export type OnSessionExecutorCallback = (
   executor: string | undefined,
 ) => Promise<void>;
 
+/** Optional callback to fetch authoritative session summary for reconciliation */
+export type OnSessionSummaryCallback = (
+  sessionId: string,
+  projectId: UrlProjectId,
+) => Promise<SessionSummary | null>;
+
+/** Delays for initial title/messageCount reconciliation after session creation */
+const INITIAL_RECONCILE_DELAYS_MS = [1000, 3000] as const;
+
 export interface SupervisorOptions {
   /** Agent provider interface (preferred for new code) */
   provider?: AgentProvider;
@@ -95,6 +109,8 @@ export interface SupervisorOptions {
   maxQueueSize?: number;
   /** Callback to persist executor when session ID is received (for remote execution resume) */
   onSessionExecutor?: OnSessionExecutorCallback;
+  /** Callback to fetch session summary for initial metadata reconciliation */
+  onSessionSummary?: OnSessionSummaryCallback;
 }
 
 export class Supervisor {
@@ -112,6 +128,7 @@ export class Supervisor {
   private idlePreemptThresholdMs: number;
   private workerQueue: WorkerQueue;
   private onSessionExecutor?: OnSessionExecutorCallback;
+  private onSessionSummary?: OnSessionSummaryCallback;
   private staleCheckTimer: ReturnType<typeof setInterval>;
 
   constructor(options: SupervisorOptions) {
@@ -129,6 +146,7 @@ export class Supervisor {
       maxQueueSize: options.maxQueueSize,
     });
     this.onSessionExecutor = options.onSessionExecutor;
+    this.onSessionSummary = options.onSessionSummary;
     this.staleCheckTimer = setInterval(
       () => this.terminateStaleProcesses(),
       STALE_CHECK_INTERVAL_MS,
@@ -509,6 +527,7 @@ export class Supervisor {
       abort,
       setMaxThinkingTokens,
       interrupt,
+      steer,
       supportedModels,
       supportedCommands,
       setModel,
@@ -524,6 +543,7 @@ export class Supervisor {
       abortFn: abort,
       setMaxThinkingTokensFn: setMaxThinkingTokens,
       interruptFn: interrupt,
+      steerFn: steer,
       supportedModelsFn: supportedModels,
       supportedCommandsFn: supportedCommands,
       setModelFn: setModel,
@@ -598,6 +618,7 @@ export class Supervisor {
       abort,
       setMaxThinkingTokens,
       interrupt,
+      steer,
       supportedModels,
       supportedCommands,
       setModel,
@@ -612,6 +633,7 @@ export class Supervisor {
       abortFn: abort,
       setMaxThinkingTokensFn: setMaxThinkingTokens,
       interruptFn: interrupt,
+      steerFn: steer,
       supportedModelsFn: supportedModels,
       supportedCommandsFn: supportedCommands,
       setModelFn: setModel,
@@ -1059,6 +1081,10 @@ export class Supervisor {
     // Emit session created event for new sessions
     if (isNewSession) {
       this.emitSessionCreated(process, ownership);
+      this.scheduleInitialSessionReconciliation(
+        process.sessionId,
+        process.projectId,
+      );
     }
 
     // Emit ownership change event
@@ -1143,6 +1169,12 @@ export class Supervisor {
           event.newSessionId,
           process.projectId,
           ownership,
+        );
+
+        // Retry early metadata reconciliation with authoritative session ID.
+        this.scheduleInitialSessionReconciliation(
+          event.newSessionId,
+          process.projectId,
         );
       } else if (event.type === "state-change") {
         // Emit agent activity change for all states that clients need to track
@@ -1282,14 +1314,15 @@ export class Supervisor {
     if (!this.eventBus) return;
 
     const now = new Date().toISOString();
+    const optimistic = this.buildOptimisticSessionSeed(process);
     const session: SessionSummary = {
       id: process.sessionId,
       projectId: process.projectId,
-      title: null, // Title comes from first user message, populated later via file change
-      fullTitle: null,
+      title: optimistic.title,
+      fullTitle: optimistic.fullTitle,
       createdAt: now,
       updatedAt: now,
-      messageCount: 0,
+      messageCount: optimistic.messageCount,
       ownership,
       provider: process.provider,
     };
@@ -1298,6 +1331,67 @@ export class Supervisor {
       type: "session-created",
       session,
       timestamp: now,
+    };
+    this.eventBus.emit(event);
+  }
+
+  private buildOptimisticSessionSeed(process: Process): {
+    title: string | null;
+    fullTitle: string | null;
+    messageCount: number;
+  } {
+    const history = process.getMessageHistory();
+    const firstUser = history.find(
+      (msg) => msg.type === "user" && typeof msg.message?.content === "string",
+    );
+    const firstContent = firstUser?.message?.content;
+    const fullTitle =
+      typeof firstContent === "string" ? firstContent.trim() : "";
+    if (!fullTitle) {
+      return { title: null, fullTitle: null, messageCount: 0 };
+    }
+
+    const title =
+      fullTitle.length <= SESSION_TITLE_MAX_LENGTH
+        ? fullTitle
+        : `${fullTitle.slice(0, SESSION_TITLE_MAX_LENGTH - 3)}...`;
+
+    return { title, fullTitle, messageCount: 1 };
+  }
+
+  private scheduleInitialSessionReconciliation(
+    sessionId: string,
+    projectId: UrlProjectId,
+  ): void {
+    if (!this.eventBus || !this.onSessionSummary) return;
+
+    for (const delayMs of INITIAL_RECONCILE_DELAYS_MS) {
+      const timer = setTimeout(() => {
+        void this.emitReconciledSessionUpdate(sessionId, projectId);
+      }, delayMs);
+      timer.unref();
+    }
+  }
+
+  private async emitReconciledSessionUpdate(
+    sessionId: string,
+    projectId: UrlProjectId,
+  ): Promise<void> {
+    if (!this.eventBus || !this.onSessionSummary) return;
+
+    const summary = await this.onSessionSummary(sessionId, projectId);
+    if (!summary) return;
+
+    const event: SessionUpdatedEvent = {
+      type: "session-updated",
+      sessionId,
+      projectId,
+      title: summary.title,
+      messageCount: summary.messageCount,
+      updatedAt: summary.updatedAt,
+      contextUsage: summary.contextUsage,
+      model: summary.model,
+      timestamp: new Date().toISOString(),
     };
     this.eventBus.emit(event);
   }

@@ -221,22 +221,6 @@ export function createApp(options: AppOptions): AppResult {
   });
   const codexScanner = new CodexSessionScanner();
   const geminiScanner = new GeminiSessionScanner();
-  const supervisor = new Supervisor({
-    sdk: options.sdk,
-    realSdk: options.realSdk,
-    idleTimeoutMs: options.idleTimeoutMs,
-    defaultPermissionMode: options.defaultPermissionMode,
-    eventBus: options.eventBus,
-    maxWorkers: options.maxWorkers,
-    idlePreemptThresholdMs: options.idlePreemptThresholdMs,
-    maxQueueSize: options.maxQueueSize,
-    // Save executor for remote sessions to support resume
-    onSessionExecutor: options.sessionMetadataService
-      ? (sessionId, executor) =>
-          options.sessionMetadataService?.setExecutor(sessionId, executor) ??
-          Promise.resolve()
-      : undefined,
-  });
   /**
    * Create a session reader appropriate for the project's provider.
    * Routes call this with the project to get the right reader.
@@ -267,6 +251,29 @@ export function createApp(options: AppOptions): AppResult {
         });
     }
   };
+  const getSessionSummary = async (sessionId: string, projectId: string) => {
+    const project = await scanner.getProject(projectId);
+    if (!project) return null;
+    const reader = readerFactory(project);
+    return reader.getSessionSummary(sessionId, project.id);
+  };
+  const supervisor = new Supervisor({
+    sdk: options.sdk,
+    realSdk: options.realSdk,
+    idleTimeoutMs: options.idleTimeoutMs,
+    defaultPermissionMode: options.defaultPermissionMode,
+    eventBus: options.eventBus,
+    maxWorkers: options.maxWorkers,
+    idlePreemptThresholdMs: options.idlePreemptThresholdMs,
+    maxQueueSize: options.maxQueueSize,
+    // Save executor for remote sessions to support resume
+    onSessionExecutor: options.sessionMetadataService
+      ? (sessionId, executor) =>
+          options.sessionMetadataService?.setExecutor(sessionId, executor) ??
+          Promise.resolve()
+      : undefined,
+    onSessionSummary: getSessionSummary,
+  });
 
   // Create external session tracker if eventBus is available
   const externalTracker = options.eventBus
@@ -277,12 +284,7 @@ export function createApp(options: AppOptions): AppResult {
         decayMs: 30000, // 30 seconds
         // Callback to get session summary for new external sessions
         // projectId is now UrlProjectId (base64url) - ExternalSessionTracker converts it
-        getSessionSummary: async (sessionId, projectId) => {
-          const project = await scanner.getProject(projectId);
-          if (!project) return null;
-          const reader = readerFactory(project);
-          return reader.getSessionSummary(sessionId, project.id);
-        },
+        getSessionSummary,
       })
     : undefined;
 

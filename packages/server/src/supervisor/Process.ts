@@ -64,6 +64,11 @@ export interface ProcessConstructorOptions extends ProcessOptions {
   setMaxThinkingTokensFn?: (tokens: number | null) => Promise<void>;
   /** Function to interrupt current turn gracefully (SDK 0.2.7+) */
   interruptFn?: () => Promise<void>;
+  /**
+   * Function to steer an active turn with additional user input.
+   * Returns false when steering is unavailable and caller should enqueue.
+   */
+  steerFn?: (message: UserMessage) => Promise<boolean>;
   /** Function to get supported models (SDK 0.2.7+) */
   supportedModelsFn?: () => Promise<ModelInfo[]>;
   /** Function to get supported slash commands (SDK 0.2.7+) */
@@ -131,6 +136,8 @@ export class Process {
 
   /** Function to interrupt current turn gracefully (SDK 0.2.7+) */
   private interruptFn: (() => Promise<void>) | null;
+  /** Function to steer an active turn (provider-specific, currently Codex app-server) */
+  private steerFn: ((message: UserMessage) => Promise<boolean>) | null;
 
   /** Function to get supported models (SDK 0.2.7+) */
   private supportedModelsFn: (() => Promise<ModelInfo[]>) | null;
@@ -182,6 +189,7 @@ export class Process {
     this._maxThinkingTokens = options.maxThinkingTokens;
     this.setMaxThinkingTokensFn = options.setMaxThinkingTokensFn ?? null;
     this.interruptFn = options.interruptFn ?? null;
+    this.steerFn = options.steerFn ?? null;
     this.supportedModelsFn = options.supportedModelsFn ?? null;
     this.supportedCommandsFn = options.supportedCommandsFn ?? null;
     this.setModelFn = options.setModelFn ?? null;
@@ -810,6 +818,37 @@ export class Process {
     }
 
     if (this.messageQueue) {
+      // If provider supports in-turn steering, prefer that over queue-after-turn behavior.
+      if (this._state.type === "in-turn" && this.steerFn) {
+        const steerMessage: UserMessage = {
+          ...messageWithUuid,
+          // Mirror MessageQueue's attachment expansion for steer payloads.
+          text: content,
+          attachments: undefined,
+        };
+        void this.steerFn(steerMessage)
+          .then((steered) => {
+            if (!steered) {
+              this.messageQueue?.push(messageWithUuid);
+            }
+          })
+          .catch((error) => {
+            const log = getLogger();
+            log.warn(
+              {
+                event: "process_steer_failed",
+                sessionId: this._sessionId,
+                processId: this.id,
+                provider: this.provider,
+                error: error instanceof Error ? error.message : String(error),
+              },
+              "Steer failed; falling back to queued message",
+            );
+            this.messageQueue?.push(messageWithUuid);
+          });
+        return { success: true, position: 0 };
+      }
+
       // Transition to running if we were idle
       if (this._state.type === "idle") {
         this.clearIdleTimer();

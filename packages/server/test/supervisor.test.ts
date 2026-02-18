@@ -1,6 +1,9 @@
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import { MessageQueue } from "../src/sdk/messageQueue.js";
 import { MockClaudeSDK, createMockScenario } from "../src/sdk/mock.js";
+import type { RealClaudeSDKInterface } from "../src/sdk/types.js";
 import { Supervisor } from "../src/supervisor/Supervisor.js";
+import type { SessionSummary } from "../src/supervisor/types.js";
 import { type BusEvent, EventBus } from "../src/watcher/EventBus.js";
 
 describe("Supervisor", () => {
@@ -241,6 +244,119 @@ describe("Supervisor", () => {
         type: "session-status-changed",
         ownership: { owner: "self" },
       });
+    });
+
+    it("emits optimistic title/messageCount in session-created for real SDK sessions", async () => {
+      const eventBus = new EventBus();
+      const events: BusEvent[] = [];
+      eventBus.subscribe((event) => events.push(event));
+
+      const realSdk: RealClaudeSDKInterface = {
+        startSession: async () => {
+          async function* iterator() {
+            yield {
+              type: "system",
+              subtype: "init",
+              session_id: "real-session-1",
+            };
+            yield { type: "result", session_id: "real-session-1" };
+          }
+          return {
+            iterator: iterator(),
+            queue: new MessageQueue(),
+            abort: () => {},
+          };
+        },
+      };
+
+      const supervisorWithBus = new Supervisor({
+        realSdk,
+        idleTimeoutMs: 100,
+        eventBus,
+      });
+
+      await supervisorWithBus.startSession("/tmp/test", {
+        text: "Optimistic title from request",
+      });
+
+      const created = events.find(
+        (e): e is Extract<BusEvent, { type: "session-created" }> =>
+          e.type === "session-created",
+      );
+      expect(created).toBeDefined();
+      expect(created?.session.title).toBe("Optimistic title from request");
+      expect(created?.session.messageCount).toBe(1);
+    });
+
+    it("emits timed session-updated reconciliation from onSessionSummary", async () => {
+      vi.useFakeTimers();
+      try {
+        const eventBus = new EventBus();
+        const events: BusEvent[] = [];
+        eventBus.subscribe((event) => events.push(event));
+
+        const realSdk: RealClaudeSDKInterface = {
+          startSession: async () => {
+            async function* iterator() {
+              yield {
+                type: "system",
+                subtype: "init",
+                session_id: "reconcile-session-1",
+              };
+            }
+            return {
+              iterator: iterator(),
+              queue: new MessageQueue(),
+              abort: () => {},
+            };
+          },
+        };
+
+        const onSessionSummary = vi.fn(
+          async (
+            sessionId: string,
+            projectId: string,
+          ): Promise<SessionSummary | null> => ({
+            id: sessionId,
+            projectId,
+            title: "Reconciled title",
+            fullTitle: "Reconciled title",
+            createdAt: new Date(0).toISOString(),
+            updatedAt: new Date(1000).toISOString(),
+            messageCount: 1,
+            ownership: { owner: "self", processId: "test-proc" },
+            provider: "claude",
+          }),
+        );
+
+        const supervisorWithBus = new Supervisor({
+          realSdk,
+          idleTimeoutMs: 100,
+          eventBus,
+          onSessionSummary,
+        });
+
+        await supervisorWithBus.startSession("/tmp/test", {
+          text: "Seed title",
+        });
+
+        // Allow init event and first reconciliation window.
+        await vi.advanceTimersByTimeAsync(20);
+        await vi.advanceTimersByTimeAsync(1100);
+
+        expect(onSessionSummary).toHaveBeenCalled();
+
+        const updated = events.find(
+          (event): event is Extract<BusEvent, { type: "session-updated" }> =>
+            event.type === "session-updated" &&
+            event.sessionId === "reconcile-session-1",
+        );
+        expect(updated).toBeDefined();
+        expect(updated?.title).toBe("Reconciled title");
+        expect(updated?.messageCount).toBe(1);
+      } finally {
+        vi.useRealTimers();
+      }
     });
   });
 });

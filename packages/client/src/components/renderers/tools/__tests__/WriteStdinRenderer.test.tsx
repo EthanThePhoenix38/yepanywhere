@@ -22,8 +22,26 @@ describe("WriteStdinRenderer", () => {
       </div>,
     );
 
-    expect(screen.getByText(/session 90210/)).toBeDefined();
-    expect(screen.getByText(/poll output/)).toBeDefined();
+    expect(screen.getByText(/command session 90210/)).toBeDefined();
+    expect(screen.getByText(/waiting for output/)).toBeDefined();
+  });
+
+  it("shows linked command when available", () => {
+    render(
+      <div>
+        {writeStdinRenderer.renderToolUse(
+          {
+            session_id: 90210,
+            chars: "",
+            linked_command:
+              "pnpm vitest packages/server/test/api/sessions.test.ts",
+          },
+          renderContext,
+        )}
+      </div>,
+    );
+
+    expect(screen.getByText(/command: pnpm vitest/)).toBeDefined();
   });
 
   it("extracts exit status summary from new output envelope", () => {
@@ -46,8 +64,23 @@ describe("WriteStdinRenderer", () => {
       </div>,
     );
 
-    expect(screen.getByText(/Chunk ID: ff710e/)).toBeDefined();
-    expect(screen.getByText(/Wall time: 0.0518 seconds/)).toBeDefined();
     expect(screen.getByText(/ready/)).toBeDefined();
+  });
+
+  it("extracts output section from envelope metadata", () => {
+    render(
+      <div>
+        {writeStdinRenderer.renderToolResult(
+          "Chunk ID: ff710e\nWall time: 0.0518 seconds\nProcess exited with code 0\nOutput:\nline 1\nline 2\n",
+          false,
+          renderContext,
+        )}
+      </div>,
+    );
+
+    expect(screen.queryByText(/Chunk ID: ff710e/)).toBeNull();
+    expect(screen.queryByText(/Wall time: 0.0518 seconds/)).toBeNull();
+    expect(screen.getByText(/line 1/)).toBeDefined();
+    expect(screen.getByText(/line 2/)).toBeDefined();
   });
 });

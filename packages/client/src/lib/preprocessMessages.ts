@@ -69,7 +69,8 @@ export function preprocessMessages(
     );
   }
 
-  return collapseSessionSetupRuns(items);
+  const enrichedItems = enrichWriteStdinWithCommand(items);
+  return collapseSessionSetupRuns(enrichedItems);
 }
 
 const SESSION_SETUP_PREFIXES = [
@@ -417,4 +418,115 @@ function attachToolResult(
 
   items[index] = updatedItem;
   pendingToolCalls.delete(toolUseId);
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return !!value && typeof value === "object" && !Array.isArray(value);
+}
+
+function extractCommandFromInput(input: unknown): string | undefined {
+  if (!isRecord(input)) {
+    return undefined;
+  }
+  if (typeof input.command === "string" && input.command.trim().length > 0) {
+    return input.command;
+  }
+  if (typeof input.cmd === "string" && input.cmd.trim().length > 0) {
+    return input.cmd;
+  }
+  return undefined;
+}
+
+function coerceSessionId(value: unknown): string | undefined {
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return String(Math.trunc(value));
+  }
+  if (typeof value === "string" && value.trim().length > 0) {
+    return value.trim();
+  }
+  return undefined;
+}
+
+function extractSessionIdFromWriteStdinInput(
+  input: unknown,
+): string | undefined {
+  if (!isRecord(input)) {
+    return undefined;
+  }
+  return coerceSessionId(input.session_id ?? input.sessionId);
+}
+
+function extractSessionIdFromToolResult(
+  item: ToolCallItem,
+): string | undefined {
+  const structured = item.toolResult?.structured;
+  if (isRecord(structured)) {
+    const fromStructured = coerceSessionId(
+      structured.session_id ?? structured.sessionId,
+    );
+    if (fromStructured) {
+      return fromStructured;
+    }
+  }
+
+  const text = item.toolResult?.content ?? "";
+  const match = text.match(
+    /(?:^|\n)\s*(?:Process\s+running\s+with\s+session\s+ID|session(?:\s+id)?)\s*:?\s*(\d+)\b/i,
+  );
+  if (!match?.[1]) {
+    return undefined;
+  }
+  return match[1];
+}
+
+function withLinkedCommand(input: unknown, command: string): unknown {
+  if (!isRecord(input)) {
+    return input;
+  }
+  if (typeof input.linked_command === "string" && input.linked_command.trim()) {
+    return input;
+  }
+  return { ...input, linked_command: command };
+}
+
+function enrichWriteStdinWithCommand(items: RenderItem[]): RenderItem[] {
+  const sessionToCommand = new Map<string, string>();
+
+  return items.map((item) => {
+    if (item.type !== "tool_call") {
+      return item;
+    }
+
+    const toolName = item.toolName.toLowerCase();
+    if (toolName === "bash") {
+      const command = extractCommandFromInput(item.toolInput);
+      if (!command) {
+        return item;
+      }
+      const sessionId = extractSessionIdFromToolResult(item);
+      if (sessionId) {
+        sessionToCommand.set(sessionId, command);
+      }
+      return item;
+    }
+
+    if (toolName !== "writestdin" && toolName !== "write_stdin") {
+      return item;
+    }
+
+    const sessionId = extractSessionIdFromWriteStdinInput(item.toolInput);
+    if (!sessionId) {
+      return item;
+    }
+
+    const command = sessionToCommand.get(sessionId);
+    if (!command) {
+      return item;
+    }
+
+    return {
+      ...item,
+      toolInput: withLinkedCommand(item.toolInput, command),
+    };
+  });
 }

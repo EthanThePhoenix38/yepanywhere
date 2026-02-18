@@ -123,6 +123,11 @@ interface TokenUsageSnapshot {
   cachedInputTokens: number;
 }
 
+interface CodexTurnRuntimeState {
+  threadId: string;
+  activeTurnId: string | null;
+}
+
 interface NormalizedFileChange {
   path: string;
   kind: "add" | "delete" | "update";
@@ -883,6 +888,10 @@ export class CodexProvider implements AgentProvider {
   async startSession(options: StartSessionOptions): Promise<AgentSession> {
     const queue = new MessageQueue();
     const abortController = new AbortController();
+    const runtimeState: CodexTurnRuntimeState = {
+      threadId: options.resumeSessionId ?? "",
+      activeTurnId: null,
+    };
 
     // Push initial message if provided
     if (options.initialMessage) {
@@ -894,6 +903,7 @@ export class CodexProvider implements AgentProvider {
       options,
       queue,
       abortController.signal,
+      runtimeState,
       (client) => {
         activeClient = client;
       },
@@ -906,6 +916,32 @@ export class CodexProvider implements AgentProvider {
         abortController.abort();
         activeClient?.close();
       },
+      steer: async (message) => {
+        if (!activeClient) return false;
+        if (!runtimeState.threadId || !runtimeState.activeTurnId) return false;
+
+        const userPrompt = this.extractTextFromMessage(message);
+        if (!userPrompt) return true;
+
+        try {
+          await activeClient.request<{ turnId: string }>("turn/steer", {
+            threadId: runtimeState.threadId,
+            input: [{ type: "text", text: userPrompt, text_elements: [] }],
+            expectedTurnId: runtimeState.activeTurnId,
+          });
+          return true;
+        } catch (error) {
+          log.warn(
+            {
+              threadId: runtimeState.threadId,
+              turnId: runtimeState.activeTurnId,
+              error: error instanceof Error ? error.message : String(error),
+            },
+            "Codex turn/steer failed; caller should queue message instead",
+          );
+          return false;
+        }
+      },
     };
   }
 
@@ -916,6 +952,7 @@ export class CodexProvider implements AgentProvider {
     options: StartSessionOptions,
     queue: MessageQueue,
     signal: AbortSignal,
+    runtimeState: CodexTurnRuntimeState,
     setActiveClient: (client: CodexAppServerClient) => void,
   ): AsyncIterableIterator<SDKMessage> {
     const codexCommand = this.config.codexPath ?? "codex";
@@ -975,6 +1012,7 @@ export class CodexProvider implements AgentProvider {
             );
 
       sessionId = threadResult.thread.id;
+      runtimeState.threadId = sessionId;
       log.info(
         {
           sessionId,
@@ -1034,6 +1072,7 @@ export class CodexProvider implements AgentProvider {
         );
 
         const activeTurnId = turnResult.turn.id;
+        runtimeState.activeTurnId = activeTurnId;
         log.info(
           {
             sessionId,
@@ -1071,6 +1110,7 @@ export class CodexProvider implements AgentProvider {
             turnComplete = true;
           }
         }
+        runtimeState.activeTurnId = null;
 
         // If turn failed without an emitted error notification, surface start response error.
         if (
@@ -1100,6 +1140,7 @@ export class CodexProvider implements AgentProvider {
         } as SDKMessage;
       }
     } finally {
+      runtimeState.activeTurnId = null;
       appServer.close();
     }
 

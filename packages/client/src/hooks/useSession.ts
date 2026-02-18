@@ -57,6 +57,35 @@ export interface DeferredMessage {
   timestamp: string;
 }
 
+function extractUserMessageText(
+  sdkMessage: Record<string, unknown>,
+): string | null {
+  const message = sdkMessage.message as
+    | { content?: unknown; role?: unknown }
+    | undefined;
+  const content = message?.content;
+
+  if (typeof content === "string") {
+    const trimmed = content.trim();
+    return trimmed.length > 0 ? trimmed : null;
+  }
+
+  if (Array.isArray(content)) {
+    const textParts = content
+      .map((block) => {
+        if (!block || typeof block !== "object") return "";
+        const text = (block as { text?: unknown }).text;
+        return typeof text === "string" ? text : "";
+      })
+      .filter((part) => part.length > 0);
+    if (textParts.length === 0) return null;
+    const joined = textParts.join("\n").trim();
+    return joined.length > 0 ? joined : null;
+  }
+
+  return null;
+}
+
 export function useSession(
   projectId: string,
   sessionId: string,
@@ -709,6 +738,19 @@ export function useSession(
         const tempId = sdkMessage.tempId as string | undefined;
         if (msgType === "user" && tempId) {
           removePendingMessage(tempId);
+        } else if (msgType === "user") {
+          // Fallback for providers that omit tempId on user echo:
+          // clear one matching optimistic pending message by content.
+          const incomingText = extractUserMessageText(sdkMessage);
+          if (incomingText) {
+            setPendingMessages((prev) => {
+              const idx = prev.findIndex(
+                (p) => p.content.trim() === incomingText,
+              );
+              if (idx === -1) return prev;
+              return prev.filter((_, i) => i !== idx);
+            });
+          }
         }
 
         // Route subagent messages to agentContent instead of main messages

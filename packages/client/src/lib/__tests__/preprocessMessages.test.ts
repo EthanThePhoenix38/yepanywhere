@@ -210,6 +210,62 @@ describe("preprocessMessages", () => {
     }
   });
 
+  it("links write_stdin calls to prior bash command using session id", () => {
+    const messages: Message[] = [
+      {
+        id: "msg-bash-use",
+        role: "assistant",
+        content: [
+          {
+            type: "tool_use",
+            id: "bash-1",
+            name: "Bash",
+            input: { command: "pnpm test" },
+          },
+        ],
+        timestamp: "2024-01-01T00:00:00Z",
+      },
+      {
+        id: "msg-bash-result",
+        role: "user",
+        content: [
+          {
+            type: "tool_result",
+            tool_use_id: "bash-1",
+            content: "Process running with session ID 29243",
+          },
+        ],
+        timestamp: "2024-01-01T00:00:01Z",
+      },
+      {
+        id: "msg-stdin-use",
+        role: "assistant",
+        content: [
+          {
+            type: "tool_use",
+            id: "stdin-1",
+            name: "WriteStdin",
+            input: { session_id: 29243, chars: "" },
+          },
+        ],
+        timestamp: "2024-01-01T00:00:02Z",
+      },
+    ];
+
+    const items = preprocessMessages(messages);
+    const writeStdinCall = items.find(
+      (item) => item.type === "tool_call" && item.id === "stdin-1",
+    );
+
+    expect(writeStdinCall?.type).toBe("tool_call");
+    if (writeStdinCall?.type === "tool_call") {
+      expect(writeStdinCall.toolInput).toMatchObject({
+        session_id: 29243,
+        linked_command: "pnpm test",
+      });
+    }
+  });
+
   it("preserves thinking blocks", () => {
     const messages: Message[] = [
       {

@@ -25,6 +25,25 @@ function getChars(input: unknown): string | undefined {
   return input.chars;
 }
 
+function getLinkedCommand(input: unknown): string | undefined {
+  if (!isRecord(input)) {
+    return undefined;
+  }
+  if (
+    typeof input.linked_command === "string" &&
+    input.linked_command.trim().length > 0
+  ) {
+    return input.linked_command;
+  }
+  if (typeof input.command === "string" && input.command.trim().length > 0) {
+    return input.command;
+  }
+  if (typeof input.cmd === "string" && input.cmd.trim().length > 0) {
+    return input.cmd;
+  }
+  return undefined;
+}
+
 function formatChars(chars: string | undefined): string {
   if (chars === undefined || chars.length === 0) {
     return "(poll)";
@@ -72,25 +91,50 @@ function extractExitCode(text: string): number | undefined {
   return Number.parseInt(match[1], 10);
 }
 
+function extractWallTime(text: string): string | undefined {
+  const match = text.match(/(?:^|\n)\s*Wall time:\s*([^\n]+)\s*(?:\n|$)/i);
+  if (!match?.[1]) {
+    return undefined;
+  }
+  return match[1].trim();
+}
+
+function parseResultEnvelope(text: string): {
+  output: string;
+  exitCode?: number;
+  wallTime?: string;
+} {
+  const outputMatch = text.match(/(?:^|\n)\s*Output:\s*\n([\s\S]*)$/i);
+  const output = outputMatch?.[1] ?? text;
+  return {
+    output: output.trimEnd(),
+    exitCode: extractExitCode(text),
+    wallTime: extractWallTime(text),
+  };
+}
+
 export const writeStdinRenderer: ToolRenderer<
   WriteStdinInput,
   WriteStdinResult
 > = {
   tool: "WriteStdin",
-  displayName: "Write stdin",
+  displayName: "Command output",
 
   renderToolUse(input, _context) {
     const sessionId = getSessionId(input);
     const chars = getChars(input);
+    const command = getLinkedCommand(input);
     const action =
       chars === undefined || chars.length === 0
-        ? "poll output"
-        : `send: ${formatChars(chars)}`;
+        ? "waiting for output"
+        : `input: ${formatChars(chars)}`;
+
+    const commandLine = command ? `command: ${command}\n` : "";
 
     return (
       <div className="bash-tool-use">
         <pre className="code-block">
-          <code>{`session ${sessionId}\n${action}`}</code>
+          <code>{`${commandLine}command session ${sessionId}\n${action}`}</code>
         </pre>
       </div>
     );
@@ -98,14 +142,21 @@ export const writeStdinRenderer: ToolRenderer<
 
   renderToolResult(result, isError, _context) {
     const text = getResultText(result);
-    if (!text) {
+    const parsed = parseResultEnvelope(text);
+
+    if (!parsed.output.trim()) {
+      if (parsed.exitCode !== undefined) {
+        return (
+          <div className="bash-empty">{`Command exited with code ${parsed.exitCode}`}</div>
+        );
+      }
       return <div className="bash-empty">No output</div>;
     }
 
     return (
       <div className={`bash-result ${isError ? "bash-result-error" : ""}`}>
         <pre className={`code-block ${isError ? "code-block-error" : ""}`}>
-          <code>{text}</code>
+          <code>{parsed.output}</code>
         </pre>
       </div>
     );
@@ -114,10 +165,20 @@ export const writeStdinRenderer: ToolRenderer<
   getUseSummary(input) {
     const sessionId = getSessionId(input);
     const chars = getChars(input);
+    const command = getLinkedCommand(input);
+    const commandSummary =
+      command && command.length > 60 ? `${command.slice(0, 57)}...` : command;
+
     if (chars === undefined || chars.length === 0) {
-      return `poll ${sessionId}`;
+      if (commandSummary) {
+        return commandSummary;
+      }
+      return "waiting for output";
     }
-    return `stdin ${sessionId}`;
+    if (commandSummary) {
+      return `${commandSummary} (input)`;
+    }
+    return `sent input (${sessionId})`;
   },
 
   getResultSummary(result, isError) {
@@ -126,16 +187,20 @@ export const writeStdinRenderer: ToolRenderer<
     }
 
     const text = getResultText(result);
-    const exitCode = extractExitCode(text);
-    if (exitCode !== undefined) {
-      return `exit ${exitCode}`;
+    const parsed = parseResultEnvelope(text);
+    if (parsed.exitCode !== undefined && parsed.wallTime) {
+      return `exit ${parsed.exitCode} in ${parsed.wallTime}`;
     }
 
-    if (!text.trim()) {
+    if (parsed.exitCode !== undefined) {
+      return `exit ${parsed.exitCode}`;
+    }
+
+    if (!parsed.output.trim()) {
       return "No output";
     }
 
-    const lineCount = text.split("\n").filter(Boolean).length;
+    const lineCount = parsed.output.split("\n").filter(Boolean).length;
     return `${lineCount} lines`;
   },
 };
