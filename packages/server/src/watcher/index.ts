@@ -17,3 +17,9 @@ export { SourceWatcher } from "./SourceWatcher.js";
 export type { SourceWatcherOptions } from "./SourceWatcher.js";
 export { BatchProcessor } from "./BatchProcessor.js";
 export type { BatchProcessorOptions } from "./BatchProcessor.js";
+export { FocusedSessionWatchManager } from "./FocusedSessionWatchManager.js";
+export type {
+  FocusedSessionWatchRequest,
+  FocusedSessionWatchEvent,
+  FocusedSessionWatchManagerOptions,
+} from "./FocusedSessionWatchManager.js";

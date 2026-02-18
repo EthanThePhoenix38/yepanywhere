@@ -30,6 +30,8 @@ import {
 } from "./metadata/index.js";
 import { updateAllowedHosts } from "./middleware/allowed-hosts.js";
 import { NotificationService } from "./notifications/index.js";
+import { CodexSessionScanner } from "./projects/codex-scanner.js";
+import { GeminiSessionScanner } from "./projects/gemini-scanner.js";
 import { ProjectScanner } from "./projects/scanner.js";
 import { PushService, getOrCreateVapidKeys } from "./push/index.js";
 import { RecentsService } from "./recents/index.js";
@@ -53,7 +55,12 @@ import {
 } from "./services/index.js";
 import { ClaudeSessionReader } from "./sessions/reader.js";
 import { UploadManager } from "./uploads/manager.js";
-import { EventBus, FileWatcher, SourceWatcher } from "./watcher/index.js";
+import {
+  EventBus,
+  FileWatcher,
+  FocusedSessionWatchManager,
+  SourceWatcher,
+} from "./watcher/index.js";
 
 // Allow many concurrent Claude sessions without listener warnings.
 // Each SDK session registers an exit handler; default limit is 10.
@@ -401,6 +408,16 @@ async function startServer() {
     serverSettingsService,
   });
 
+  const focusedSessionWatchManager = new FocusedSessionWatchManager({
+    scanner,
+    codexScanner: new CodexSessionScanner({
+      sessionsDir: config.codexSessionsDir,
+    }),
+    geminiScanner: new GeminiSessionScanner({
+      sessionsDir: config.geminiSessionsDir,
+    }),
+  });
+
   // Set supervisor reference for graceful shutdown
   supervisorForShutdown = supervisor;
 
@@ -451,6 +468,7 @@ async function startServer() {
     remoteSessionService,
     connectedBrowsers: connectedBrowsersService,
     browserProfileService,
+    focusedSessionWatchManager,
   });
   app.get("/api/ws", wsRelayHandler);
 
@@ -466,6 +484,7 @@ async function startServer() {
     remoteSessionService,
     connectedBrowsers: connectedBrowsersService,
     browserProfileService,
+    focusedSessionWatchManager,
   });
 
   // Function to start/restart relay client with current config

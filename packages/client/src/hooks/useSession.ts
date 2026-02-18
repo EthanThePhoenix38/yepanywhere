@@ -23,6 +23,7 @@ import {
   useSessionMessages,
 } from "./useSessionMessages";
 import { useSessionStream } from "./useSessionStream";
+import { useSessionWatchStream } from "./useSessionWatchStream";
 import {
   type StreamingMarkdownCallbacks,
   useStreamingContent,
@@ -510,6 +511,27 @@ export function useSession(
     onProcessStateChange: handleProcessStateChange,
     onReconnect: handleActivityReconnect,
   });
+
+  // Focused watch stream for non-owned sessions.
+  // This is a targeted server-side watch of the currently viewed session file,
+  // independent from broad global activity-tree watch behavior.
+  const handleSessionWatchChange = useCallback(() => {
+    if (status.owner === "self") return;
+    throttledFetch();
+  }, [status.owner, throttledFetch]);
+
+  useSessionWatchStream(
+    status.owner !== "self"
+      ? {
+          sessionId,
+          projectId,
+          provider: session?.provider,
+        }
+      : null,
+    {
+      onChange: handleSessionWatchChange,
+    },
+  );
 
   // Cleanup throttle timers
   useEffect(() => {

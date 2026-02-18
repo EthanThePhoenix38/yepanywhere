@@ -29,6 +29,7 @@ import type {
   SrpSessionInvalid,
   SrpSessionResume,
   SrpSessionResumed,
+  UrlProjectId,
   YepMessage,
 } from "@yep-anywhere/shared";
 import {
@@ -71,7 +72,7 @@ import {
 } from "../subscriptions.js";
 import type { Supervisor } from "../supervisor/Supervisor.js";
 import type { UploadManager } from "../uploads/manager.js";
-import type { EventBus } from "../watcher/index.js";
+import type { EventBus, FocusedSessionWatchManager } from "../watcher/index.js";
 
 /** Progress report interval in bytes (64KB) */
 export const PROGRESS_INTERVAL = 64 * 1024;
@@ -160,6 +161,8 @@ export interface RelayHandlerDeps {
   connectedBrowsers?: ConnectedBrowsersService;
   /** Browser profile service for tracking connection origins (optional) */
   browserProfileService?: BrowserProfileService;
+  /** Focused session watch manager for per-session targeted file watching (optional) */
+  focusedSessionWatchManager?: FocusedSessionWatchManager;
 }
 
 /**
@@ -532,6 +535,78 @@ export function handleActivitySubscribe(
 }
 
 /**
+ * Handle a focused session-watch subscription.
+ * Subscribes to targeted file-change events for a single session file.
+ */
+export function handleSessionWatchSubscribe(
+  subscriptions: Map<string, () => void>,
+  msg: RelaySubscribe,
+  send: SendFn,
+  focusedSessionWatchManager?: FocusedSessionWatchManager,
+): void {
+  const { subscriptionId, sessionId, projectId, provider } = msg;
+
+  if (!focusedSessionWatchManager) {
+    send({
+      type: "response",
+      id: subscriptionId,
+      status: 503,
+      body: { error: "Session watch service unavailable" },
+    });
+    return;
+  }
+
+  if (!sessionId || !projectId) {
+    send({
+      type: "response",
+      id: subscriptionId,
+      status: 400,
+      body: {
+        error: "sessionId and projectId required for session-watch channel",
+      },
+    });
+    return;
+  }
+
+  let eventId = 0;
+  const sendEvent = (eventType: string, data: unknown) => {
+    send({
+      type: "event",
+      subscriptionId,
+      eventType,
+      eventId: String(eventId++),
+      data,
+    });
+  };
+
+  sendEvent("connected", { timestamp: new Date().toISOString() });
+
+  const heartbeatInterval = setInterval(() => {
+    sendEvent("heartbeat", { timestamp: new Date().toISOString() });
+  }, 30_000);
+
+  const cleanupFocusedWatch = focusedSessionWatchManager.subscribe(
+    {
+      sessionId,
+      projectId: projectId as UrlProjectId,
+      providerHint: provider,
+    },
+    (event) => {
+      sendEvent("session-watch-change", event);
+    },
+  );
+
+  subscriptions.set(subscriptionId, () => {
+    clearInterval(heartbeatInterval);
+    cleanupFocusedWatch();
+  });
+
+  console.log(
+    `[WS Relay] Subscribed to session-watch ${sessionId} (${subscriptionId})`,
+  );
+}
+
+/**
  * Handle a subscribe message.
  */
 export function handleSubscribe(
@@ -540,6 +615,7 @@ export function handleSubscribe(
   send: SendFn,
   supervisor: Supervisor,
   eventBus: EventBus,
+  focusedSessionWatchManager?: FocusedSessionWatchManager,
   connectedBrowsers?: ConnectedBrowsersService,
   browserProfileService?: BrowserProfileService,
 ): void {
@@ -568,6 +644,15 @@ export function handleSubscribe(
         eventBus,
         connectedBrowsers,
         browserProfileService,
+      );
+      break;
+
+    case "session-watch":
+      handleSessionWatchSubscribe(
+        subscriptions,
+        msg,
+        send,
+        focusedSessionWatchManager,
       );
       break;
 
@@ -1379,6 +1464,7 @@ async function routeMessage(
     supervisor,
     eventBus,
     uploadManager,
+    focusedSessionWatchManager,
     connectedBrowsers,
     browserProfileService,
   } = deps;
@@ -1396,6 +1482,7 @@ async function routeMessage(
           send,
           supervisor,
           eventBus,
+          focusedSessionWatchManager,
           connectedBrowsers,
           browserProfileService,
         );

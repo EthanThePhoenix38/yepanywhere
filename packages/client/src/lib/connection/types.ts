@@ -236,6 +236,26 @@ export interface Connection {
   subscribeActivity(handlers: StreamHandlers): Subscription;
 
   /**
+   * Subscribe to focused file-change events for a specific session file.
+   *
+   * Used by session detail UI for non-owned sessions to get reliable, targeted
+   * updates without depending on broad activity-tree file watching behavior.
+   *
+   * @param sessionId - Session to watch
+   * @param handlers - Event callbacks
+   * @param options - Optional project/provider hints for server-side resolution
+   * @returns Subscription handle with close() method
+   */
+  subscribeSessionWatch(
+    sessionId: string,
+    handlers: StreamHandlers,
+    options?: {
+      projectId?: string;
+      provider?: string;
+    },
+  ): Subscription;
+
+  /**
    * Upload a file to a session.
    *
    * @param projectId - Project ID (URL-encoded format)

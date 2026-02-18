@@ -531,6 +531,58 @@ export class RelayProtocol {
   }
 
   /**
+   * Subscribe to focused file-change events for a specific session.
+   */
+  subscribeSessionWatch(
+    sessionId: string,
+    handlers: StreamHandlers,
+    options?: {
+      projectId?: string;
+      provider?: string;
+    },
+  ): Subscription {
+    const subscriptionId = generateId();
+
+    this.subscriptions.set(subscriptionId, handlers);
+
+    this.transport
+      .ensureConnected()
+      .then(() => {
+        const msg: RelaySubscribe = {
+          type: "subscribe",
+          subscriptionId,
+          channel: "session-watch",
+          sessionId,
+          projectId: options?.projectId,
+          provider: options?.provider,
+        };
+        this.transport.sendMessage(msg);
+      })
+      .catch((err) => {
+        handlers.onError?.(err);
+        this.subscriptions.delete(subscriptionId);
+      });
+
+    return {
+      close: () => {
+        this.subscriptions.delete(subscriptionId);
+        if (this.transport.isConnected()) {
+          const msg: RelayUnsubscribe = {
+            type: "unsubscribe",
+            subscriptionId,
+          };
+          try {
+            this.transport.sendMessage(msg);
+          } catch {
+            // Ignore send errors on close
+          }
+        }
+        handlers.onClose?.();
+      },
+    };
+  }
+
+  /**
    * Upload a file via the relay transport.
    */
   async upload(

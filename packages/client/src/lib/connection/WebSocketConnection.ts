@@ -175,6 +175,17 @@ export class WebSocketConnection implements Connection {
     return this.protocol.subscribeActivity(handlers);
   }
 
+  subscribeSessionWatch(
+    sessionId: string,
+    handlers: StreamHandlers,
+    options?: {
+      projectId?: string;
+      provider?: string;
+    },
+  ): Subscription {
+    return this.protocol.subscribeSessionWatch(sessionId, handlers, options);
+  }
+
   async upload(
     projectId: string,
     sessionId: string,

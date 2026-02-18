@@ -53,7 +53,7 @@ export interface RelayResponse {
 // ============================================================================
 
 /** Subscription channel types */
-export type RelaySubscriptionChannel = "session" | "activity";
+export type RelaySubscriptionChannel = "session" | "activity" | "session-watch";
 
 /** Client -> Server: Subscribe to events */
 export interface RelaySubscribe {
@@ -64,6 +64,10 @@ export interface RelaySubscribe {
   channel: RelaySubscriptionChannel;
   /** Required for channel: "session" */
   sessionId?: string;
+  /** Required for channel: "session-watch" */
+  projectId?: string;
+  /** Optional provider hint for channel: "session-watch" */
+  provider?: string;
   /** Last event ID for resumption */
   lastEventId?: string;
   /** Browser profile identifier for connection tracking (stored in localStorage, shared across tabs) */
