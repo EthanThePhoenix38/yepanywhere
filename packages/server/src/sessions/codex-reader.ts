@@ -144,8 +144,9 @@ export class CodexSessionReader implements ISessionReader {
       const { title, fullTitle } = this.extractTitle(entries);
       const messageCount = this.countMessages(entries);
       const model = this.extractModel(entries);
+      const provider = this.determineProvider(metaEntry, model);
       const turnContext = this.extractTurnContext(entries);
-      const contextUsage = this.extractContextUsage(entries, model);
+      const contextUsage = this.extractContextUsage(entries, model, provider);
 
       // Skip sessions with no actual conversation messages
       if (messageCount === 0) return null;
@@ -160,7 +161,7 @@ export class CodexSessionReader implements ISessionReader {
         messageCount,
         ownership: { owner: "none" },
         contextUsage,
-        provider: this.determineProvider(metaEntry, model),
+        provider,
         model,
         originator: metaEntry.payload.originator,
         cliVersion: metaEntry.payload.cli_version,
@@ -468,10 +469,12 @@ export class CodexSessionReader implements ISessionReader {
    *
    * @param entries - Codex session entries
    * @param model - Model ID for determining context window size (fallback)
+   * @param provider - Provider for model-less context-window fallback
    */
   private extractContextUsage(
     entries: CodexSessionEntry[],
     model: string | undefined,
+    provider: "codex" | "codex-oss",
   ): ContextUsage | undefined {
     // Find last token_count event
     for (let i = entries.length - 1; i >= 0; i--) {
@@ -483,10 +486,11 @@ export class CodexSessionReader implements ISessionReader {
       ) {
         const info = entry.payload.info;
         if (info?.last_token_usage || info?.total_token_usage) {
+          // Codex context meter is based on the latest turn's input_tokens,
+          // not cumulative totals and not cached-input totals.
           const usage = info.last_token_usage ?? info.total_token_usage;
           if (!usage) continue;
-          const inputTokens =
-            usage.input_tokens + (usage.cached_input_tokens ?? 0);
+          const inputTokens = usage.input_tokens;
 
           if (inputTokens === 0) continue;
 
@@ -494,13 +498,13 @@ export class CodexSessionReader implements ISessionReader {
           const contextWindow =
             info.model_context_window && info.model_context_window > 0
               ? info.model_context_window
-              : getModelContextWindow(model);
+              : getModelContextWindow(model, provider);
           const percentage = Math.min(
             100,
             Math.round((inputTokens / contextWindow) * 100),
           );
 
-          return { inputTokens, percentage };
+          return { inputTokens, percentage, contextWindow };
         }
       }
     }

@@ -378,8 +378,8 @@ function convertCodexReasoningPayload(
 
   if (payload.encrypted_content && !summaryText) {
     content.push({
-      type: "text",
-      text: "Reasoning details are encrypted by Codex and unavailable in session logs.",
+      type: "thinking",
+      thinking: "Reasoning [internal]",
     });
   }
 

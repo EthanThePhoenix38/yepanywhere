@@ -361,6 +361,32 @@ describe("useStreamingContent", () => {
         percentage: 25, // 50000 / 200000 * 100
       });
     });
+
+    it("uses message model_context_window when available", () => {
+      const { result } = renderHook(() =>
+        useStreamingContent(defaultOptions()),
+      );
+
+      act(() => {
+        result.current.handleStreamEvent({
+          type: "stream_event",
+          isSubagent: true,
+          parentToolUseId: "tool-456",
+          event: {
+            type: "message_start",
+            message: {
+              id: "msg-123",
+              usage: { input_tokens: 50000 },
+              model_context_window: 258000,
+            },
+          },
+        });
+      });
+
+      const usage = onAgentContextUsage.mock.calls[0]?.[1];
+      expect(usage?.inputTokens).toBe(50000);
+      expect(usage?.percentage).toBeCloseTo(19.38, 2);
+    });
   });
 
   describe("clearStreaming", () => {

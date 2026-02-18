@@ -41,6 +41,7 @@ export function preprocessMessages(
   augments?: PreprocessAugments,
 ): RenderItem[] {
   const items: RenderItem[] = [];
+  const toolCallIndices = new Map<string, number>(); // tool_use_id → index in items
   const pendingToolCalls = new Map<string, number>(); // tool_use_id → index in items
 
   // Collect all orphaned tool IDs from messages (set by server DAG filtering)
@@ -58,7 +59,14 @@ export function preprocessMessages(
   }
 
   for (const msg of messages) {
-    processMessage(msg, items, pendingToolCalls, orphanedToolIds, augments);
+    processMessage(
+      msg,
+      items,
+      toolCallIndices,
+      pendingToolCalls,
+      orphanedToolIds,
+      augments,
+    );
   }
 
   return collapseSessionSetupRuns(items);
@@ -149,6 +157,7 @@ function collapseSessionSetupRuns(items: RenderItem[]): RenderItem[] {
 function processMessage(
   msg: Message,
   items: RenderItem[],
+  toolCallIndices: Map<string, number>,
   pendingToolCalls: Map<string, number>,
   orphanedToolIds: Set<string>,
   augments?: PreprocessAugments,
@@ -313,6 +322,20 @@ function processMessage(
       }
     } else if (block.type === "tool_use") {
       if (block.id && block.name) {
+        // Stream reconnects/resume can replay the same tool_use id from a
+        // different assistant message snapshot. Keep one render item per tool id.
+        const existingIndex = toolCallIndices.get(block.id);
+        if (existingIndex !== undefined) {
+          const existingItem = items[existingIndex];
+          if (existingItem?.type === "tool_call") {
+            items[existingIndex] = appendSourceMessage(existingItem, msg);
+            if (existingItem.status === "pending") {
+              pendingToolCalls.set(block.id, existingIndex);
+            }
+          }
+          continue;
+        }
+
         // Check if this tool call is orphaned (process killed before result)
         const isOrphaned = orphanedToolIds.has(block.id);
         const toolCall: ToolCallItem = {
@@ -325,11 +348,29 @@ function processMessage(
           sourceMessages: [msg],
           isSubagent: msg.isSubagent,
         };
-        pendingToolCalls.set(block.id, items.length);
+        const itemIndex = items.length;
+        toolCallIndices.set(block.id, itemIndex);
+        pendingToolCalls.set(block.id, itemIndex);
         items.push(toolCall);
       }
     }
   }
+}
+
+function appendSourceMessage(
+  item: ToolCallItem,
+  message: Message,
+): ToolCallItem {
+  const messageId = getMessageId(message);
+  if (
+    item.sourceMessages.some((source) => getMessageId(source) === messageId)
+  ) {
+    return item;
+  }
+  return {
+    ...item,
+    sourceMessages: [...item.sourceMessages, message],
+  };
 }
 
 function attachToolResult(
@@ -370,7 +411,7 @@ function attachToolResult(
     toolInput: item.toolInput,
     toolResult: resultData,
     status: block.is_error ? "error" : "complete",
-    sourceMessages: [...item.sourceMessages, resultMessage],
+    sourceMessages: appendSourceMessage(item, resultMessage).sourceMessages,
     isSubagent: item.isSubagent,
   };
 

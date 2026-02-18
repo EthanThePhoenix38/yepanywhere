@@ -18,9 +18,9 @@
 
 import { type ReactNode, useEffect } from "react";
 import { Navigate, Outlet } from "react-router-dom";
+import { ConnectionBar } from "./components/ConnectionBar";
 import { FloatingActionButton } from "./components/FloatingActionButton";
 import { HostOfflineModal } from "./components/HostOfflineModal";
-import { RelayConnectionBar } from "./components/RelayConnectionBar";
 import { ReloadBanner } from "./components/ReloadBanner";
 import { InboxProvider } from "./contexts/InboxContext";
 import {
@@ -167,7 +167,7 @@ function RemoteAppInner({ children }: Props) {
 
   return (
     <>
-      <RelayConnectionBar />
+      <ConnectionBar />
       {children}
     </>
   );

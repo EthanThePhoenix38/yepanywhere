@@ -36,7 +36,6 @@ import {
   useSession,
 } from "../hooks/useSession";
 import { useNavigationLayout } from "../layouts";
-import { getGlobalConnection } from "../lib/connection";
 import { preprocessMessages } from "../lib/preprocessMessages";
 import { getSessionDisplayTitle } from "../utils";
 
@@ -124,6 +123,7 @@ function SessionPageContent({
     loading,
     error,
     connected,
+    sessionUpdatesConnected,
     lastStreamActivityAt,
     setStatus,
     setProcessState,
@@ -147,13 +147,14 @@ function SessionPageContent({
   // Developer mode settings
   const { holdModeEnabled, showConnectionBars } = useDeveloperMode();
 
-  // Session connection bar state (only shown in remote/relay mode)
+  // Session connection bar state for active session update streams
   const { connectionState } = useActivityBusState();
-  const isRemoteMode = !!getGlobalConnection();
+  const hasSessionUpdateStream =
+    status.owner === "self" || status.owner === "external";
   const sessionConnectionStatus =
-    !isRemoteMode || status.owner !== "self" || !showConnectionBars
+    !showConnectionBars || !hasSessionUpdateStream
       ? "idle"
-      : connected
+      : sessionUpdatesConnected
         ? "connected"
         : connectionState === "reconnecting"
           ? "connecting"
@@ -935,7 +936,7 @@ function SessionPageContent({
             sessionSource={session.source}
             approvalPolicy={session.approvalPolicy}
             sandboxPolicy={session.sandboxPolicy}
-            sessionStreamConnected={connected}
+            sessionStreamConnected={sessionUpdatesConnected}
             lastSessionEventAt={lastStreamActivityAt}
             onClose={() => setShowProcessInfoModal(false)}
           />

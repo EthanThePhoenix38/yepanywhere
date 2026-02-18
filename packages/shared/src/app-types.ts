@@ -168,10 +168,12 @@ export type AgentActivity =
 
 /** Context usage information extracted from the last assistant message */
 export interface ContextUsage {
-  /** Total input tokens for the last request (fresh + cached) */
+  /** Input tokens used for context-window meter (provider-specific semantics) */
   inputTokens: number;
   /** Percentage of context window used (based on model's context limit) */
   percentage: number;
+  /** Context window size used to compute percentage */
+  contextWindow?: number;
   /** Output tokens generated in the last response (optional - may not be available) */
   outputTokens?: number;
   /** Cache read tokens (tokens served from cache) */
@@ -186,6 +188,8 @@ export interface ContextUsage {
 
 /** Default context window size (200K tokens) */
 export const DEFAULT_CONTEXT_WINDOW = 200_000;
+/** Default context window size for Codex cloud sessions when metadata is missing */
+export const CODEX_DEFAULT_CONTEXT_WINDOW = 258_000;
 
 /**
  * Known context window sizes for different models.
@@ -202,6 +206,7 @@ export const DEFAULT_CONTEXT_WINDOW = 200_000;
  * GPT models:
  * - GPT-4: 128K (varies by variant)
  * - GPT-4o: 128K
+ * - GPT-5 / Codex 5.x: ~258K
  */
 const MODEL_CONTEXT_WINDOWS: Record<string, number> = {
   // Claude models - 200K context
@@ -210,7 +215,10 @@ const MODEL_CONTEXT_WINDOWS: Record<string, number> = {
   haiku: 200_000,
   // Gemini models - 1M context
   gemini: 1_000_000,
-  // GPT models - 128K context
+  // GPT-5 / Codex models - ~258K context
+  "gpt-5": CODEX_DEFAULT_CONTEXT_WINDOW,
+  codex: CODEX_DEFAULT_CONTEXT_WINDOW,
+  // GPT-4 models - 128K context
   "gpt-4": 128_000,
   "gpt-4o": 128_000,
   "gpt-4-turbo": 128_000,
@@ -227,12 +235,25 @@ const MODEL_CONTEXT_WINDOWS: Record<string, number> = {
  * - "gpt-4o-2024-08-06" → gpt-4o → 128K
  *
  * @param model - Model ID string (e.g., "claude-opus-4-5-20251101")
+ * @param provider - Provider name for fallback defaults when model is missing
  * @returns Context window size in tokens
  */
-export function getModelContextWindow(model: string | undefined): number {
-  if (!model) return DEFAULT_CONTEXT_WINDOW;
+export function getModelContextWindow(
+  model: string | undefined,
+  provider?: ProviderName,
+): number {
+  if (!model) {
+    return provider === "codex"
+      ? CODEX_DEFAULT_CONTEXT_WINDOW
+      : DEFAULT_CONTEXT_WINDOW;
+  }
 
   const lowerModel = model.toLowerCase();
+
+  // Handle model IDs that may include provider namespace or other prefixes.
+  if (lowerModel.includes("gpt-5") || lowerModel.includes("codex")) {
+    return CODEX_DEFAULT_CONTEXT_WINDOW;
+  }
 
   // Check for exact prefix matches first (for GPT models)
   for (const [prefix, size] of Object.entries(MODEL_CONTEXT_WINDOWS)) {
@@ -254,6 +275,11 @@ export function getModelContextWindow(model: string | undefined): number {
   // Check for Gemini models
   if (lowerModel.includes("gemini")) {
     return MODEL_CONTEXT_WINDOWS.gemini ?? DEFAULT_CONTEXT_WINDOW;
+  }
+
+  // Provider-level fallback when we don't recognize the model string.
+  if (provider === "codex") {
+    return CODEX_DEFAULT_CONTEXT_WINDOW;
   }
 
   return DEFAULT_CONTEXT_WINDOW;

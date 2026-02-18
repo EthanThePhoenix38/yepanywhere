@@ -494,7 +494,7 @@ describe("Codex Normalization", () => {
     });
   });
 
-  it("adds informative encrypted reasoning fallback when no summary is present", () => {
+  it("adds internal reasoning placeholder thinking block when no summary is present", () => {
     const entries: CodexSessionEntry[] = [
       {
         type: "response_item",
@@ -514,8 +514,8 @@ describe("Codex Normalization", () => {
 
     expect(blocks).toHaveLength(1);
     expect(blocks[0]).toMatchObject({
-      type: "text",
-      text: "Reasoning details are encrypted by Codex and unavailable in session logs.",
+      type: "thinking",
+      thinking: "Reasoning [internal]",
     });
   });
 

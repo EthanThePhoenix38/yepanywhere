@@ -162,12 +162,14 @@ function sdkMessagesToClientMessages(sdkMessages: SDKMessage[]): Message[] {
  *
  * @param sdkMessages - SDK messages to search
  * @param model - Model ID for determining context window size
+ * @param provider - Provider for model-less context-window fallback
  */
 function extractContextUsageFromSDKMessages(
   sdkMessages: SDKMessage[],
   model: string | undefined,
+  provider?: ProviderName,
 ): ContextUsage | undefined {
-  const contextWindowSize = getModelContextWindow(model);
+  const contextWindowSize = getModelContextWindow(model, provider);
 
   // Find the last assistant message with usage data (iterate backwards)
   for (let i = sdkMessages.length - 1; i >= 0; i--) {
@@ -176,15 +178,20 @@ function extractContextUsageFromSDKMessages(
       const usage = msg.usage as {
         input_tokens?: number;
         output_tokens?: number;
+        cached_input_tokens?: number;
         cache_read_input_tokens?: number;
         cache_creation_input_tokens?: number;
       };
 
-      // Total input = fresh tokens + cached tokens + new cache creation
-      const inputTokens =
-        (usage.input_tokens ?? 0) +
-        (usage.cache_read_input_tokens ?? 0) +
-        (usage.cache_creation_input_tokens ?? 0);
+      const isCodexProvider = provider === "codex" || provider === "codex-oss";
+
+      // Codex context meter is based on fresh input tokens from the latest turn.
+      // Claude/OpenCode/Gemini paths continue to include cached+creation tokens.
+      const inputTokens = isCodexProvider
+        ? (usage.input_tokens ?? 0)
+        : (usage.input_tokens ?? 0) +
+          (usage.cache_read_input_tokens ?? 0) +
+          (usage.cache_creation_input_tokens ?? 0);
 
       // Skip messages with zero input tokens (incomplete streaming messages)
       if (inputTokens === 0) {
@@ -193,13 +200,24 @@ function extractContextUsageFromSDKMessages(
 
       const percentage = Math.round((inputTokens / contextWindowSize) * 100);
 
-      const result: ContextUsage = { inputTokens, percentage };
+      const result: ContextUsage = {
+        inputTokens,
+        percentage,
+        contextWindow: contextWindowSize,
+      };
 
       // Add optional fields if available
       if (usage.output_tokens !== undefined && usage.output_tokens > 0) {
         result.outputTokens = usage.output_tokens;
       }
-      if (
+      if (isCodexProvider) {
+        if (
+          usage.cached_input_tokens !== undefined &&
+          usage.cached_input_tokens > 0
+        ) {
+          result.cacheReadTokens = usage.cached_input_tokens;
+        }
+      } else if (
         usage.cache_read_input_tokens !== undefined &&
         usage.cache_read_input_tokens > 0
       ) {
@@ -760,6 +778,7 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
         const contextUsage = extractContextUsageFromSDKMessages(
           sdkMessages,
           process.resolvedModel,
+          process.provider,
         );
         // Get metadata even for new sessions (in case it was set before file was written)
         const metadata = deps.sessionMetadataService?.getMetadata(sessionId);

@@ -507,7 +507,11 @@ export class OpenCodeSessionReader implements ISessionReader {
               (inputTokens / contextWindowSize) * 100,
             );
 
-            const result: ContextUsage = { inputTokens, percentage };
+            const result: ContextUsage = {
+              inputTokens,
+              percentage,
+              contextWindow: contextWindowSize,
+            };
 
             if (msg.tokens.output !== undefined && msg.tokens.output > 0) {
               result.outputTokens = msg.tokens.output;

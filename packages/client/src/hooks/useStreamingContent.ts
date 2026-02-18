@@ -1,3 +1,4 @@
+import { getModelContextWindow } from "@yep-anywhere/shared";
 import { useCallback, useRef } from "react";
 import { getMessageId } from "../lib/mergeMessages";
 import type { ContentBlock, Message } from "../types";
@@ -36,6 +37,8 @@ export interface UseStreamingContentOptions {
   onToolUseMapping?: (toolUseId: string, agentId: string) => void;
   /** Callback for agent context usage updates */
   onAgentContextUsage?: (agentId: string, usage: ContextUsage) => void;
+  /** Fallback context window size when stream metadata doesn't include one */
+  contextWindowSize?: number;
 }
 
 /** Result from useStreamingContent hook */
@@ -74,6 +77,7 @@ export function useStreamingContent(
     streamingMarkdownCallbacks,
     onToolUseMapping,
     onAgentContextUsage,
+    contextWindowSize: defaultContextWindowSize,
   } = options;
 
   // Streaming state: accumulates content from stream_event messages
@@ -192,7 +196,20 @@ export function useStreamingContent(
               | undefined;
             if (usage?.input_tokens) {
               const inputTokens = usage.input_tokens;
-              const percentage = (inputTokens / 200000) * 100;
+              const model =
+                typeof message.model === "string" ? message.model : undefined;
+              const modelContextWindow =
+                typeof message.model_context_window === "number"
+                  ? message.model_context_window
+                  : undefined;
+              const contextWindow =
+                modelContextWindow && modelContextWindow > 0
+                  ? modelContextWindow
+                  : model
+                    ? getModelContextWindow(model)
+                    : (defaultContextWindowSize ??
+                      getModelContextWindow(undefined));
+              const percentage = (inputTokens / contextWindow) * 100;
               onAgentContextUsage(streamAgentId, { inputTokens, percentage });
             }
           }
@@ -271,6 +288,7 @@ export function useStreamingContent(
       streamingMarkdownCallbacks,
       onToolUseMapping,
       onAgentContextUsage,
+      defaultContextWindowSize,
     ],
   );
 

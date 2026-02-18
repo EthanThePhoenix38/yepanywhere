@@ -487,7 +487,11 @@ export class ClaudeSessionReader implements ISessionReader {
             (inputTokens / contextWindowSize) * 100,
           );
 
-          const result: ContextUsage = { inputTokens, percentage };
+          const result: ContextUsage = {
+            inputTokens,
+            percentage,
+            contextWindow: contextWindowSize,
+          };
 
           // Add optional fields if available
           if (usage.output_tokens !== undefined && usage.output_tokens > 0) {

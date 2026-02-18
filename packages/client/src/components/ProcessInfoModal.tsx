@@ -238,13 +238,15 @@ export function ProcessInfoModal({
           />
           <InfoRow label="Connection state" value={connectionState} />
           <InfoRow
-            label="Session stream"
+            label={
+              status.owner === "external" ? "Session watch" : "Session stream"
+            }
             value={
-              status.owner === "self"
-                ? sessionStreamConnected
+              status.owner === "none"
+                ? "Not subscribed"
+                : sessionStreamConnected
                   ? "Connected"
                   : "Disconnected"
-                : "Not subscribed"
             }
           />
           {status.owner === "self" && lastSessionEventAt && (
@@ -252,6 +254,9 @@ export function ProcessInfoModal({
               label="Last session event"
               value={formatTimeAgo(new Date(lastSessionEventAt).getTime())}
             />
+          )}
+          {status.owner === "external" && (
+            <InfoRow label="Subscription mode" value="Focused file watch" />
           )}
         </Section>
 

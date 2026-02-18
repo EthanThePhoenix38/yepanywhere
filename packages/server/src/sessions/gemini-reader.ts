@@ -430,7 +430,7 @@ export class GeminiSessionReader implements ISessionReader {
             (inputTokens / contextWindowSize) * 100,
           );
 
-          return { inputTokens, percentage };
+          return { inputTokens, percentage, contextWindow: contextWindowSize };
         }
       }
     }

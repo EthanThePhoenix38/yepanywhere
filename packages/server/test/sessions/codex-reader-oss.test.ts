@@ -28,6 +28,13 @@ describe("CodexSessionReader - OSS Support", () => {
     provider: string | undefined,
     model: string | undefined,
     originator?: string,
+    tokenUsage?: {
+      totalInputTokens: number;
+      totalCachedInputTokens?: number;
+      lastInputTokens?: number;
+      lastCachedInputTokens?: number;
+      modelContextWindow?: number;
+    },
   ) => {
     const metaPayload = {
       id: sessionId,
@@ -66,6 +73,35 @@ describe("CodexSessionReader - OSS Support", () => {
         },
       }),
     );
+
+    if (tokenUsage) {
+      lines.push(
+        JSON.stringify({
+          type: "event_msg",
+          timestamp: new Date().toISOString(),
+          payload: {
+            type: "token_count",
+            info: {
+              total_token_usage: {
+                input_tokens: tokenUsage.totalInputTokens,
+                cached_input_tokens: tokenUsage.totalCachedInputTokens ?? 0,
+                output_tokens: 10,
+                total_tokens: tokenUsage.totalInputTokens + 10,
+              },
+              ...(tokenUsage.lastInputTokens !== undefined && {
+                last_token_usage: {
+                  input_tokens: tokenUsage.lastInputTokens,
+                  cached_input_tokens: tokenUsage.lastCachedInputTokens ?? 0,
+                  output_tokens: 5,
+                  total_tokens: tokenUsage.lastInputTokens + 5,
+                },
+              }),
+              model_context_window: tokenUsage.modelContextWindow ?? 258400,
+            },
+          },
+        }),
+      );
+    }
 
     await writeFile(
       join(testDir, `${sessionId}.jsonl`),
@@ -154,6 +190,43 @@ describe("CodexSessionReader - OSS Support", () => {
       "test-project" as UrlProjectId,
     );
     expect(summary?.provider).toBe("codex");
+  });
+
+  it("uses last_token_usage input_tokens for context usage", async () => {
+    const sessionId = "context-last-usage";
+    await createSessionFile(sessionId, "openai", "gpt-5.3-codex", undefined, {
+      totalInputTokens: 236_673,
+      totalCachedInputTokens: 116_000,
+      lastInputTokens: 120_000,
+      lastCachedInputTokens: 118_000,
+      modelContextWindow: 258_000,
+    });
+
+    const summary = await reader.getSessionSummary(
+      sessionId,
+      "test-project" as UrlProjectId,
+    );
+
+    expect(summary?.contextUsage?.inputTokens).toBe(120_000);
+    expect(summary?.contextUsage?.percentage).toBe(47);
+    expect(summary?.contextUsage?.contextWindow).toBe(258_000);
+  });
+
+  it("falls back to total_token_usage input_tokens when last_token_usage is absent", async () => {
+    const sessionId = "context-total-fallback";
+    await createSessionFile(sessionId, "openai", "gpt-5.3-codex", undefined, {
+      totalInputTokens: 85_000,
+      totalCachedInputTokens: 40_000,
+      modelContextWindow: 258_000,
+    });
+
+    const summary = await reader.getSessionSummary(
+      sessionId,
+      "test-project" as UrlProjectId,
+    );
+
+    expect(summary?.contextUsage?.inputTokens).toBe(85_000);
+    expect(summary?.contextUsage?.percentage).toBe(33);
   });
 
   it("excludes developer messages from messageCount", async () => {

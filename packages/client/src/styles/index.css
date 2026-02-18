@@ -7838,10 +7838,10 @@ a.sidebar-nav-item {
 }
 
 /* ==========================================================================
-   Relay Connection Bar
+   Connection Bar
    ========================================================================== */
 
-.relay-connection-bar {
+.connection-bar {
   position: fixed;
   top: 0;
   left: 0;
@@ -7852,16 +7852,16 @@ a.sidebar-nav-item {
   transition: background-color 0.3s ease;
 }
 
-.relay-connection-connected {
+.connection-connected {
   background-color: var(--success-color);
 }
 
-.relay-connection-connecting {
+.connection-connecting {
   background-color: var(--thinking-color);
   animation: connection-pulse 1.5s ease-in-out infinite;
 }
 
-.relay-connection-disconnected {
+.connection-disconnected {
   background-color: var(--error-color);
 }
 

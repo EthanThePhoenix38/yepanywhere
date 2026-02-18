@@ -37,11 +37,12 @@ export function ContextUsageIndicator({
     return "var(--text-muted, #9d9d9d)";
   };
 
+  const tooltip = usage.contextWindow
+    ? `Context: ${clampedPercentage}% (${formatTokens(usage.inputTokens)} / ${formatTokens(usage.contextWindow)} tokens)`
+    : `Context: ${clampedPercentage}% (${formatTokens(usage.inputTokens)} tokens)`;
+
   return (
-    <span
-      className="context-usage-indicator"
-      title={`Context: ${percentage}% (${formatTokens(usage.inputTokens)} tokens)`}
-    >
+    <span className="context-usage-indicator" title={tooltip}>
       <svg
         width={size}
         height={size}

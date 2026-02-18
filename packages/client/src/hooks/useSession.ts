@@ -1,4 +1,8 @@
-import type { MarkdownAugment, ProviderName } from "@yep-anywhere/shared";
+import {
+  type MarkdownAugment,
+  type ProviderName,
+  getModelContextWindow,
+} from "@yep-anywhere/shared";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api } from "../api/client";
 import { getMessageId } from "../lib/mergeMessages";
@@ -104,6 +108,16 @@ export function useSession(
   const [localMode, setLocalMode] = useState<PermissionMode>("default");
   const [serverMode, setServerMode] = useState<PermissionMode>("default");
   const [modeVersion, setModeVersion] = useState<number>(0);
+  // Track whether we've already processed a stream "connected" event in this mount.
+  // For Codex providers, the first connected-event catch-up fetch can duplicate
+  // freshly streamed messages because JSONL and stream IDs are not yet aligned.
+  const hasHandledConnectedEventRef = useRef(false);
+
+  // Reset connected-event tracking when switching sessions.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: effect intentionally runs on session switches
+  useEffect(() => {
+    hasHandledConnectedEventRef.current = false;
+  }, [sessionId]);
 
   // Slash commands available for this session (from init message)
   const [slashCommands, setSlashCommands] = useState<string[]>([]);
@@ -520,7 +534,7 @@ export function useSession(
     throttledFetch();
   }, [status.owner, throttledFetch]);
 
-  useSessionWatchStream(
+  const { connected: sessionWatchConnected } = useSessionWatchStream(
     status.owner !== "self"
       ? {
           sessionId,
@@ -568,6 +582,7 @@ export function useSession(
     onUpdateMessage: handleStreamingUpdate,
     onToolUseMapping: registerToolUseAgent,
     onAgentContextUsage: handleAgentContextUsage,
+    contextWindowSize: getModelContextWindow(session?.model, session?.provider),
     streamingMarkdownCallbacks,
   });
 
@@ -828,11 +843,19 @@ export function useSession(
         // Sync deferred messages from connected event
         setDeferredMessages(connectedData.deferredMessages ?? []);
 
-        // Fetch messages from JSONL since last known message
-        // This handles reconnection after long disconnects where the server's
-        // in-memory buffer only has the last 30-60s of messages, but the JSONL
-        // has all messages written while the client was offline
-        fetchNewMessages();
+        // Fetch messages from JSONL since last known message.
+        // For Codex providers, skip the very first connected-event fetch because
+        // it can duplicate fresh stream messages (ID mismatch between stream and
+        // early JSONL normalization). Reconnects still fetch as normal.
+        const connectedProvider = connectedData.provider ?? session?.provider;
+        const isCodexProvider =
+          connectedProvider === "codex" || connectedProvider === "codex-oss";
+        const isFirstConnectedEvent = !hasHandledConnectedEventRef.current;
+        hasHandledConnectedEventRef.current = true;
+
+        if (!(isFirstConnectedEvent && isCodexProvider)) {
+          fetchNewMessages();
+        }
       } else if (data.eventType === "mode-change") {
         // Handle mode change from another tab/client
         const modeData = data as {
@@ -922,6 +945,7 @@ export function useSession(
       setMessages,
       setSession,
       fetchNewMessages,
+      session?.provider,
     ],
   );
 
@@ -949,6 +973,13 @@ export function useSession(
     { onMessage: handleStreamMessage, onError: handleStreamError },
   );
 
+  const sessionUpdatesConnected =
+    status.owner === "self"
+      ? connected
+      : status.owner === "external"
+        ? sessionWatchConnected
+        : false;
+
   return {
     session,
     messages,
@@ -967,6 +998,8 @@ export function useSession(
     loading,
     error,
     connected,
+    sessionWatchConnected,
+    sessionUpdatesConnected,
     lastStreamActivityAt, // Last stream message timestamp for engagement tracking
     setStatus,
     setProcessState,

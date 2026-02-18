@@ -71,6 +71,100 @@ describe("preprocessMessages", () => {
     });
   });
 
+  it("deduplicates repeated tool_use blocks with the same id", () => {
+    const messages: Message[] = [
+      {
+        id: "msg-1",
+        role: "assistant",
+        content: [
+          {
+            type: "tool_use",
+            id: "call_1",
+            name: "Edit",
+            input: { file_path: "a.ts" },
+          },
+        ],
+        timestamp: "2024-01-01T00:00:00Z",
+      },
+      {
+        id: "msg-2",
+        role: "assistant",
+        content: [
+          {
+            type: "tool_use",
+            id: "call_1",
+            name: "Edit",
+            input: { file_path: "a.ts" },
+          },
+        ],
+        timestamp: "2024-01-01T00:00:01Z",
+      },
+    ];
+
+    const items = preprocessMessages(messages);
+    const toolCalls = items.filter((item) => item.type === "tool_call");
+
+    expect(toolCalls).toHaveLength(1);
+    const call = toolCalls[0];
+    if (call?.type === "tool_call") {
+      expect(call.id).toBe("call_1");
+      expect(call.status).toBe("pending");
+    }
+  });
+
+  it("attaches tool_result to deduplicated tool_use", () => {
+    const messages: Message[] = [
+      {
+        id: "msg-1",
+        role: "assistant",
+        content: [
+          {
+            type: "tool_use",
+            id: "call_1",
+            name: "Edit",
+            input: { file_path: "a.ts" },
+          },
+        ],
+        timestamp: "2024-01-01T00:00:00Z",
+      },
+      {
+        id: "msg-2",
+        role: "assistant",
+        content: [
+          {
+            type: "tool_use",
+            id: "call_1",
+            name: "Edit",
+            input: { file_path: "a.ts" },
+          },
+        ],
+        timestamp: "2024-01-01T00:00:01Z",
+      },
+      {
+        id: "msg-3",
+        role: "user",
+        content: [
+          {
+            type: "tool_result",
+            tool_use_id: "call_1",
+            content: "success",
+          },
+        ],
+        timestamp: "2024-01-01T00:00:02Z",
+      },
+    ];
+
+    const items = preprocessMessages(messages);
+    const toolCalls = items.filter((item) => item.type === "tool_call");
+
+    expect(toolCalls).toHaveLength(1);
+    const call = toolCalls[0];
+    if (call?.type === "tool_call") {
+      expect(call.status).toBe("complete");
+      expect(call.toolResult?.content).toBe("success");
+    }
+  });
+
   it("handles multiple tool calls in sequence", () => {
     const messages: Message[] = [
       {

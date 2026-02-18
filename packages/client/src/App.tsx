@@ -1,4 +1,5 @@
 import { type ReactNode, useEffect } from "react";
+import { ConnectionBar } from "./components/ConnectionBar";
 import { FloatingActionButton } from "./components/FloatingActionButton";
 import { ReloadBanner } from "./components/ReloadBanner";
 import { OnboardingWizard } from "./components/onboarding";
@@ -45,6 +46,7 @@ function AppContent({ children }: Props) {
 
   return (
     <>
+      <ConnectionBar />
       {isManualReloadMode && pendingReloads.backend && (
         <ReloadBanner
           target="backend"
