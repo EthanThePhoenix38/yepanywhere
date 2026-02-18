@@ -112,6 +112,19 @@ export class ProjectScanner {
         ) {
           existing.lastActivity = lastActivity;
         }
+
+        // Prefer the local path for session creation.
+        // Remote executor sessions (rsynced) may store a foreign cwd
+        // (e.g., /Users/... on a Linux host). Swap to the local path
+        // so new sessions can actually spawn in an existing directory.
+        const localHome = homedir();
+        const existingIsLocal = existing.path.startsWith(`${localHome}/`);
+        const newIsLocal = projectPath.startsWith(`${localHome}/`);
+        if (!existingIsLocal && newIsLocal) {
+          existing.path = projectPath;
+          existing.id = encodeProjectId(projectPath);
+          existing.name = basename(projectPath);
+        }
       } else {
         normalizedIndex.set(normalized, projects.length);
         projects.push({

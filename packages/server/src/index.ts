@@ -66,6 +66,34 @@ import {
 // Each SDK session registers an exit handler; default limit is 10.
 process.setMaxListeners(50);
 
+// Prevent unhandled promise rejections from crashing the server.
+// The Claude Agent SDK can throw "ProcessTransport is not ready for writing"
+// from its internal streamInput() in a detached async context when a CLI
+// process dies. This isn't catchable from our Process.processMessages() loop.
+process.on("unhandledRejection", (reason) => {
+  const message =
+    reason instanceof Error ? reason.message : String(reason ?? "unknown");
+  const stack = reason instanceof Error ? reason.stack : undefined;
+
+  // Known SDK transport errors — these are already handled by Process via
+  // isProcessTerminationError when they surface through the iterator, but
+  // streamInput failures arrive as unhandled rejections.
+  const isTransportError =
+    message.includes("ProcessTransport is not ready") ||
+    message.includes("not ready for writing");
+
+  if (isTransportError) {
+    console.warn(
+      `[unhandledRejection] SDK transport error (session process likely died): ${message}`,
+    );
+  } else {
+    console.error(`[unhandledRejection] ${message}`);
+    if (stack) {
+      console.error(stack);
+    }
+  }
+});
+
 const config = loadConfig();
 
 // Track supervisor for graceful shutdown (set after createApp)

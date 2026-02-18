@@ -1407,7 +1407,9 @@ export class Process {
       message.includes("process exited") ||
       message.includes("SIGTERM") ||
       message.includes("SIGKILL") ||
-      message.includes("spawn ENOENT")
+      // SDK wraps spawn errors as "Failed to spawn Claude Code process: spawn <cmd> ENOENT"
+      // where <cmd> varies (e.g., "node", "claude"), so check for ENOENT broadly
+      message.includes("ENOENT")
     );
   }
 
