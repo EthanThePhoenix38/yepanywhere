@@ -107,13 +107,54 @@ Tech: Native iOS, Mosh protocol
 
 ---
 
+### Codex Pocket
+**GitHub:** https://github.com/ddevalco/codex-pocket
+**Status:** Active (278 commits, MIT)
+
+iPhone remote control for Codex Desktop via Tailscale:
+- Tailscale-only networking (no public exposure)
+- Device pairing via QR codes with per-device session tokens
+- SQLite event persistence and replay
+- Image attachments with local storage
+- Thread title sync with Codex Desktop state
+- Per-thread progress tracking, concurrent composition
+- Read-only GitHub Copilot CLI session viewing (ACP protocol)
+- launchd agent for macOS background service
+- Markdown/JSON thread export with iOS share sheet
+
+Tech: Svelte, TypeScript, Bun, SQLite, Vite
+
+**Note:** Fork of "Zane" project, stripped down to focus on local Codex control. iPhone-first UX (Enter = newline, Cmd+Enter = submit). Codex-only write support.
+
+---
+
+### Farfield
+**GitHub:** https://github.com/achimala/farfield
+**Status:** Active (84 commits, 19 stars, MIT)
+
+Local web UI for remote-controlling Codex Desktop:
+- Thread browser organized by project
+- Chat interface with model and reasoning effort controls
+- Plan mode toggle per thread
+- Real-time agent event streaming via SSE
+- Interrupt controls
+- Debug tab with full IPC history, payload inspection, and replay
+- Zod schemas as single source of truth (hard fail on unknown payloads)
+
+Tech: React, TypeScript, Vite, Tailwind, pnpm monorepo
+
+**Note:** Connects directly to Codex Desktop's IPC socket and HTTP app-server API. Debug/IPC inspection tab is unique among competitors. Codex-only.
+
+---
+
 ## Patterns Observed
 
 1. **Tailscale is popular** — Many use it for secure remote access
 2. **PTY/terminal streaming** — Common approach vs SDK integration
 3. **E2E encryption** — Becoming expected for remote access
 4. **Multi-agent support** — Growing expectation beyond Claude-only
+5. **Codex-specific tools emerging** — Codex Pocket and Farfield target Codex Desktop directly via IPC/app-server APIs rather than wrapping a CLI
 
 ## Last Updated
 
-2026-02-03
+2026-02-18
