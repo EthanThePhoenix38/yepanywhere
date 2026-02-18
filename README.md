@@ -26,7 +26,7 @@ A polished web interface for managing Claude and Codex agents. Works great on mo
 
 ## What is this?
 
-If you use Claude Code from the terminal, this gives you a better interface. Auto-detects your installed CLI tools and provides:
+If you use Claude Code or Codex from the terminal, this gives you a better interface. Auto-detects your installed CLI tools and provides:
 
 - **Interop first** — View sessions running in Claude CLI, VS Code, or other tools in real time, or resume them later from your phone. No new database — just a tiny JSON cache and optional metadata for starring/archiving
 - **Multi-session dashboard** — See all your agents at a glance, easy multitasking
@@ -46,9 +46,7 @@ No database, no cloud, no accounts, no hidden gimmicks. 100% open source. Piggyb
 | Provider | Edit Visibility | Local Models | Approval Flow | Notes |
 |----------|-----------------|--------------|---------------|-------|
 | Claude Code | Full | No | Yes (per-tool) | Primary provider, full mobile supervision |
-| Codex | Black box | No | In-chat only | Can't see what edits are happening |
-| Codex-OSS | Full | Yes | No | Local models struggle with 6k system prompt |
-| Gemini | N/A (read-only) | No | N/A | Analysis only, no write tools |
+| Codex | Full | No | Yes (per-tool) | Full support — diffs, approvals, streaming |
 | OpenCode | ? | ? | ? | Early integration, approvals not implemented |
 
 ## Screenshots
@@ -73,7 +71,7 @@ No database, no cloud, no accounts, no hidden gimmicks. 100% open source. Piggyb
 
 ## Getting Started
 
-If you can install Claude CLI, you can install this. Minimal dependencies.
+If you can install Claude Code or Codex, you can install this. Minimal dependencies.
 
 ```
 npm i -g yepanywhere
@@ -117,7 +115,7 @@ See [DEVELOPMENT.md](DEVELOPMENT.md) for build instructions, configuration optio
 - **No file uploads** — can't share screenshots, photos, PDFs, or other files with your agent
 - No voice input
 - No multi-session overview
-- This gives you Claude.ai polish, but self-hosted and editing your code
+- This gives you a polished UI, but self-hosted and editing your code
 
 ## License
 
