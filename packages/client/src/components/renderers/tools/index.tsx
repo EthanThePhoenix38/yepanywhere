@@ -5,6 +5,8 @@ import type { ToolRenderer } from "./types";
 const TOOL_NAME_ALIASES: Record<string, string> = {
   shell_command: "Bash",
   exec_command: "Bash",
+  write_stdin: "WriteStdin",
+  update_plan: "UpdatePlan",
   apply_patch: "Edit",
   web_search_call: "WebSearch",
   search_query: "WebSearch",
@@ -157,9 +159,11 @@ import { readRenderer } from "./ReadRenderer";
 import { taskOutputRenderer } from "./TaskOutputRenderer";
 import { taskRenderer } from "./TaskRenderer";
 import { todoWriteRenderer } from "./TodoWriteRenderer";
+import { updatePlanRenderer } from "./UpdatePlanRenderer";
 import { webFetchRenderer } from "./WebFetchRenderer";
 import { webSearchRenderer } from "./WebSearchRenderer";
 import { writeRenderer } from "./WriteRenderer";
+import { writeStdinRenderer } from "./WriteStdinRenderer";
 
 // Tier 1 & 2: Core tools
 toolRegistry.register(bashRenderer);
@@ -176,6 +180,8 @@ toolRegistry.register(webSearchRenderer);
 toolRegistry.register(webFetchRenderer);
 toolRegistry.register(askUserQuestionRenderer);
 toolRegistry.register(exitPlanModeRenderer);
+toolRegistry.register(updatePlanRenderer);
+toolRegistry.register(writeStdinRenderer);
 
 // Tier 4: Background/async tools
 toolRegistry.register(bashOutputRenderer);

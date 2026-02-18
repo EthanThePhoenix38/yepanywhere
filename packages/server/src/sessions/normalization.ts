@@ -31,6 +31,8 @@ import type { LoadedSession } from "./types.js";
 const CODEX_TOOL_NAME_ALIASES: Record<string, string> = {
   shell_command: "Bash",
   exec_command: "Bash",
+  write_stdin: "WriteStdin",
+  update_plan: "UpdatePlan",
   apply_patch: "Edit",
   web_search_call: "WebSearch",
   search_query: "WebSearch",
@@ -695,10 +697,17 @@ function normalizeCodexToolOutput(output: unknown): {
   if (typeof output === "string") {
     let structured: unknown;
     let isError = false;
+    let content = output;
 
     try {
       structured = JSON.parse(output);
-      if (isRecord(structured)) {
+      if (typeof structured === "string") {
+        content = structured;
+        const exitCode = extractExitCodeFromText(structured);
+        if (exitCode !== undefined) {
+          isError = exitCode !== 0;
+        }
+      } else if (isRecord(structured)) {
         const exitCode = extractExitCodeFromRecord(structured);
         isError =
           structured.is_error === true ||
@@ -716,7 +725,7 @@ function normalizeCodexToolOutput(output: unknown): {
       }
     }
 
-    return { content: output, structured, isError };
+    return { content, structured, isError };
   }
 
   if (output === null || output === undefined) {

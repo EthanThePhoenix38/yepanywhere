@@ -1,7 +1,12 @@
+import { readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import type { CodexSessionEntry } from "@yep-anywhere/shared";
 import { describe, expect, it } from "vitest";
 import { normalizeSession } from "../../src/sessions/normalization.js";
 import type { LoadedSession } from "../../src/sessions/types.js";
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
 
 function buildLoadedSession(entries: CodexSessionEntry[]): LoadedSession {
   return {
@@ -26,6 +31,22 @@ function buildLoadedSession(entries: CodexSessionEntry[]): LoadedSession {
       // biome-ignore lint/suspicious/noExplicitAny: mock session shape
     } as any,
   };
+}
+
+function loadCodexFixtureEntries(name: string): CodexSessionEntry[] {
+  const fixturePath = join(
+    __dirname,
+    "..",
+    "fixtures",
+    "codex",
+    `${name}.jsonl`,
+  );
+  const content = readFileSync(fixturePath, "utf-8");
+  return content
+    .split("\n")
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0)
+    .map((line) => JSON.parse(line) as CodexSessionEntry);
 }
 
 describe("Codex Normalization", () => {
@@ -348,6 +369,55 @@ describe("Codex Normalization", () => {
       name: "Edit",
     });
     expect(toolResultMessage?.toolUseResult).toMatchObject({ ok: true });
+  });
+
+  it("normalizes new tooling fixture (update_plan + write_stdin) with readable output text", () => {
+    const entries = loadCodexFixtureEntries("new-tooling-format");
+
+    const result = normalizeSession(buildLoadedSession(entries));
+    expect(result.messages).toHaveLength(4);
+
+    const updatePlanUse = result.messages[0]?.message?.content;
+    const updatePlanUseBlock = Array.isArray(updatePlanUse)
+      ? updatePlanUse[0]
+      : updatePlanUse;
+    expect(updatePlanUseBlock).toMatchObject({
+      type: "tool_use",
+      id: "plan-1",
+      name: "UpdatePlan",
+    });
+
+    const updatePlanResult = result.messages[1]?.message?.content;
+    const updatePlanResultBlock = Array.isArray(updatePlanResult)
+      ? updatePlanResult[0]
+      : updatePlanResult;
+    expect(updatePlanResultBlock).toMatchObject({
+      type: "tool_result",
+      tool_use_id: "plan-1",
+      content: "Plan updated",
+    });
+
+    const stdinUse = result.messages[2]?.message?.content;
+    const stdinUseBlock = Array.isArray(stdinUse) ? stdinUse[0] : stdinUse;
+    expect(stdinUseBlock).toMatchObject({
+      type: "tool_use",
+      id: "stdin-1",
+      name: "WriteStdin",
+    });
+
+    const stdinResult = result.messages[3]?.message?.content;
+    const stdinResultBlock = Array.isArray(stdinResult)
+      ? stdinResult[0]
+      : stdinResult;
+    expect(stdinResultBlock).toMatchObject({
+      type: "tool_result",
+      tool_use_id: "stdin-1",
+      content:
+        "Chunk ID: ff710e\nWall time: 0.0518 seconds\nProcess exited with code 0\nOriginal token count: 184\nOutput:\n\nready\n",
+    });
+    expect(
+      (stdinResultBlock as { is_error?: boolean }).is_error,
+    ).toBeUndefined();
   });
 
   it("preserves Codex input_image blocks without dumping data URLs into text", () => {

@@ -235,6 +235,31 @@ export interface ExitPlanModeResult {
 }
 
 /**
+ * update_plan tool types
+ */
+export interface UpdatePlanStep {
+  step: string;
+  status: "pending" | "in_progress" | "completed" | string;
+}
+
+export interface UpdatePlanInput {
+  explanation?: string;
+  plan?: UpdatePlanStep[];
+}
+
+export type UpdatePlanResult = string | { message?: string };
+
+/**
+ * write_stdin tool types
+ */
+export interface WriteStdinInput {
+  session_id?: string | number;
+  chars?: string;
+}
+
+export type WriteStdinResult = string | { content?: string };
+
+/**
  * BashOutput tool types
  */
 export interface BashOutputInput {
