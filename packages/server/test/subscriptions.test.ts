@@ -241,6 +241,62 @@ describe("createSessionSubscription", () => {
     });
   });
 
+  it("augments codex-style Edit raw patches during streaming", async () => {
+    const { process, fireEvent } = createMockProcess();
+    const { emit, events } = collectEmit();
+
+    createSessionSubscription(process, emit);
+
+    await fireEvent({
+      type: "message",
+      message: {
+        type: "assistant",
+        uuid: "msg-1",
+        message: {
+          content: [
+            {
+              type: "tool_use",
+              id: "tool-edit-1",
+              name: "Edit",
+              input: {
+                patch: [
+                  "*** Begin Patch",
+                  "*** Update File: src/example.ts",
+                  "@@ -1,1 +1,1 @@",
+                  "-const a = 1;",
+                  "+const a = 2;",
+                  "*** End Patch",
+                ].join("\n"),
+              },
+            },
+          ],
+        },
+      },
+    } as ProcessEvent);
+
+    const messageEvent = events.find(([type]) => type === "message");
+    expect(messageEvent).toBeDefined();
+
+    const payload = messageEvent?.[1] as {
+      message?: {
+        content?: Array<{
+          type?: string;
+          input?: {
+            _rawPatch?: string;
+            _structuredPatch?: Array<unknown>;
+          };
+        }>;
+      };
+    };
+    const firstBlock = payload.message?.content?.[0];
+    const input = firstBlock?.input;
+
+    expect(firstBlock?.type).toBe("tool_use");
+    expect(input?._rawPatch).toContain("*** Begin Patch");
+    expect(Array.isArray(input?._structuredPatch)).toBe(true);
+    expect(input?._structuredPatch?.length).toBeGreaterThan(0);
+  });
+
   it("emits complete and stops further events", async () => {
     const { process, fireEvent } = createMockProcess();
     const { emit, events } = collectEmit();

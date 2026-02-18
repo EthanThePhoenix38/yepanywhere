@@ -18,7 +18,11 @@
  * ```
  */
 
-import { computeEditAugment } from "./edit-augments.js";
+import { computeEditAugment, computeStructuredPatchDiffHtml } from "./edit-augments.js";
+import {
+  extractRawPatchFromEditInput,
+  parseRawEditPatch,
+} from "./edit-raw-patch.js";
 import { renderMarkdownToHtml } from "./markdown-augments.js";
 import {
   extractIdFromAssistant,
@@ -160,7 +164,13 @@ export async function createStreamAugmenter(
         (block as Record<string, unknown>).name === "Edit"
       ) {
         const toolUseBlock = block as Record<string, unknown>;
-        const input = toolUseBlock.input as EditInputWithAugment;
+        const rawInput = toolUseBlock.input;
+        const input =
+          typeof rawInput === "object" &&
+          rawInput !== null &&
+          !Array.isArray(rawInput)
+            ? (rawInput as EditInputWithAugment)
+            : undefined;
 
         if (
           typeof toolUseBlock.id === "string" &&
@@ -179,6 +189,62 @@ export async function createStreamAugmenter(
             input._diffHtml = augment.diffHtml;
           } catch (err) {
             handleError(err, "Failed to compute edit augment");
+          }
+          continue;
+        }
+
+        const rawPatch = extractRawPatchFromEditInput(rawInput);
+        if (!rawPatch) {
+          continue;
+        }
+
+        const targetInput =
+          input ??
+          ({
+            file_path: "",
+            old_string: "",
+            new_string: "",
+          } as EditInputWithAugment);
+
+        if (!input) {
+          toolUseBlock.input = targetInput;
+        }
+
+        if (!targetInput._rawPatch) {
+          targetInput._rawPatch = rawPatch;
+        }
+
+        const parsedPatch = parseRawEditPatch(rawPatch);
+        if (!parsedPatch) {
+          continue;
+        }
+
+        if (!targetInput.file_path && parsedPatch.filePath) {
+          targetInput.file_path = parsedPatch.filePath;
+        }
+
+        if (
+          !targetInput._structuredPatch &&
+          parsedPatch.structuredPatch.length > 0
+        ) {
+          targetInput._structuredPatch = parsedPatch.structuredPatch;
+        }
+
+        if (
+          !targetInput._diffHtml &&
+          targetInput._structuredPatch &&
+          targetInput._structuredPatch.length > 0
+        ) {
+          try {
+            const diffHtml = await computeStructuredPatchDiffHtml(
+              targetInput.file_path || parsedPatch.filePath || "",
+              targetInput._structuredPatch,
+            );
+            if (diffHtml) {
+              targetInput._diffHtml = diffHtml;
+            }
+          } catch (err) {
+            handleError(err, "Failed to compute raw patch edit augment");
           }
         }
       }
