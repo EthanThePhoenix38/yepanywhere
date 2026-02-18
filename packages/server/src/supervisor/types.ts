@@ -49,6 +49,16 @@ export type SessionOwnership =
     } // we control it
   | { owner: "external" }; // another process owns it
 
+/**
+ * Session sandbox policy from Codex turn_context.
+ */
+export interface SessionSandboxPolicy {
+  type: string;
+  networkAccess?: boolean;
+  excludeTmpdirEnvVar?: boolean;
+  excludeSlashTmp?: boolean;
+}
+
 // Session metadata (light, for lists)
 export interface SessionSummary {
   id: string;
@@ -79,6 +89,16 @@ export interface SessionSummary {
   provider: ProviderName;
   /** Model used for this session (extracted from JSONL, e.g. "claude-opus-4-5-20251101") */
   model?: string;
+  /** Launcher identifier from session metadata (e.g. "Codex Desktop", "yep-anywhere") */
+  originator?: string;
+  /** CLI version from session metadata (e.g. "0.101.0") */
+  cliVersion?: string;
+  /** Session source from session metadata (e.g. "vscode", "exec") */
+  source?: string;
+  /** Approval policy from turn_context (e.g. "never", "on-request") */
+  approvalPolicy?: string;
+  /** Sandbox policy from turn_context */
+  sandboxPolicy?: SessionSandboxPolicy;
 }
 
 /**

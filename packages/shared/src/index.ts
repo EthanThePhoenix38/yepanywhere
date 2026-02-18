@@ -123,6 +123,7 @@ export type {
   AgentActivity,
   ContextUsage,
   SessionOwnership,
+  SessionSandboxPolicy,
   AppSessionSummary,
   AppSession,
   // Agent session types

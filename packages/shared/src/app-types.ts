@@ -273,6 +273,16 @@ export type SessionOwnership =
   | { owner: "external" }; // another process owns it
 
 /**
+ * Session sandbox policy from Codex turn_context.
+ */
+export interface SessionSandboxPolicy {
+  type: string;
+  networkAccess?: boolean;
+  excludeTmpdirEnvVar?: boolean;
+  excludeSlashTmp?: boolean;
+}
+
+/**
  * Recent session entry with enriched data from the server.
  * Session data is looked up server-side to avoid N+1 client requests.
  */
@@ -315,6 +325,16 @@ export interface AppSessionSummary {
   contextUsage?: ContextUsage;
   /** SSH host alias for remote execution (undefined = local) */
   executor?: string;
+  /** Launcher identifier from session metadata (e.g. "Codex Desktop", "yep-anywhere") */
+  originator?: string;
+  /** CLI version from session metadata (e.g. "0.101.0") */
+  cliVersion?: string;
+  /** Session source from session metadata (e.g. "vscode", "exec") */
+  source?: string;
+  /** Approval policy from turn_context (e.g. "never", "on-request") */
+  approvalPolicy?: string;
+  /** Sandbox policy from turn_context */
+  sandboxPolicy?: SessionSandboxPolicy;
 }
 
 /**

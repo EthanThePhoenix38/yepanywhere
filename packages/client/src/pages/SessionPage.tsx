@@ -930,6 +930,11 @@ function SessionPageContent({
             status={status}
             processState={processState}
             contextUsage={session.contextUsage}
+            originator={session.originator}
+            cliVersion={session.cliVersion}
+            sessionSource={session.source}
+            approvalPolicy={session.approvalPolicy}
+            sandboxPolicy={session.sandboxPolicy}
             sessionStreamConnected={connected}
             lastSessionEventAt={lastStreamActivityAt}
             onClose={() => setShowProcessInfoModal(false)}

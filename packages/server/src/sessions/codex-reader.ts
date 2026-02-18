@@ -22,6 +22,7 @@ import {
   type CodexResponseItemEntry,
   type CodexSessionEntry,
   type CodexSessionMetaEntry,
+  type CodexTurnContextEntry,
   SESSION_TITLE_MAX_LENGTH,
   type UnifiedSession,
   type UrlProjectId,
@@ -143,6 +144,7 @@ export class CodexSessionReader implements ISessionReader {
       const { title, fullTitle } = this.extractTitle(entries);
       const messageCount = this.countMessages(entries);
       const model = this.extractModel(entries);
+      const turnContext = this.extractTurnContext(entries);
       const contextUsage = this.extractContextUsage(entries, model);
 
       // Skip sessions with no actual conversation messages
@@ -160,6 +162,20 @@ export class CodexSessionReader implements ISessionReader {
         contextUsage,
         provider: this.determineProvider(metaEntry, model),
         model,
+        originator: metaEntry.payload.originator,
+        cliVersion: metaEntry.payload.cli_version,
+        source: metaEntry.payload.source,
+        approvalPolicy: turnContext?.payload.approval_policy,
+        sandboxPolicy: turnContext?.payload.sandbox_policy
+          ? {
+              type: turnContext.payload.sandbox_policy.type,
+              networkAccess: turnContext.payload.sandbox_policy.network_access,
+              excludeTmpdirEnvVar:
+                turnContext.payload.sandbox_policy.exclude_tmpdir_env_var,
+              excludeSlashTmp:
+                turnContext.payload.sandbox_policy.exclude_slash_tmp,
+            }
+          : undefined,
       };
     } catch {
       return null;
@@ -500,6 +516,20 @@ export class CodexSessionReader implements ISessionReader {
     for (const entry of entries) {
       if (entry.type === "turn_context" && entry.payload.model) {
         return entry.payload.model;
+      }
+    }
+    return undefined;
+  }
+
+  /**
+   * Extract the first turn_context entry, which captures session launch policy.
+   */
+  private extractTurnContext(
+    entries: CodexSessionEntry[],
+  ): CodexTurnContextEntry | undefined {
+    for (const entry of entries) {
+      if (entry.type === "turn_context") {
+        return entry;
       }
     }
     return undefined;

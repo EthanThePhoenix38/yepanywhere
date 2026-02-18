@@ -1,4 +1,8 @@
-import type { ContextUsage, ProviderName } from "@yep-anywhere/shared";
+import type {
+  ContextUsage,
+  ProviderName,
+  SessionSandboxPolicy,
+} from "@yep-anywhere/shared";
 import { useEffect, useState } from "react";
 import { api } from "../api/client";
 import { useActivityBusState } from "../hooks/useActivityBusState";
@@ -33,6 +37,11 @@ interface ProcessInfoModalProps {
   status: SessionStatus;
   processState: ProcessState;
   contextUsage?: ContextUsage;
+  originator?: string;
+  cliVersion?: string;
+  sessionSource?: string;
+  approvalPolicy?: string;
+  sandboxPolicy?: SessionSandboxPolicy;
   /** Whether the session-specific SSE stream is connected */
   sessionStreamConnected: boolean;
   /** Timestamp of last SSE activity for this session */
@@ -80,6 +89,26 @@ function formatTimeAgo(timestamp: number | null): string {
   return `${hours}h ${minutes % 60}m ago`;
 }
 
+function formatSandboxPolicy(policy?: SessionSandboxPolicy): string | null {
+  if (!policy) return null;
+
+  const details: string[] = [];
+  if (policy.networkAccess !== undefined) {
+    details.push(`network ${policy.networkAccess ? "on" : "off"}`);
+  }
+  if (policy.excludeTmpdirEnvVar !== undefined) {
+    details.push(
+      `$TMPDIR ${policy.excludeTmpdirEnvVar ? "excluded" : "included"}`,
+    );
+  }
+  if (policy.excludeSlashTmp !== undefined) {
+    details.push(`/tmp ${policy.excludeSlashTmp ? "excluded" : "included"}`);
+  }
+
+  if (details.length === 0) return policy.type;
+  return `${policy.type} (${details.join(", ")})`;
+}
+
 function InfoRow({
   label,
   value,
@@ -122,6 +151,11 @@ export function ProcessInfoModal({
   status,
   processState,
   contextUsage,
+  originator,
+  cliVersion,
+  sessionSource,
+  approvalPolicy,
+  sandboxPolicy,
   sessionStreamConnected,
   lastSessionEventAt,
   onClose,
@@ -185,6 +219,15 @@ export function ProcessInfoModal({
           <InfoRow label="Model" value={model || "Default"} mono />
           <InfoRow label="Ownership" value={formatKebab(status.owner)} />
           <InfoRow label="Activity" value={formatKebab(processState)} />
+          <InfoRow label="Originator" value={originator} />
+          <InfoRow label="CLI version" value={cliVersion} mono />
+          <InfoRow label="Session source" value={sessionSource} />
+          <InfoRow label="Approval policy" value={approvalPolicy} mono />
+          <InfoRow
+            label="Sandbox policy"
+            value={formatSandboxPolicy(sandboxPolicy)}
+            mono
+          />
         </Section>
 
         {/* Connection Info */}
