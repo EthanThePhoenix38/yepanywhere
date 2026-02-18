@@ -202,14 +202,14 @@ describe("CodexSessionReader - OSS Support", () => {
     expect(summary?.messageCount).toBe(1);
   });
 
-  it('reports originator as "Codex Desktop" when declaration is enabled', async () => {
-    const sessionId = "originator-override";
+  it("preserves originator from session metadata", async () => {
+    const sessionId = "originator-passthrough";
     await createSessionFile(sessionId, "openai", "gpt-4o", "yep-anywhere");
 
     const summary = await reader.getSessionSummary(
       sessionId,
       "test-project" as UrlProjectId,
     );
-    expect(summary?.originator).toBe("Codex Desktop");
+    expect(summary?.originator).toBe("yep-anywhere");
   });
 });

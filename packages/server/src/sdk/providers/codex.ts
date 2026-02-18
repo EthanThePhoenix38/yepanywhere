@@ -63,6 +63,13 @@ const CODEX_POLICY_OVERRIDES: {
   sandbox: null,
 };
 
+/**
+ * When enabled, declare Codex session originator as "Codex Desktop"
+ * when initializing app-server sessions.
+ */
+const DECLARE_CODEX_ORIGINATOR = true;
+const DECLARED_CODEX_ORIGINATOR = "Codex Desktop";
+
 const PREFERRED_MODEL_ORDER = [
   "gpt-5.3-codex",
   "gpt-5.2-codex",
@@ -540,6 +547,12 @@ export class CodexProvider implements AgentProvider {
     }
   }
 
+  private getCodexClientName(): string {
+    return DECLARE_CODEX_ORIGINATOR
+      ? DECLARED_CODEX_ORIGINATOR
+      : "yep-anywhere";
+  }
+
   /**
    * Build environment overrides for Codex subprocesses.
    */
@@ -750,7 +763,7 @@ export class CodexProvider implements AgentProvider {
           method: "initialize",
           params: {
             clientInfo: {
-              name: "yep-anywhere",
+              name: this.getCodexClientName(),
               version: "dev",
             },
             capabilities: null,
@@ -925,7 +938,7 @@ export class CodexProvider implements AgentProvider {
 
       await appServer.request<{ userAgent: string }>("initialize", {
         clientInfo: {
-          name: "yep-anywhere",
+          name: this.getCodexClientName(),
           version: "dev",
         },
         capabilities: null,

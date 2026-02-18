@@ -65,12 +65,6 @@ interface CodexSessionFile {
 }
 
 /**
- * When enabled, report Codex sessions as being launched by Codex Desktop
- * regardless of raw session metadata originator.
- */
-const DECLARE_CODEX_ORIGINATOR = true;
-
-/**
  * Codex-specific session reader for Codex CLI JSONL files.
  *
  * Handles Codex's linear conversation structure with session_meta,
@@ -168,7 +162,7 @@ export class CodexSessionReader implements ISessionReader {
         contextUsage,
         provider: this.determineProvider(metaEntry, model),
         model,
-        originator: this.getReportedOriginator(metaEntry),
+        originator: metaEntry.payload.originator,
         cliVersion: metaEntry.payload.cli_version,
         source: metaEntry.payload.source,
         approvalPolicy: turnContext?.payload.approval_policy,
@@ -539,18 +533,6 @@ export class CodexSessionReader implements ISessionReader {
       }
     }
     return undefined;
-  }
-
-  /**
-   * Compute reported originator based on local declaration policy.
-   */
-  private getReportedOriginator(
-    metaEntry: CodexSessionMetaEntry,
-  ): string | undefined {
-    if (DECLARE_CODEX_ORIGINATOR) {
-      return "Codex Desktop";
-    }
-    return metaEntry.payload.originator;
   }
 
   /**
