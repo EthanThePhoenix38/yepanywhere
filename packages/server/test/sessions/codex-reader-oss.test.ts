@@ -27,12 +27,14 @@ describe("CodexSessionReader - OSS Support", () => {
     sessionId: string,
     provider: string | undefined,
     model: string | undefined,
+    originator?: string,
   ) => {
     const metaPayload = {
       id: sessionId,
       cwd: "/test/project",
       timestamp: new Date().toISOString(),
       ...(provider ? { model_provider: provider } : {}),
+      ...(originator ? { originator } : {}),
     };
 
     const lines = [
@@ -198,5 +200,16 @@ describe("CodexSessionReader - OSS Support", () => {
       "test-project" as UrlProjectId,
     );
     expect(summary?.messageCount).toBe(1);
+  });
+
+  it('reports originator as "Codex Desktop" when declaration is enabled', async () => {
+    const sessionId = "originator-override";
+    await createSessionFile(sessionId, "openai", "gpt-4o", "yep-anywhere");
+
+    const summary = await reader.getSessionSummary(
+      sessionId,
+      "test-project" as UrlProjectId,
+    );
+    expect(summary?.originator).toBe("Codex Desktop");
   });
 });
