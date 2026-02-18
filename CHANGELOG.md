@@ -7,10 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.1] - 2025-02-18
+
+### Fixed
+- Fix Codex provider labeling (CLI, not Desktop)
+
 ## [0.3.0] - 2025-02-18
 
 ### Added
-- Codex Desktop integration with app-server approvals and protocol workflow
+- Codex CLI integration with app-server approvals and protocol workflow
 - Codex session launch metadata, originator override, and steering improvements
 - Focused session-watch subscriptions for session pages
 - Server-side highlighted diff HTML for parsed raw patches
