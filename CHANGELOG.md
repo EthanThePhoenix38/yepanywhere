@@ -7,6 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.0] - 2025-02-18
+
+### Added
+- Codex Desktop integration with app-server approvals and protocol workflow
+- Codex session launch metadata, originator override, and steering improvements
+- Focused session-watch subscriptions for session pages
+- Server-side highlighted diff HTML for parsed raw patches
+- Browser control module for headless browser automation
+
+### Fixed
+- Relay navigation dropping machine name from URL
+- Codex Bash error inference for exit code output
+- Codex persisted apply_patch diff rendering
+- Codex session context and stream reliability
+
+### Changed
+- Collapse injected session setup prompts in transcript
+- Normalize update_plan and write_stdin tool events
+- Improve Codex persisted session rendering parity
+- Show Codex provider errors in session UI
+
 ## [0.2.9] - 2025-02-15
 
 ### Fixed
