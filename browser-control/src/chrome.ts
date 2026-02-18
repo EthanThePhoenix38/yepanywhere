@@ -3,6 +3,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { chromium } from "playwright";
+import { STEALTH_CHROME_ARGS } from "./stealth.js";
 import { DATA_DIR, DEFAULT_CDP_PORT } from "./types.js";
 
 let chromeProcess: ChildProcess | null = null;
@@ -75,12 +76,12 @@ export async function launchChrome(
     "--no-default-browser-check",
     "--disable-sync",
     "--disable-background-networking",
-    "--disable-features=Translate,MediaRouter",
     "--disable-blink-features=AutomationControlled",
     "--disable-dev-shm-usage",
     "--no-sandbox",
     "--disable-setuid-sandbox",
     "--disable-gpu",
+    ...STEALTH_CHROME_ARGS,
     "about:blank",
   ];
 

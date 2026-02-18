@@ -3,6 +3,7 @@ import path from "node:path";
 import type { Browser, Page } from "playwright";
 import { chromium } from "playwright";
 import { getScreenshotsDir } from "./chrome.js";
+import { applyStealthToPage } from "./stealth.js";
 import {
   type ActRequest,
   DEFAULT_ACTION_TIMEOUT_MS,
@@ -54,6 +55,7 @@ async function getPage(
   if (pages.length === 0) {
     // Create a new page if none exist
     const page = await ctx.newPage();
+    await applyStealthToPage(page);
     const id = await getTargetId(page);
     return { page, targetId: id };
   }
@@ -107,6 +109,7 @@ export async function openTab(browser: Browser, url: string): Promise<Tab> {
   if (!ctx) throw new Error("No browser context available");
 
   const page = await ctx.newPage();
+  await applyStealthToPage(page);
   await page.goto(url, { waitUntil: "domcontentloaded", timeout: 30_000 });
 
   return {
