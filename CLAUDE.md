@@ -69,6 +69,24 @@ Environment variables:
 
 Note: Both instances share `~/.claude/projects/` (SDK-managed sessions).
 
+## Browser Control
+
+A headless Chromium browser is available at `browser-control/` for web automation — browsing sites, filling forms, extracting content, etc. It includes stealth anti-detection so most sites (including Reddit, etc.) work without being blocked.
+
+**Quick start:** The server may already be running. Check with `tsx browser-control/src/cli.ts status`. If not, start it with `tsx browser-control/src/server.ts &`.
+
+**Usage:** See `.claude/skills/browser.md` for the full CLI reference, snapshot format, and workflow patterns. Key commands:
+
+```bash
+tsx browser-control/src/cli.ts open <url>              # Open URL in new tab
+tsx browser-control/src/cli.ts snapshot --efficient     # Get page as text (accessibility tree)
+tsx browser-control/src/cli.ts click <ref>              # Click element by ref from snapshot
+tsx browser-control/src/cli.ts type <ref> <text>        # Type into element
+tsx browser-control/src/cli.ts screenshot               # Take screenshot (returns file path)
+```
+
+Use this proactively when the user asks to browse a website, check a page, or interact with a web app.
+
 ## After Editing Code
 
 After editing TypeScript or other source files, verify your changes compile and pass checks:
