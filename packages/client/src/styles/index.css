@@ -2725,6 +2725,25 @@ a.sidebar-nav-item {
   animation: shimmer 2s ease-in-out infinite;
 }
 
+.system-message-error {
+  border-left-color: var(--error-color, #ef4444);
+  background: color-mix(
+    in srgb,
+    var(--error-color, #ef4444) 10%,
+    var(--bg-tertiary, #2a2a2a)
+  );
+  color: var(--text-primary);
+}
+
+.system-message-error .system-message-text {
+  font-style: normal;
+}
+
+.system-message-error .system-message-icon {
+  opacity: 1;
+  font-weight: 700;
+}
+
 .system-message-icon.spinning {
   animation: spin 1.5s linear infinite;
 }

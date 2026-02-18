@@ -165,6 +165,23 @@ function processMessage(
 ): void {
   const msgId = getMessageId(msg);
 
+  // Handle provider/runtime error entries as visible system messages.
+  if (msg.type === "error") {
+    const errorText =
+      (typeof msg.error === "string" && msg.error) ||
+      (typeof msg.content === "string" && msg.content) ||
+      "Agent error";
+    const systemItem: SystemItem = {
+      type: "system",
+      id: msgId || `error-${msg.timestamp ?? Date.now()}`,
+      subtype: "error",
+      content: errorText,
+      sourceMessages: [msg],
+    };
+    items.push(systemItem);
+    return;
+  }
+
   // Handle system entries (compact_boundary, status, etc.)
   if (msg.type === "system") {
     const subtype = (msg as { subtype?: string }).subtype ?? "unknown";

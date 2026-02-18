@@ -80,14 +80,16 @@ export const RenderItemComponent = memo(function RenderItemComponent({
         // Different styling for compacting vs completed compaction
         const isCompacting =
           item.subtype === "status" && item.status === "compacting";
+        const isError = item.subtype === "error";
+        const icon = isError ? "!" : "⟳";
         return (
           <div
-            className={`system-message ${isCompacting ? "system-message-compacting" : ""}`}
+            className={`system-message ${isCompacting ? "system-message-compacting" : ""} ${isError ? "system-message-error" : ""}`}
           >
             <span
               className={`system-message-icon ${isCompacting ? "spinning" : ""}`}
             >
-              ⟳
+              {icon}
             </span>
             <span className="system-message-text">{item.content}</span>
           </div>

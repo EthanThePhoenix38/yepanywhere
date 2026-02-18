@@ -597,6 +597,25 @@ describe("preprocessMessages", () => {
     });
   });
 
+  it("renders provider error messages", () => {
+    const messages: Message[] = [
+      {
+        id: "msg-err-1",
+        type: "error",
+        error: "Your refresh token was already used. Please sign in again.",
+        timestamp: "2024-01-01T00:00:00Z",
+      },
+    ];
+
+    const items = preprocessMessages(messages);
+    expect(items).toHaveLength(1);
+    expect(items[0]).toMatchObject({
+      type: "system",
+      subtype: "error",
+      content: "Your refresh token was already used. Please sign in again.",
+    });
+  });
+
   describe("orphaned tool handling", () => {
     it("marks orphaned tool_use as aborted", () => {
       const messages: Message[] = [
