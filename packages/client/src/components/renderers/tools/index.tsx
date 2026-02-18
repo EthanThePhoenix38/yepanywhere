@@ -4,6 +4,7 @@ import type { ToolRenderer } from "./types";
 
 const TOOL_NAME_ALIASES: Record<string, string> = {
   shell_command: "Bash",
+  exec_command: "Bash",
   apply_patch: "Edit",
   web_search_call: "WebSearch",
   search_query: "WebSearch",

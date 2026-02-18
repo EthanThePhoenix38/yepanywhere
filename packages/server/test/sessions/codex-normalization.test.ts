@@ -144,6 +144,48 @@ describe("Codex Normalization", () => {
     });
   });
 
+  it("normalizes exec_command input.cmd into Bash input.command", () => {
+    const entries: CodexSessionEntry[] = [
+      {
+        type: "response_item",
+        timestamp: "2024-01-01T00:00:01Z",
+        payload: {
+          type: "custom_tool_call",
+          call_id: "call-exec",
+          name: "exec_command",
+          input: { cmd: "pnpm lint" },
+        },
+      },
+      {
+        type: "response_item",
+        timestamp: "2024-01-01T00:00:02Z",
+        payload: {
+          type: "custom_tool_call_output",
+          call_id: "call-exec",
+          output: "Process exited with code 0",
+        },
+      },
+    ];
+
+    const result = normalizeSession(buildLoadedSession(entries));
+    expect(result.messages).toHaveLength(2);
+
+    const toolUseContent = result.messages[0]?.message?.content;
+    const block = Array.isArray(toolUseContent)
+      ? toolUseContent[0]
+      : toolUseContent;
+
+    expect(block).toMatchObject({
+      type: "tool_use",
+      id: "call-exec",
+      name: "Bash",
+      input: {
+        cmd: "pnpm lint",
+        command: "pnpm lint",
+      },
+    });
+  });
+
   it('does not mark shell output as error when exit code is 0 and output text contains "failed"', () => {
     const entries: CodexSessionEntry[] = [
       {
@@ -213,6 +255,57 @@ describe("Codex Normalization", () => {
     expect(block).toMatchObject({
       type: "tool_result",
       tool_use_id: "call-fail",
+      is_error: true,
+    });
+  });
+
+  it("marks exec output as error when text contains non-zero process exit code", () => {
+    const entries: CodexSessionEntry[] = [
+      {
+        type: "response_item",
+        timestamp: "2024-01-01T00:00:01Z",
+        payload: {
+          type: "function_call",
+          name: "exec_command",
+          call_id: "call-exec-fail",
+          arguments: '{"cmd":"pnpm -r exec tsc --noEmit"}',
+        },
+      },
+      {
+        type: "response_item",
+        timestamp: "2024-01-01T00:00:02Z",
+        payload: {
+          type: "function_call_output",
+          call_id: "call-exec-fail",
+          output:
+            "Chunk ID: abc123\nWall time: 0.8 seconds\nProcess exited with code 2\nOriginal token count: 100\nOutput:\n\nNo explicit error marker text.\n",
+        },
+      },
+    ];
+
+    const result = normalizeSession(buildLoadedSession(entries));
+
+    const toolUseContent = result.messages[0]?.message?.content;
+    const useBlock = Array.isArray(toolUseContent)
+      ? toolUseContent[0]
+      : toolUseContent;
+    expect(useBlock).toMatchObject({
+      type: "tool_use",
+      id: "call-exec-fail",
+      name: "Bash",
+      input: {
+        cmd: "pnpm -r exec tsc --noEmit",
+        command: "pnpm -r exec tsc --noEmit",
+      },
+    });
+
+    const toolResultContent = result.messages[1]?.message?.content;
+    const resultBlock = Array.isArray(toolResultContent)
+      ? toolResultContent[0]
+      : toolResultContent;
+    expect(resultBlock).toMatchObject({
+      type: "tool_result",
+      tool_use_id: "call-exec-fail",
       is_error: true,
     });
   });

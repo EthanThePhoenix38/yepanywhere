@@ -203,7 +203,11 @@ export class WebSocketConnection implements Connection {
    * re-establishes it. Used by ConnectionManager's reconnectFn.
    */
   async reconnect(): Promise<void> {
-    this.protocol.rejectAllPending(new Error("Connection reconnecting"));
+    const reconnectError = new Error("Connection reconnecting");
+    this.protocol.rejectAllPending(reconnectError);
+    // Force all stream handlers (activity/session) to transition closed so
+    // higher-level consumers can re-subscribe on the new socket.
+    this.protocol.notifySubscriptionsClosed(reconnectError);
     if (this.ws) {
       this.ws.onclose = null;
       this.ws.onerror = null;

@@ -96,6 +96,7 @@ function getDefaultInputSummary(toolName: string, input: unknown): string {
       break;
     case "Bash":
       if (typeof i.command === "string") return truncate(i.command, 40);
+      if (typeof i.cmd === "string") return truncate(i.cmd, 40);
       break;
     case "Glob":
       if (typeof i.pattern === "string") return i.pattern;

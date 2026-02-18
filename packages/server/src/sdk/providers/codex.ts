@@ -48,6 +48,21 @@ const MODEL_LIST_TIMEOUT_MS = 8000;
 const APP_SERVER_INIT_REQUEST_ID = 1;
 const APP_SERVER_MODEL_LIST_REQUEST_ID = 2;
 
+/**
+ * Local debug knobs for Codex app-server policy behavior.
+ *
+ * Set `approvalPolicy` to `"untrusted"` to force Codex to request approval for
+ * command/file actions more aggressively, even when `"on-request"` would not.
+ * Leave as `null` for normal behavior.
+ */
+const CODEX_POLICY_OVERRIDES: {
+  approvalPolicy: CodexAskForApproval | null;
+  sandbox: CodexSandboxMode | null;
+} = {
+  approvalPolicy: null,
+  sandbox: null,
+};
+
 const PREFERRED_MODEL_ORDER = [
   "gpt-5.3-codex",
   "gpt-5.2-codex",
@@ -820,24 +835,33 @@ export class CodexProvider implements AgentProvider {
     approvalPolicy: CodexAskForApproval;
     sandbox: CodexSandboxMode;
   } {
+    const applyOverrides = (policy: {
+      approvalPolicy: CodexAskForApproval;
+      sandbox: CodexSandboxMode;
+    }) => ({
+      approvalPolicy:
+        CODEX_POLICY_OVERRIDES.approvalPolicy ?? policy.approvalPolicy,
+      sandbox: CODEX_POLICY_OVERRIDES.sandbox ?? policy.sandbox,
+    });
+
     if (permissionMode === "bypassPermissions") {
-      return {
+      return applyOverrides({
         approvalPolicy: "never",
         sandbox: "danger-full-access",
-      };
+      });
     }
 
     if (permissionMode === "plan") {
-      return {
+      return applyOverrides({
         approvalPolicy: "on-request",
         sandbox: "read-only",
-      };
+      });
     }
 
-    return {
+    return applyOverrides({
       approvalPolicy: "on-request",
       sandbox: "workspace-write",
-    };
+    });
   }
 
   /**
@@ -938,6 +962,20 @@ export class CodexProvider implements AgentProvider {
             );
 
       sessionId = threadResult.thread.id;
+      log.info(
+        {
+          sessionId,
+          permissionMode: options.permissionMode ?? "default",
+          approvalPolicy: policy.approvalPolicy,
+          sandbox: policy.sandbox,
+          policyOverrides: {
+            approvalPolicy: CODEX_POLICY_OVERRIDES.approvalPolicy,
+            sandbox: CODEX_POLICY_OVERRIDES.sandbox,
+          },
+          model: options.model ?? null,
+        },
+        "Started Codex app-server session thread",
+      );
 
       // Emit init immediately with the real session ID.
       yield {
@@ -983,6 +1021,14 @@ export class CodexProvider implements AgentProvider {
         );
 
         const activeTurnId = turnResult.turn.id;
+        log.info(
+          {
+            sessionId,
+            turnId: activeTurnId,
+            turnStatus: turnResult.turn.status,
+          },
+          "Started Codex app-server turn",
+        );
         let turnComplete = turnResult.turn.status !== "inProgress";
         let emittedTurnError = false;
 
@@ -1089,6 +1135,15 @@ export class CodexProvider implements AgentProvider {
     options: StartSessionOptions,
     signal: AbortSignal,
   ): Promise<unknown> {
+    log.info(
+      {
+        method: request.method,
+        requestId: request.id,
+        permissionMode: options.permissionMode ?? "default",
+      },
+      "Codex app-server sent server request",
+    );
+
     const params =
       request.params && typeof request.params === "object"
         ? (request.params as Record<string, unknown>)
@@ -1100,8 +1155,27 @@ export class CodexProvider implements AgentProvider {
           request.params,
         );
         if (!commandParams) {
+          log.warn(
+            {
+              method: request.method,
+              requestId: request.id,
+            },
+            "Codex command approval params invalid; declining",
+          );
           return { decision: "decline" as CommandExecutionApprovalDecision };
         }
+        log.info(
+          {
+            method: request.method,
+            requestId: request.id,
+            threadId: commandParams.threadId,
+            turnId: commandParams.turnId,
+            itemId: commandParams.itemId,
+            command: commandParams.command,
+            cwd: commandParams.cwd,
+          },
+          "Handling Codex command approval request",
+        );
         const toolInput = {
           command: commandParams.command,
           cwd: commandParams.cwd,
@@ -1122,6 +1196,17 @@ export class CodexProvider implements AgentProvider {
             "accept",
             "decline",
           );
+        log.info(
+          {
+            method: request.method,
+            requestId: request.id,
+            threadId: commandParams.threadId,
+            turnId: commandParams.turnId,
+            itemId: commandParams.itemId,
+            decision,
+          },
+          "Resolved Codex command approval request",
+        );
         return { decision };
       }
 
@@ -1130,9 +1215,27 @@ export class CodexProvider implements AgentProvider {
           request.params,
         );
         if (!fileParams) {
+          log.warn(
+            {
+              method: request.method,
+              requestId: request.id,
+            },
+            "Codex file-change approval params invalid; declining",
+          );
           return { decision: "decline" as FileChangeApprovalDecision };
         }
         const grantRoot = fileParams.grantRoot ?? null;
+        log.info(
+          {
+            method: request.method,
+            requestId: request.id,
+            threadId: fileParams.threadId,
+            turnId: fileParams.turnId,
+            itemId: fileParams.itemId,
+            grantRoot,
+          },
+          "Handling Codex file-change approval request",
+        );
         const toolInput = {
           file_path: grantRoot ?? undefined,
           reason: fileParams.reason ?? null,
@@ -1150,6 +1253,17 @@ export class CodexProvider implements AgentProvider {
             "accept",
             "decline",
           );
+        log.info(
+          {
+            method: request.method,
+            requestId: request.id,
+            threadId: fileParams.threadId,
+            turnId: fileParams.turnId,
+            itemId: fileParams.itemId,
+            decision,
+          },
+          "Resolved Codex file-change approval request",
+        );
         return { decision };
       }
 
@@ -1175,6 +1289,16 @@ export class CodexProvider implements AgentProvider {
           "approved",
           "denied",
         );
+        log.info(
+          {
+            method: request.method,
+            requestId: request.id,
+            decision,
+            command: toolInput.command,
+            cwd: toolInput.cwd,
+          },
+          "Resolved legacy Codex command approval request",
+        );
         return { decision };
       }
 
@@ -1198,6 +1322,16 @@ export class CodexProvider implements AgentProvider {
           "approved",
           "denied",
         );
+        log.info(
+          {
+            method: request.method,
+            requestId: request.id,
+            decision,
+            changedPathCount: paths.length,
+            grantRoot: toolInput.grantRoot,
+          },
+          "Resolved legacy Codex apply-patch approval request",
+        );
         return { decision };
       }
 
@@ -1211,7 +1345,14 @@ export class CodexProvider implements AgentProvider {
           answers[question.id] = { answers: [] };
         }
         log.warn(
-          { questionCount: questions.length },
+          {
+            method: request.method,
+            requestId: request.id,
+            questionCount: questions.length,
+            threadId: requestInput?.threadId ?? null,
+            turnId: requestInput?.turnId ?? null,
+            itemId: requestInput?.itemId ?? null,
+          },
           "Codex requested tool user input; returning empty answers in MVP",
         );
         const response: ToolRequestUserInputResponse = { answers };
@@ -1219,7 +1360,10 @@ export class CodexProvider implements AgentProvider {
       }
 
       default: {
-        log.warn({ method: request.method }, "Unhandled codex server request");
+        log.warn(
+          { method: request.method, requestId: request.id },
+          "Unhandled codex server request",
+        );
         return {};
       }
     }
@@ -1234,15 +1378,28 @@ export class CodexProvider implements AgentProvider {
     denyDecision: TDecision,
   ): Promise<TDecision> {
     if (!options.onToolApproval) {
+      log.warn(
+        { toolName },
+        "No onToolApproval handler available; denying Codex approval request",
+      );
       return denyDecision;
     }
 
     let result: ToolApprovalResult;
     try {
       result = await options.onToolApproval(toolName, toolInput, { signal });
-    } catch {
+    } catch (error) {
+      log.warn(
+        { toolName, error },
+        "onToolApproval threw; denying Codex approval request",
+      );
       return denyDecision;
     }
+
+    log.info(
+      { toolName, behavior: result.behavior },
+      "Resolved tool approval callback result",
+    );
 
     return result.behavior === "allow" ? allowDecision : denyDecision;
   }

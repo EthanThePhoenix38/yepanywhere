@@ -421,6 +421,78 @@ describe("Process", () => {
       expect(result.behavior).toBe("deny");
     });
 
+    it("queues deny feedback as follow-up message for Codex approvals", async () => {
+      const iterator = createMockIterator([]);
+      const process = new Process(iterator, {
+        projectPath: "/test",
+        projectId: "proj-1",
+        sessionId: "sess-1",
+        idleTimeoutMs: 100,
+        provider: "codex",
+        queue: new MessageQueue(),
+      });
+
+      const abortController = new AbortController();
+      const approvalPromise = process.handleToolApproval(
+        "Edit",
+        { file: "test.ts" },
+        { signal: abortController.signal },
+      );
+
+      const pendingRequest = process.getPendingInputRequest();
+      expect(pendingRequest).not.toBeNull();
+
+      const accepted = process.respondToInput(
+        pendingRequest?.id ?? "",
+        "deny",
+        undefined,
+        "edit src/foo.ts instead",
+      );
+
+      expect(accepted).toBe(true);
+      const result = await approvalPromise;
+      expect(result.behavior).toBe("deny");
+      expect(result.message).toBe("edit src/foo.ts instead");
+      expect(result.interrupt).toBe(false);
+      expect(process.queueDepth).toBe(1);
+    });
+
+    it("does not queue deny feedback follow-up for non-Codex providers", async () => {
+      const iterator = createMockIterator([]);
+      const process = new Process(iterator, {
+        projectPath: "/test",
+        projectId: "proj-1",
+        sessionId: "sess-1",
+        idleTimeoutMs: 100,
+        provider: "claude",
+        queue: new MessageQueue(),
+      });
+
+      const abortController = new AbortController();
+      const approvalPromise = process.handleToolApproval(
+        "Edit",
+        { file: "test.ts" },
+        { signal: abortController.signal },
+      );
+
+      const pendingRequest = process.getPendingInputRequest();
+      expect(pendingRequest).not.toBeNull();
+
+      const accepted = process.respondToInput(
+        pendingRequest?.id ?? "",
+        "deny",
+        undefined,
+        "edit src/foo.ts instead",
+      );
+
+      expect(accepted).toBe(true);
+      const result = await approvalPromise;
+      expect(result.behavior).toBe("deny");
+      expect(result.message).toBe("edit src/foo.ts instead");
+      expect(result.interrupt).toBe(false);
+      expect(process.queueDepth).toBe(0);
+    });
+
     it("handleToolApproval prompts user for ExitPlanMode in plan mode (not auto-approve)", async () => {
       const iterator = createMockIterator([]);
       const process = new Process(iterator, {

@@ -24,6 +24,8 @@ export type Emit = (eventType: string, data: unknown) => void;
 export interface SubscriptionOptions {
   /** Called when an internal error occurs (e.g. augmentation failure). */
   onError?: (err: unknown) => void;
+  /** Optional label for debug logs (e.g., subscription id). */
+  logLabel?: string;
 }
 
 /**
@@ -224,6 +226,7 @@ export function createActivitySubscription(
   options?: SubscriptionOptions,
 ): { cleanup: () => void } {
   let closed = false;
+  const logEvents = process.env.ACTIVITY_STREAM_LOG_EVENTS === "true";
 
   emit("connected", { timestamp: new Date().toISOString() });
 
@@ -240,6 +243,12 @@ export function createActivitySubscription(
   const unsubscribe = eventBus.subscribe((event: BusEvent) => {
     if (closed) return;
     try {
+      if (logEvents) {
+        const label = options?.logLabel ? ` sub=${options.logLabel}` : "";
+        console.log(
+          `[ActivitySubscription] Forwarding event type=${event.type}${label}`,
+        );
+      }
       emit(event.type, event);
     } catch (err) {
       options?.onError?.(err);

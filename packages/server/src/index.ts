@@ -225,11 +225,15 @@ function createWatcherIfExists(
   provider: "claude" | "gemini" | "codex",
 ): void {
   if (fs.existsSync(watchDir)) {
+    const periodicRescanMs =
+      provider === "codex" ? config.codexWatchPeriodicRescanMs : 0;
+
     const watcher = new FileWatcher({
       watchDir,
       provider,
       eventBus,
       debounceMs: 200,
+      periodicRescanMs,
     });
     watcher.start();
     fileWatchers.push(watcher);

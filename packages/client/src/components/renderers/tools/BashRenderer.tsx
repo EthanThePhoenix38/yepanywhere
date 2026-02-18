@@ -33,6 +33,14 @@ function normalizeBashResult(
   return result;
 }
 
+function getBashCommand(input: BashInput): string {
+  if (typeof input.command === "string" && input.command.trim().length > 0) {
+    return input.command;
+  }
+  const cmd = (input as BashInput & { cmd?: unknown }).cmd;
+  return typeof cmd === "string" ? cmd : "";
+}
+
 /**
  * Modal content for viewing full bash input and output
  */
@@ -49,6 +57,7 @@ function BashModalContent({
   const result = rawResult
     ? normalizeBashResult(rawResult, isError)
     : undefined;
+  const command = getBashCommand(input);
   const stdout = result?.stdout || "";
   const stderr = result?.stderr || "";
 
@@ -58,7 +67,7 @@ function BashModalContent({
         <div className="bash-modal-label">Command</div>
         <div className="bash-modal-code">
           <pre className="code-block">
-            <code>{input.command}</code>
+            <code>{command}</code>
           </pre>
         </div>
       </div>
@@ -110,10 +119,11 @@ function BashModalContent({
  * Bash tool use - shows command in code block
  */
 function BashToolUse({ input }: { input: BashInput }) {
+  const command = getBashCommand(input);
   return (
     <div className="bash-tool-use">
       <pre className="code-block">
-        <code>{input.command}</code>
+        <code>{command}</code>
       </pre>
     </div>
   );
@@ -275,6 +285,7 @@ function BashCollapsedPreview({
     enabled && validationErrors && !isToolIgnored("Bash");
 
   const output = result?.stdout || result?.stderr || "";
+  const command = getBashCommand(input);
   const { text: previewText, truncated } = truncateOutput(output);
   const hasOutput = previewText.length > 0;
 
@@ -295,7 +306,7 @@ function BashCollapsedPreview({
       >
         <div className="bash-preview-row">
           <span className="bash-preview-label">IN</span>
-          <code className="bash-preview-command">{input.command}</code>
+          <code className="bash-preview-command">{command}</code>
           {showValidationWarning && validationErrors && (
             <SchemaWarning toolName="Bash" errors={validationErrors} />
           )}
@@ -351,11 +362,15 @@ export const bashRenderer: ToolRenderer<BashInput, BashResult> = {
 
   getUseSummary(input) {
     const i = input as BashInput;
+    const command = getBashCommand(i);
     // Show description if available, otherwise truncated command
     if (i.description) {
       return i.description;
     }
-    return i.command.length > 60 ? `${i.command.slice(0, 57)}...` : i.command;
+    if (!command) {
+      return "Bash command";
+    }
+    return command.length > 60 ? `${command.slice(0, 57)}...` : command;
   },
 
   getResultSummary(result, isError) {

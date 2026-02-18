@@ -108,6 +108,8 @@ ENVIRONMENT VARIABLES:
   AUTH_DISABLED                 Disable auth (bypass even if enabled in settings)
   LOG_LEVEL                     Log level: fatal, error, warn, info, debug, trace
   MAINTENANCE_PORT              Maintenance server port (default: disabled)
+  CODEX_WATCH_PERIODIC_RESCAN_MS
+                                Codex watcher fallback rescan interval in ms (default: 5000 on macOS, 0 elsewhere)
 
 EXAMPLES:
   # Start with defaults (port 3400, localhost only)

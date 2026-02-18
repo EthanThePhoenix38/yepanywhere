@@ -515,6 +515,7 @@ export function handleActivitySubscribe(
   };
 
   const { cleanup } = createActivitySubscription(eventBus, sendEvent, {
+    logLabel: subscriptionId,
     onError: (err) => {
       console.error("[WS Relay] Error in activity subscription:", err);
     },

@@ -38,6 +38,11 @@ export interface Config {
   geminiSessionsDir: string;
   /** Codex sessions directory (~/.codex/sessions) */
   codexSessionsDir: string;
+  /**
+   * Periodic full-tree rescan interval for codex session watcher (ms).
+   * Helps recover from missed fs.watch events on macOS. 0 disables it.
+   */
+  codexWatchPeriodicRescanMs: number;
   /** Idle timeout in milliseconds before process cleanup */
   idleTimeoutMs: number;
   /** Default permission mode for new sessions */
@@ -117,6 +122,15 @@ export function loadConfig(): Config {
   const codexSessionsDir =
     process.env.CODEX_SESSIONS_DIR ??
     path.join(os.homedir(), ".codex", "sessions");
+  const defaultCodexWatchPeriodicRescanMs =
+    process.platform === "darwin" ? 5000 : 0;
+  const codexWatchPeriodicRescanMs = Math.max(
+    0,
+    parseIntOrDefault(
+      process.env.CODEX_WATCH_PERIODIC_RESCAN_MS,
+      defaultCodexWatchPeriodicRescanMs,
+    ),
+  );
 
   return {
     dataDir,
@@ -124,6 +138,7 @@ export function loadConfig(): Config {
     claudeSessionsDir,
     geminiSessionsDir,
     codexSessionsDir,
+    codexWatchPeriodicRescanMs,
     idleTimeoutMs: parseIntOrDefault(process.env.IDLE_TIMEOUT, 5 * 60) * 1000,
     defaultPermissionMode: parsePermissionMode(process.env.PERMISSION_MODE),
     port: parseIntOrDefault(process.env.PORT, 3400),

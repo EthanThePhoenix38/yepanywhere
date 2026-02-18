@@ -61,7 +61,7 @@ export function preprocessMessages(
     processMessage(msg, items, pendingToolCalls, orphanedToolIds, augments);
   }
 
-  return collapseLeadingSessionSetup(items);
+  return collapseSessionSetupRuns(items);
 }
 
 const SESSION_SETUP_PREFIXES = [
@@ -87,37 +87,63 @@ function isSessionSetupPrompt(item: UserPromptItem): boolean {
   return SESSION_SETUP_PREFIXES.some((prefix) => text.startsWith(prefix));
 }
 
-function collapseLeadingSessionSetup(items: RenderItem[]): RenderItem[] {
-  const setupItems: UserPromptItem[] = [];
+function collapseSessionSetupRuns(items: RenderItem[]): RenderItem[] {
+  const result: RenderItem[] = [];
   let index = 0;
 
   while (index < items.length) {
     const item = items[index];
     if (!item || item.type !== "user_prompt" || !isSessionSetupPrompt(item)) {
-      break;
+      result.push(item as RenderItem);
+      index += 1;
+      continue;
     }
-    setupItems.push(item);
-    index += 1;
+
+    const setupItems: UserPromptItem[] = [];
+    let runIndex = index;
+    while (runIndex < items.length) {
+      const runItem = items[runIndex];
+      if (
+        !runItem ||
+        runItem.type !== "user_prompt" ||
+        !isSessionSetupPrompt(runItem)
+      ) {
+        break;
+      }
+      setupItems.push(runItem);
+      runIndex += 1;
+    }
+
+    // Preserve likely user-authored single setup-like messages mid-session.
+    // Collapse any run at session start and any multi-item run (typical resume preamble).
+    if (setupItems.length > 1 || index === 0) {
+      const firstSetupItem = setupItems[0];
+      if (!firstSetupItem) {
+        index = runIndex;
+        continue;
+      }
+
+      const collapsedItem: SessionSetupItem = {
+        type: "session_setup",
+        id: `session-setup-${firstSetupItem.id}`,
+        title: "Session setup",
+        prompts: setupItems.map((setupItem) => setupItem.content),
+        sourceMessages: setupItems.flatMap(
+          (setupItem) => setupItem.sourceMessages,
+        ),
+      };
+      result.push(collapsedItem);
+    } else {
+      const singleSetupItem = setupItems[0];
+      if (singleSetupItem) {
+        result.push(singleSetupItem);
+      }
+    }
+
+    index = runIndex;
   }
 
-  if (setupItems.length === 0) {
-    return items;
-  }
-
-  const firstSetupItem = setupItems[0];
-  if (!firstSetupItem) {
-    return items;
-  }
-
-  const collapsedItem: SessionSetupItem = {
-    type: "session_setup",
-    id: `session-setup-${firstSetupItem.id}`,
-    title: "Session setup",
-    prompts: setupItems.map((item) => item.content),
-    sourceMessages: setupItems.flatMap((item) => item.sourceMessages),
-  };
-
-  return [collapsedItem, ...items.slice(index)];
+  return result;
 }
 
 function processMessage(

@@ -1018,7 +1018,11 @@ export class SecureConnection implements Connection {
       this.ws = null;
     }
 
-    this.protocol.rejectAllPending(new Error("Connection reconnecting"));
+    const reconnectError = new Error("Connection reconnecting");
+    this.protocol.rejectAllPending(reconnectError);
+    // Force all stream handlers (activity/session) to transition closed so
+    // higher-level consumers can re-subscribe after authentication resumes.
+    this.protocol.notifySubscriptionsClosed(reconnectError);
 
     // Reset connection state but keep session info for resumption
     this.connectionState = "disconnected";

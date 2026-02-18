@@ -196,7 +196,7 @@ describe("preprocessMessages", () => {
     });
   });
 
-  it("does not collapse setup-like prompts that are not at the session start", () => {
+  it("does not collapse a single setup-like prompt in the middle of a session", () => {
     const messages: Message[] = [
       {
         id: "msg-user-1",
@@ -222,6 +222,56 @@ describe("preprocessMessages", () => {
     expect(items[1]).toMatchObject({
       type: "user_prompt",
       content: "# AGENTS.md instructions for /repo",
+    });
+  });
+
+  it("collapses repeated setup prompts inserted after resume", () => {
+    const messages: Message[] = [
+      {
+        id: "msg-user-1",
+        role: "user",
+        content: "normal first prompt",
+        timestamp: "2024-01-01T00:00:00Z",
+      },
+      {
+        id: "msg-setup-1",
+        role: "user",
+        content: "# AGENTS.md instructions for /repo",
+        timestamp: "2024-01-01T00:00:01Z",
+      },
+      {
+        id: "msg-setup-2",
+        role: "user",
+        content:
+          "<environment_context>\n  <cwd>/repo</cwd>\n</environment_context>",
+        timestamp: "2024-01-01T00:00:02Z",
+      },
+      {
+        id: "msg-user-2",
+        role: "user",
+        content: "follow-up after resume",
+        timestamp: "2024-01-01T00:00:03Z",
+      },
+    ];
+
+    const items = preprocessMessages(messages);
+
+    expect(items).toHaveLength(3);
+    expect(items[0]).toMatchObject({
+      type: "user_prompt",
+      content: "normal first prompt",
+    });
+    expect(items[1]).toMatchObject({
+      type: "session_setup",
+      title: "Session setup",
+      prompts: [
+        "# AGENTS.md instructions for /repo",
+        "<environment_context>\n  <cwd>/repo</cwd>\n</environment_context>",
+      ],
+    });
+    expect(items[2]).toMatchObject({
+      type: "user_prompt",
+      content: "follow-up after resume",
     });
   });
 

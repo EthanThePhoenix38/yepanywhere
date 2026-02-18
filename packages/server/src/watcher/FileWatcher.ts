@@ -16,22 +16,45 @@ export interface FileWatcherOptions {
   eventBus: EventBus;
   /** Debounce delay in ms (default: 200) */
   debounceMs?: number;
+  /**
+   * Optional periodic full-tree rescan interval (ms).
+   * Useful on platforms where fs.watch may miss deep file writes.
+   */
+  periodicRescanMs?: number;
 }
 
 export class FileWatcher {
+  /**
+   * Debug flag for raw fs.watch callbacks.
+   * Enable with FILE_WATCHER_LOG_RAW_EVENTS=true.
+   */
+  private static readonly LOG_RAW_EVENTS =
+    process.env.FILE_WATCHER_LOG_RAW_EVENTS === "true";
+  /**
+   * Debug flag for file-change events emitted to EventBus.
+   * Enable with FILE_WATCHER_LOG_EMIT_EVENTS=true.
+   */
+  private static readonly LOG_EMIT_EVENTS =
+    process.env.FILE_WATCHER_LOG_EMIT_EVENTS === "true";
   private watchDir: string;
   private provider: WatchProvider;
   private eventBus: EventBus;
   private debounceMs: number;
+  private periodicRescanMs: number;
   private watcher: fs.FSWatcher | null = null;
   private debounceTimers: Map<string, NodeJS.Timeout> = new Map();
+  private rescanTimer: NodeJS.Timeout | null = null;
+  private rescanInProgress = false;
+  private periodicRescanTimer: NodeJS.Timeout | null = null;
   private knownFiles: Set<string> = new Set();
+  private knownFileMtimes: Map<string, number> = new Map();
 
   constructor(options: FileWatcherOptions) {
     this.watchDir = options.watchDir;
     this.provider = options.provider;
     this.eventBus = options.eventBus;
     this.debounceMs = options.debounceMs ?? 200;
+    this.periodicRescanMs = options.periodicRescanMs ?? 0;
   }
 
   /**
@@ -50,9 +73,16 @@ export class FileWatcher {
         this.watchDir,
         { recursive: true },
         (eventType, filename) => {
-          if (filename) {
-            this.handleFileEvent(eventType, filename);
+          if (!filename) {
+            if (FileWatcher.LOG_RAW_EVENTS) {
+              console.log(
+                `[FileWatcher] Raw event provider=${this.provider} type=${eventType} file=<null> path=${this.watchDir}`,
+              );
+            }
+            this.scheduleRescan();
+            return;
           }
+          this.handleFileEvent(eventType, filename);
         },
       );
 
@@ -61,6 +91,15 @@ export class FileWatcher {
       });
 
       console.log(`[FileWatcher] Watching ${this.watchDir}`);
+
+      if (this.periodicRescanMs > 0) {
+        this.periodicRescanTimer = setInterval(() => {
+          this.rescanAndEmit();
+        }, this.periodicRescanMs);
+        console.log(
+          `[FileWatcher] Periodic rescan enabled (${this.periodicRescanMs}ms) for ${this.watchDir}`,
+        );
+      }
     } catch (error) {
       console.error("[FileWatcher] Failed to start:", error);
     }
@@ -80,7 +119,16 @@ export class FileWatcher {
       clearTimeout(timer);
     }
     this.debounceTimers.clear();
+    if (this.rescanTimer) {
+      clearTimeout(this.rescanTimer);
+      this.rescanTimer = null;
+    }
+    if (this.periodicRescanTimer) {
+      clearInterval(this.periodicRescanTimer);
+      this.periodicRescanTimer = null;
+    }
     this.knownFiles.clear();
+    this.knownFileMtimes.clear();
 
     console.log("[FileWatcher] Stopped");
   }
@@ -94,18 +142,25 @@ export class FileWatcher {
 
   private scanExistingFiles(): void {
     this.knownFiles.clear();
-    this.scanDir(this.watchDir);
+    this.knownFileMtimes.clear();
+    this.scanDir(this.watchDir, this.knownFileMtimes);
+    this.knownFiles = new Set(this.knownFileMtimes.keys());
   }
 
-  private scanDir(dir: string): void {
+  private scanDir(dir: string, index: Map<string, number>): void {
     try {
       const entries = fs.readdirSync(dir, { withFileTypes: true });
       for (const entry of entries) {
         const fullPath = path.join(dir, entry.name);
         if (entry.isDirectory()) {
-          this.scanDir(fullPath);
+          this.scanDir(fullPath, index);
         } else {
-          this.knownFiles.add(fullPath);
+          try {
+            const stats = fs.statSync(fullPath);
+            index.set(fullPath, stats.mtimeMs);
+          } catch {
+            // File may have disappeared between readdir/stat
+          }
         }
       }
     } catch {
@@ -115,6 +170,12 @@ export class FileWatcher {
 
   private handleFileEvent(eventType: string, filename: string): void {
     const fullPath = path.join(this.watchDir, filename);
+
+    if (FileWatcher.LOG_RAW_EVENTS) {
+      console.log(
+        `[FileWatcher] Raw event provider=${this.provider} type=${eventType} file=${filename} path=${fullPath}`,
+      );
+    }
 
     // Debounce per-file
     const existingTimer = this.debounceTimers.get(fullPath);
@@ -139,15 +200,32 @@ export class FileWatcher {
       if (this.knownFiles.has(fullPath)) {
         changeType = "delete";
         this.knownFiles.delete(fullPath);
+        this.knownFileMtimes.delete(fullPath);
       } else {
         // File never existed from our POV, skip
         return;
       }
-    } else if (this.knownFiles.has(fullPath)) {
-      changeType = "modify";
     } else {
-      changeType = "create";
-      this.knownFiles.add(fullPath);
+      let mtimeMs = Date.now();
+      try {
+        mtimeMs = fs.statSync(fullPath).mtimeMs;
+      } catch {
+        // File disappeared between existsSync and statSync
+        return;
+      }
+
+      if (this.knownFiles.has(fullPath)) {
+        const previousMtime = this.knownFileMtimes.get(fullPath);
+        if (previousMtime === mtimeMs) {
+          // No meaningful change; skip duplicate callback.
+          return;
+        }
+        changeType = "modify";
+      } else {
+        changeType = "create";
+        this.knownFiles.add(fullPath);
+      }
+      this.knownFileMtimes.set(fullPath, mtimeMs);
     }
 
     const relativePath = path.relative(this.watchDir, fullPath);
@@ -162,7 +240,74 @@ export class FileWatcher {
       fileType: this.parseFileType(relativePath),
     };
 
+    if (FileWatcher.LOG_EMIT_EVENTS) {
+      console.log(
+        `[FileWatcher] Emitting file-change provider=${event.provider} changeType=${event.changeType} fileType=${event.fileType} relativePath=${event.relativePath}`,
+      );
+    }
+
     this.eventBus.emit(event);
+  }
+
+  /**
+   * When fs.watch provides no filename (common on macOS under load),
+   * rescan the tree and synthesize events from mtime/delete deltas.
+   */
+  private scheduleRescan(): void {
+    if (this.rescanTimer) {
+      clearTimeout(this.rescanTimer);
+    }
+
+    if (FileWatcher.LOG_RAW_EVENTS) {
+      console.log(
+        `[FileWatcher] Scheduling fallback rescan provider=${this.provider}`,
+      );
+    }
+
+    this.rescanTimer = setTimeout(
+      () => {
+        this.rescanTimer = null;
+        this.rescanAndEmit();
+      },
+      Math.max(this.debounceMs * 2, 400),
+    );
+  }
+
+  private rescanAndEmit(): void {
+    if (this.rescanInProgress) {
+      return;
+    }
+    this.rescanInProgress = true;
+
+    try {
+      if (FileWatcher.LOG_RAW_EVENTS) {
+        console.log(
+          `[FileWatcher] Running fallback rescan provider=${this.provider}`,
+        );
+      }
+      const current = new Map<string, number>();
+      this.scanDir(this.watchDir, current);
+
+      // Create/modify events
+      for (const [fullPath, mtimeMs] of current.entries()) {
+        const prevMtime = this.knownFileMtimes.get(fullPath);
+        if (prevMtime === undefined || prevMtime !== mtimeMs) {
+          this.emitEvent(fullPath, "change");
+        }
+      }
+
+      // Delete events
+      for (const fullPath of this.knownFileMtimes.keys()) {
+        if (!current.has(fullPath)) {
+          this.emitEvent(fullPath, "rename");
+        }
+      }
+
+      this.knownFileMtimes = current;
+      this.knownFiles = new Set(current.keys());
+    } finally {
+      this.rescanInProgress = false;
+    }
   }
 
   private parseFileType(relativePath: string): FileChangeEvent["fileType"] {

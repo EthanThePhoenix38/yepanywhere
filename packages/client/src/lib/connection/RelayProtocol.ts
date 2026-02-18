@@ -40,6 +40,17 @@ function generateId(): string {
   return crypto.randomUUID();
 }
 
+function isActivityDebugEnabled(): boolean {
+  if (typeof window === "undefined") return false;
+  const w = window as Window & { __ACTIVITY_DEBUG__?: boolean };
+  if (w.__ACTIVITY_DEBUG__ === true) return true;
+  try {
+    return localStorage.getItem("yep-anywhere-activity-debug") === "true";
+  } catch {
+    return false;
+  }
+}
+
 /** Default chunk size for file uploads (64KB) */
 const DEFAULT_CHUNK_SIZE = 64 * 1024;
 
@@ -135,10 +146,20 @@ export class RelayProtocol {
 
   private handleEvent(event: RelayEvent): void {
     const handlers = this.subscriptions.get(event.subscriptionId);
+    const logEventDebug = this.debugEnabled || isActivityDebugEnabled();
+
+    if (logEventDebug) {
+      console.log(
+        `${this.logPrefix} Received event:`,
+        event.eventType,
+        `sub=${event.subscriptionId}`,
+        event.data,
+      );
+    }
+
     if (!handlers) {
       console.warn(
-        `${this.logPrefix} Received event for unknown subscription:`,
-        event.subscriptionId,
+        `${this.logPrefix} Received event for unknown subscription: ${event.subscriptionId} (${event.eventType})`,
       );
       return;
     }
@@ -447,6 +468,7 @@ export class RelayProtocol {
   subscribeActivity(handlers: StreamHandlers): Subscription {
     const subscriptionId = generateId();
     const browserProfileId = getOrCreateBrowserProfileId();
+    const logEventDebug = this.debugEnabled || isActivityDebugEnabled();
 
     const originMetadata = {
       origin: window.location.origin,
@@ -470,6 +492,12 @@ export class RelayProtocol {
           browserProfileId,
           originMetadata,
         };
+        if (logEventDebug) {
+          console.log(
+            `${this.logPrefix} Sending activity subscribe:`,
+            subscriptionId,
+          );
+        }
         this.transport.sendMessage(msg);
       })
       .catch((err) => {
@@ -480,6 +508,12 @@ export class RelayProtocol {
     return {
       close: () => {
         this.subscriptions.delete(subscriptionId);
+        if (logEventDebug) {
+          console.log(
+            `${this.logPrefix} Closing activity subscribe:`,
+            subscriptionId,
+          );
+        }
         if (this.transport.isConnected()) {
           const msg: RelayUnsubscribe = {
             type: "unsubscribe",

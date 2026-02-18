@@ -13,6 +13,12 @@ import {
 } from "./connection";
 import type { Subscription } from "./connection/types";
 
+declare global {
+  interface Window {
+    __ACTIVITY_DEBUG__?: boolean;
+  }
+}
+
 // Event types matching what the server emits
 export type FileChangeType = "create" | "modify" | "delete";
 export type FileType =
@@ -160,6 +166,16 @@ export type ActivityEventType = keyof ActivityEventMap;
 
 type Listener<T> = (data: T) => void;
 
+function isActivityDebugEnabled(): boolean {
+  if (typeof window === "undefined") return false;
+  if (window.__ACTIVITY_DEBUG__ === true) return true;
+  try {
+    return localStorage.getItem("yep-anywhere-activity-debug") === "true";
+  } catch {
+    return false;
+  }
+}
+
 /**
  * Singleton that manages activity event subscriptions.
  * Uses WebSocket transport for both local and remote connections.
@@ -177,6 +193,9 @@ class ActivityBus {
   private _connectionManagerStarted = false;
   private _stateChangeUnsub: (() => void) | null = null;
   private _visibilityRestoredUnsub: (() => void) | null = null;
+  private get debugEnabled(): boolean {
+    return isActivityDebugEnabled();
+  }
 
   get connected(): boolean {
     return this._connected;
@@ -190,7 +209,14 @@ class ActivityBus {
    */
   connect(): void {
     // Check if already connected
-    if (this.wsSubscription) return;
+    if (this.wsSubscription) {
+      if (this.debugEnabled) {
+        console.log(
+          "[ActivityBus] connect() skipped - subscription already active",
+        );
+      }
+      return;
+    }
 
     // Start ConnectionManager once (idempotent)
     if (!this._connectionManagerStarted) {
@@ -239,6 +265,9 @@ class ActivityBus {
     // Check for global connection (remote mode with SecureConnection)
     const globalConn = getGlobalConnection();
     if (globalConn) {
+      if (this.debugEnabled) {
+        console.log("[ActivityBus] Connecting via global connection");
+      }
       if ("setOnPong" in globalConn) {
         (
           globalConn as { setOnPong: (cb: (id: string) => void) => void }
@@ -257,6 +286,9 @@ class ActivityBus {
     }
 
     // Local mode: use WebSocket
+    if (this.debugEnabled) {
+      console.log("[ActivityBus] Connecting via local WebSocket");
+    }
     const wsConn = getWebSocketConnection();
     wsConn.setOnPong((id) => connectionManager.receivePong(id));
     this.connectWithConnection(wsConn);
@@ -277,14 +309,23 @@ class ActivityBus {
       onClose?: (error?: Error) => void;
     }) => Subscription;
   }): void {
+    if (this.debugEnabled) {
+      console.log("[ActivityBus] Subscribing to activity stream");
+    }
     this.wsSubscription = connection.subscribeActivity({
       onEvent: (eventType, _eventId, data) => {
+        if (this.debugEnabled) {
+          console.log("[ActivityBus] Incoming WS event:", eventType, data);
+        }
         connectionManager.recordEvent();
         this.handleWsEvent(eventType, data);
       },
       onOpen: () => {
         connectionManager.markConnected();
         this._connected = true;
+        if (this.debugEnabled) {
+          console.log("[ActivityBus] Activity stream opened");
+        }
 
         if (this.hasConnected) {
           this.emit("reconnect", undefined);
@@ -298,6 +339,9 @@ class ActivityBus {
         connectionManager.handleError(err);
       },
       onClose: (error?: Error) => {
+        if (this.debugEnabled) {
+          console.log("[ActivityBus] Activity stream closed", error);
+        }
         this._connected = false;
         this.wsSubscription = null;
         connectionManager.handleClose(error);
@@ -319,7 +363,16 @@ class ActivityBus {
 
     // Emit the event to listeners
     if (this.isValidEventType(eventType)) {
+      if (this.debugEnabled) {
+        console.log("[ActivityBus] Dispatching event:", eventType, data);
+      }
       this.emit(eventType, data as ActivityEventMap[typeof eventType]);
+    } else if (this.debugEnabled) {
+      console.log(
+        "[ActivityBus] Dropping unknown event type:",
+        eventType,
+        data,
+      );
     }
   }
 
@@ -350,6 +403,9 @@ class ActivityBus {
    */
   disconnect(): void {
     if (this.wsSubscription) {
+      if (this.debugEnabled) {
+        console.log("[ActivityBus] disconnect() closing subscription");
+      }
       this.wsSubscription.close();
       this.wsSubscription = null;
     }

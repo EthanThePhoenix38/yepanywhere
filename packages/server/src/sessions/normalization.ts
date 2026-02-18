@@ -30,6 +30,7 @@ import type { LoadedSession } from "./types.js";
 
 const CODEX_TOOL_NAME_ALIASES: Record<string, string> = {
   shell_command: "Bash",
+  exec_command: "Bash",
   apply_patch: "Edit",
   web_search_call: "WebSearch",
   search_query: "WebSearch",
@@ -452,8 +453,9 @@ function convertCodexFunctionCallPayload(
   uuid: string,
   timestamp: string,
 ): Message {
-  const input = parseCodexToolArguments(payload.arguments);
   const toolName = canonicalizeCodexToolName(payload.name);
+  const parsedInput = parseCodexToolArguments(payload.arguments);
+  const input = normalizeCodexToolInput(toolName, parsedInput);
 
   const content: ContentBlock[] = [
     {
@@ -484,10 +486,11 @@ function convertCodexCustomToolCallPayload(
   const callId = payload.call_id ?? payload.id ?? `${uuid}-custom-tool`;
   const rawToolName = payload.name ?? "custom_tool_call";
   const toolName = canonicalizeCodexToolName(rawToolName);
-  const input =
+  const rawInput =
     payload.input !== undefined
       ? payload.input
       : parseCodexToolArguments(payload.arguments);
+  const input = normalizeCodexToolInput(toolName, rawInput);
 
   const content: ContentBlock[] = [
     {
@@ -606,6 +609,30 @@ function canonicalizeCodexToolName(name: string): string {
   );
 }
 
+function normalizeCodexToolInput(toolName: string, input: unknown): unknown {
+  if (toolName !== "Bash") {
+    return input;
+  }
+
+  if (typeof input === "string" && input.trim()) {
+    return { command: input };
+  }
+
+  if (!isRecord(input)) {
+    return input;
+  }
+
+  const normalized = { ...input };
+  if (
+    typeof normalized.command !== "string" &&
+    typeof normalized.cmd === "string"
+  ) {
+    normalized.command = normalized.cmd;
+  }
+
+  return normalized;
+}
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return !!value && typeof value === "object" && !Array.isArray(value);
 }
@@ -651,7 +678,9 @@ function hasFailedStatus(record: Record<string, unknown>): boolean {
 }
 
 function extractExitCodeFromText(output: string): number | undefined {
-  const match = output.match(/(?:^|\n)\s*Exit code:\s*(-?\d+)\b/i);
+  const match = output.match(
+    /(?:^|\n)\s*(?:Exit code:|Process exited with code)\s*(-?\d+)\b/i,
+  );
   if (!match?.[1]) {
     return undefined;
   }

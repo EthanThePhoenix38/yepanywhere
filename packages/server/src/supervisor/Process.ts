@@ -1094,12 +1094,13 @@ export class Process {
       return false;
     }
 
-    // Build the result with optional updated input for AskUserQuestion
-    // If deny has feedback, use that as the message
-    const denyMessage = feedback || "User denied permission";
+    // Build the result with optional updated input for AskUserQuestion.
+    // If deny has feedback, use that as the message.
+    const trimmedFeedback = feedback?.trim();
+    const denyMessage = trimmedFeedback || "User denied permission";
     // If user just clicked "No" without feedback, set interrupt: true to stop retrying.
     // If user provided feedback, set interrupt: false so Claude can incorporate the guidance.
-    const shouldInterrupt = response === "deny" && !feedback;
+    const shouldInterrupt = response === "deny" && !trimmedFeedback;
     const result: ToolApprovalResult = {
       behavior: response === "approve" ? "allow" : "deny",
       message: response === "deny" ? denyMessage : undefined,
@@ -1136,6 +1137,24 @@ export class Process {
     this.pendingToolApprovalQueue = this.pendingToolApprovalQueue.filter(
       (id) => id !== requestId,
     );
+
+    // Codex app-server decline decisions do not currently include a rejection
+    // reason in-protocol. Queue the feedback as a follow-up user message.
+    if (response === "deny" && trimmedFeedback && this.provider === "codex") {
+      const queued = this.queueMessage({
+        text: `I denied that request. Instead: ${trimmedFeedback}`,
+      });
+      if (!queued.success) {
+        getLogger().warn(
+          {
+            sessionId: this._sessionId,
+            processId: this.id,
+            error: queued.error,
+          },
+          "Failed to queue Codex deny feedback follow-up message",
+        );
+      }
+    }
 
     // Emit the next pending approval, or transition to running if none left
     this.emitNextPendingApproval();
