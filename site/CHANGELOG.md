@@ -6,6 +6,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [site-v1.4.2] - 2026-02-19
+
+### Changed
+- Polish value prop copy (disconnect card, approval urgency, encryption claim)
+- Brighten feature card link color for better contrast on dark backgrounds
+
 ## [site-v1.4.1] - 2026-02-19
 
 ### Changed
