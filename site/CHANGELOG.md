@@ -6,6 +6,19 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [site-v1.4.0] - 2026-02-19
+
+### Changed
+- Rewrite hero headline and subhead to be outcome-driven ("Walk away. Your agents keep shipping.")
+- Make "Get Started" the primary CTA, move "Log In" to nav only
+- Rewrite value prop cards to match marketing pillars: seamless handoff, survive disconnects, lock-screen approvals, dashboard, self-hosted encryption
+- Tighten all value prop copy
+
+### Added
+- Hero showcase with two phone screenshots (approve edit, completed session)
+- TOS compliance feature card with link to SDK docs
+- README TOS compliance section
+
 ## [site-v1.3.2] - 2026-02-19
 
 ### Added

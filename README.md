@@ -24,6 +24,12 @@ A polished web interface for managing Claude and Codex agents. Works great on mo
 
 **Multi-session sanity.** Stop cycling through terminal tabs. See all your projects at once. Star the important ones, archive the finished ones. Context-switch without losing context.
 
+## TOS Compliance
+
+Yep Anywhere uses the official [`@anthropic-ai/claude-agent-sdk`](https://www.npmjs.com/package/@anthropic-ai/claude-agent-sdk) published by Anthropic. Unlike [third-party tools that were blocked](https://yepanywhere.com/tos-compliance.html) for spoofing client identity and circumventing pricing, we don't handle authentication, spoof headers, or manipulate OAuth tokens. You authenticate via your own Claude CLI — we're just a remote interface to your sessions.
+
+Read more: [How we use the SDK](https://yepanywhere.com/tos-compliance.html) | [Feb 2026 auth clarification](https://yepanywhere.com/sdk-auth-clarification.html)
+
 ## What is this?
 
 If you use Claude Code or Codex from the terminal, this gives you a better interface. Auto-detects your installed CLI tools and provides:
