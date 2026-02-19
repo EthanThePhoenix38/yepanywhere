@@ -18,7 +18,10 @@
  * ```
  */
 
-import { computeEditAugment, computeStructuredPatchDiffHtml } from "./edit-augments.js";
+import {
+  computeEditAugment,
+  computeStructuredPatchDiffHtml,
+} from "./edit-augments.js";
 import {
   extractRawPatchFromEditInput,
   parseRawEditPatch,
