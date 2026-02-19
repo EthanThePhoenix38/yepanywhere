@@ -197,12 +197,6 @@ export interface ProcessInfo {
   executor?: string;
 }
 
-// Claude login events for re-authentication flow
-export type ClaudeLoginEvent =
-  | { type: "claude-login-required"; url: string }
-  | { type: "claude-login-error"; error: string }
-  | { type: "claude-login-success" };
-
 // Process events for subscribers
 export type ProcessEvent =
   | { type: "message"; message: SDKMessage }
@@ -212,7 +206,6 @@ export type ProcessEvent =
   | { type: "error"; error: Error }
   | { type: "complete" }
   | { type: "terminated"; reason: string; error?: Error }
-  | { type: "claude-login"; event: ClaudeLoginEvent }
   | {
       type: "deferred-queue";
       messages: { tempId?: string; content: string; timestamp: string }[];

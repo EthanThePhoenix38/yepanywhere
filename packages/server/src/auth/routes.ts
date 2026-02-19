@@ -2,12 +2,9 @@
  * Authentication API routes
  */
 
-import { spawnSync } from "node:child_process";
 import { Hono } from "hono";
 import { deleteCookie, getCookie, setCookie } from "hono/cookie";
-import { getLogger } from "../logging/logger.js";
 import type { AuthService } from "./AuthService.js";
-import { getClaudeLoginService } from "./claude-login.js";
 
 export const SESSION_COOKIE_NAME = "yep-anywhere-session";
 
@@ -276,147 +273,6 @@ export function createAuthRoutes(deps: AuthRoutesDeps): Hono {
       return c.json({ error: "Failed to change password" }, 500);
     }
 
-    return c.json({ success: true });
-  });
-
-  // Claude CLI Login Flow endpoints
-  // These handle re-authentication when Claude SDK auth expires
-
-  /**
-   * GET /api/auth/claude-login/status
-   * Get current Claude login flow status
-   */
-  app.get("/claude-login/status", async (c) => {
-    const claudeLogin = getClaudeLoginService();
-    const state = claudeLogin.getState();
-    return c.json(state);
-  });
-
-  /**
-   * POST /api/auth/claude-login/start
-   * Start the Claude CLI login flow
-   * Returns the OAuth URL for the user to visit
-   */
-  app.post("/claude-login/start", async (c) => {
-    const claudeLogin = getClaudeLoginService();
-    const result = await claudeLogin.startLoginFlow();
-
-    if ("error" in result) {
-      return c.json({ success: false, error: result.error }, 400);
-    }
-
-    return c.json({ success: true, url: result.url });
-  });
-
-  /**
-   * POST /api/auth/claude-login/code
-   * Submit the auth code from OAuth callback
-   */
-  app.post("/claude-login/code", async (c) => {
-    const body = await c.req.json<{ code: string }>();
-
-    if (!body.code || typeof body.code !== "string") {
-      return c.json({ success: false, error: "Code is required" }, 400);
-    }
-
-    const claudeLogin = getClaudeLoginService();
-    const result = await claudeLogin.submitCode(body.code);
-
-    if (!result.success) {
-      return c.json({ success: false, error: result.error }, 400);
-    }
-
-    return c.json({ success: true });
-  });
-
-  /**
-   * POST /api/auth/claude-login/cancel
-   * Cancel the current login flow
-   */
-  app.post("/claude-login/cancel", async (c) => {
-    const claudeLogin = getClaudeLoginService();
-    await claudeLogin.cancel();
-    return c.json({ success: true });
-  });
-
-  /**
-   * GET /api/auth/claude-login/tmux
-   * Check if tmux is available
-   */
-  app.get("/claude-login/tmux", async (c) => {
-    const claudeLogin = getClaudeLoginService();
-    const available = await claudeLogin.checkTmuxAvailable();
-    return c.json({ available });
-  });
-
-  /**
-   * POST /api/auth/claude-login/apikey
-   * Set Claude API key directly (no tmux needed)
-   * Uses `claude config set apiKey <key>` command
-   */
-  app.post("/claude-login/apikey", async (c) => {
-    const log = getLogger();
-    const body = await c.req.json<{ apiKey: string }>();
-
-    if (!body.apiKey || typeof body.apiKey !== "string") {
-      return c.json({ success: false, error: "API key is required" }, 400);
-    }
-
-    const apiKey = body.apiKey.trim();
-
-    // Basic validation - Anthropic API keys start with "sk-ant-"
-    if (!apiKey.startsWith("sk-ant-")) {
-      return c.json(
-        {
-          success: false,
-          error:
-            "Invalid API key format. Anthropic API keys start with 'sk-ant-'",
-        },
-        400,
-      );
-    }
-
-    // Use claude CLI to set the API key
-    // This ensures proper config file handling
-    // Using spawnSync with args array to prevent command injection
-    log.info({ event: "claude_apikey_set" }, "Setting Claude API key");
-    const result = spawnSync("claude", ["config", "set", "apiKey", apiKey], {
-      encoding: "utf-8",
-      stdio: ["pipe", "pipe", "pipe"],
-    });
-
-    if (result.error) {
-      const message = result.error.message;
-      log.error(
-        { event: "claude_apikey_error", error: message },
-        "Failed to set Claude API key",
-      );
-      return c.json(
-        { success: false, error: `Failed to set API key: ${message}` },
-        500,
-      );
-    }
-
-    if (result.status !== 0) {
-      const stderr = result.stderr?.trim() || "Unknown error";
-      log.error(
-        {
-          event: "claude_apikey_error",
-          error: stderr,
-          exitCode: result.status,
-        },
-        "Claude config command failed",
-      );
-      return c.json(
-        { success: false, error: `Failed to set API key: ${stderr}` },
-        500,
-      );
-    }
-
-    log.info(
-      { event: "claude_apikey_success" },
-      "Claude API key set successfully",
-    );
     return c.json({ success: true });
   });
 

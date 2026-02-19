@@ -16,7 +16,6 @@ import type {
 } from "../sdk/types.js";
 import type {
   AgentActivity,
-  ClaudeLoginEvent,
   InputRequest,
   ProcessEvent,
   ProcessInfo,
@@ -1223,14 +1222,6 @@ export class Process {
     return () => {
       this.listeners.delete(listener);
     };
-  }
-
-  /**
-   * Emit a Claude login event to SSE subscribers.
-   * Used for /login command interception flow.
-   */
-  emitClaudeLoginEvent(event: ClaudeLoginEvent): void {
-    this.emit({ type: "claude-login", event });
   }
 
   /**

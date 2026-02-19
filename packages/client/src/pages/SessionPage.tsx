@@ -2,7 +2,6 @@ import type { ProviderName, UploadedFile } from "@yep-anywhere/shared";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
 import { api } from "../api/client";
-import { ClaudeLoginModal } from "../components/ClaudeLoginModal";
 import { MessageInput, type UploadProgress } from "../components/MessageInput";
 import { MessageInputToolbar } from "../components/MessageInputToolbar";
 import { MessageList } from "../components/MessageList";
@@ -20,7 +19,6 @@ import {
 } from "../contexts/StreamingMarkdownContext";
 import { useToastContext } from "../contexts/ToastContext";
 import { useActivityBusState } from "../hooks/useActivityBusState";
-import { useClaudeLogin } from "../hooks/useClaudeLogin";
 import { useConnection } from "../hooks/useConnection";
 import { useDeveloperMode } from "../hooks/useDeveloperMode";
 import { useDocumentTitle } from "../hooks/useDocumentTitle";
@@ -171,17 +169,10 @@ function SessionPageContent({
   }, []);
   const { showToast } = useToastContext();
 
-  // Claude CLI login flow (for /login command)
-  const claudeLogin = useClaudeLogin();
-
   // Connection for uploads (uses WebSocket when enabled)
   const connection = useConnection();
 
-  // Combine SDK slash commands with our custom commands
-  const allSlashCommands = useMemo(() => {
-    // Add our custom "login" command for Claude Max/Pro re-authentication
-    return [...slashCommands, "login"];
-  }, [slashCommands]);
+  const allSlashCommands = slashCommands;
 
   // Get provider capabilities based on session's provider
   const { providers } = useProviders();
@@ -300,12 +291,6 @@ function SessionPageContent({
   });
 
   const handleSend = async (text: string) => {
-    // Intercept /login command for Claude CLI re-authentication
-    if (text.trim() === "/login") {
-      claudeLogin.startLogin();
-      return;
-    }
-
     // Add to pending queue and get tempId to pass to server
     const tempId = addPendingMessage(text);
     setProcessState("in-turn"); // Optimistic: show processing indicator immediately
@@ -1099,19 +1084,6 @@ function SessionPageContent({
             )}
           </div>
         </footer>
-
-        {/* Claude Login Modal for /login command */}
-        {claudeLogin.isOpen && (
-          <ClaudeLoginModal
-            authMethod={claudeLogin.authMethod}
-            onSelectMethod={claudeLogin.selectMethod}
-            url={claudeLogin.url}
-            statusMessage={claudeLogin.statusMessage}
-            startupError={claudeLogin.error}
-            onSuccess={claudeLogin.handleSuccess}
-            onCancel={claudeLogin.handleCancel}
-          />
-        )}
       </div>
     </div>
   );

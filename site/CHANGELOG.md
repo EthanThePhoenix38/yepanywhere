@@ -6,6 +6,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [site-v1.3.2] - 2026-02-19
+
+### Added
+- Blog post: The Agent SDK Auth Scare (and Why You're Fine)
+
+### Changed
+- Update Jan 11 compliance post to reflect that we don't handle auth at all
+
 ## [site-v1.3.1] - 2026-02-18
 
 ### Fixed

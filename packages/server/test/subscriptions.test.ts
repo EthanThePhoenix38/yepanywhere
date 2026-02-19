@@ -204,23 +204,6 @@ describe("createSessionSubscription", () => {
     expect(error?.[1]).toEqual({ message: "something broke" });
   });
 
-  it("forwards claude-login events", async () => {
-    const { process, fireEvent } = createMockProcess();
-    const { emit, events } = collectEmit();
-
-    createSessionSubscription(process, emit);
-
-    const loginEvent = { url: "https://example.com/login" };
-    await fireEvent({
-      type: "claude-login",
-      event: loginEvent,
-    } as ProcessEvent);
-
-    const login = events.find(([type]) => type === "claude-login");
-    expect(login).toBeDefined();
-    expect(login?.[1]).toEqual(loginEvent);
-  });
-
   it("forwards session-id-changed events", async () => {
     const { process, fireEvent } = createMockProcess();
     const { emit, events } = collectEmit();

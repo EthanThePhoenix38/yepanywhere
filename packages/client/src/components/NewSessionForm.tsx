@@ -17,7 +17,6 @@ import { useNavigate } from "react-router-dom";
 import { type UploadedFile, api } from "../api/client";
 import { ENTER_SENDS_MESSAGE } from "../constants";
 import { useToastContext } from "../contexts/ToastContext";
-import { useClaudeLogin } from "../hooks/useClaudeLogin";
 import { useConnection } from "../hooks/useConnection";
 import { useDraftPersistence } from "../hooks/useDraftPersistence";
 import {
@@ -34,7 +33,6 @@ import { useRemoteBasePath } from "../hooks/useRemoteBasePath";
 import { useRemoteExecutors } from "../hooks/useRemoteExecutors";
 import { hasCoarsePointer } from "../lib/deviceDetection";
 import type { PermissionMode } from "../types";
-import { ClaudeLoginModal } from "./ClaudeLoginModal";
 import { FilterDropdown, type FilterOption } from "./FilterDropdown";
 import { clearFabPrefill, getFabPrefill } from "./FloatingActionButton";
 import { VoiceInputButton, type VoiceInputButtonRef } from "./VoiceInputButton";
@@ -117,9 +115,6 @@ export function NewSessionForm({
 
   // Thinking toggle state
   const { thinkingEnabled, toggleThinking, thinkingLevel } = useModelSettings();
-
-  // Claude CLI login flow (for /login command)
-  const claudeLogin = useClaudeLogin();
 
   // Connection for uploads (uses WebSocket when enabled)
   const connection = useConnection();
@@ -282,12 +277,6 @@ export function NewSessionForm({
     if (!projectId || !hasContent || isStarting) return;
 
     const trimmedMessage = finalMessage.trim();
-
-    // Intercept /login command - show login modal instead of creating session
-    if (trimmedMessage === "/login") {
-      claudeLogin.startLogin();
-      return;
-    }
 
     setInterimTranscript("");
     setIsStarting(true);
@@ -642,30 +631,14 @@ export function NewSessionForm({
     </>
   );
 
-  // Claude Login Modal (rendered in both compact and full modes)
-  const loginModal = claudeLogin.isOpen && (
-    <ClaudeLoginModal
-      authMethod={claudeLogin.authMethod}
-      onSelectMethod={claudeLogin.selectMethod}
-      url={claudeLogin.url}
-      statusMessage={claudeLogin.statusMessage}
-      startupError={claudeLogin.error}
-      onSuccess={claudeLogin.handleSuccess}
-      onCancel={claudeLogin.handleCancel}
-    />
-  );
-
   // Compact mode: just the input area, no header or mode selector
   if (compact) {
     return (
-      <>
-        <div
-          className={`new-session-form new-session-form-compact ${interimTranscript ? "voice-recording" : ""}`}
-        >
-          {inputArea}
-        </div>
-        {loginModal}
-      </>
+      <div
+        className={`new-session-form new-session-form-compact ${interimTranscript ? "voice-recording" : ""}`}
+      >
+        {inputArea}
+      </div>
     );
   }
 
@@ -799,8 +772,6 @@ export function NewSessionForm({
           </div>
         </div>
       )}
-
-      {loginModal}
     </div>
   );
 }

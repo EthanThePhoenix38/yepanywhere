@@ -135,10 +135,6 @@ export function createSessionSubscription(
           emit("error", { message: event.error.message });
           break;
 
-        case "claude-login":
-          emit("claude-login", event.event);
-          break;
-
         case "session-id-changed":
           emit("session-id-changed", {
             oldSessionId: event.oldSessionId,

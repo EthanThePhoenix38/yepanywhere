@@ -128,20 +128,6 @@ export interface AuthStatus {
   authFilePath: string;
 }
 
-/** Status of the Claude CLI login flow */
-export interface ClaudeLoginStatus {
-  status:
-    | "idle"
-    | "starting"
-    | "awaiting-url"
-    | "awaiting-code"
-    | "complete"
-    | "error";
-  url?: string;
-  error?: string;
-  startedAt?: number;
-}
-
 export async function fetchJSON<T>(
   path: string,
   options?: RequestInit,
@@ -756,39 +742,6 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ newPassword }),
     }),
-
-  // Claude CLI Login API (for re-authentication when SDK auth expires)
-  getClaudeLoginStatus: () =>
-    fetchJSON<ClaudeLoginStatus>("/auth/claude-login/status"),
-
-  startClaudeLogin: () =>
-    fetchJSON<{ success: boolean; url?: string; error?: string }>(
-      "/auth/claude-login/start",
-      { method: "POST" },
-    ),
-
-  submitClaudeLoginCode: (code: string) =>
-    fetchJSON<{ success: boolean; error?: string }>("/auth/claude-login/code", {
-      method: "POST",
-      body: JSON.stringify({ code }),
-    }),
-
-  cancelClaudeLogin: () =>
-    fetchJSON<{ success: boolean }>("/auth/claude-login/cancel", {
-      method: "POST",
-    }),
-
-  checkTmuxAvailable: () =>
-    fetchJSON<{ available: boolean }>("/auth/claude-login/tmux"),
-
-  setClaudeApiKey: (apiKey: string) =>
-    fetchJSON<{ success: boolean; error?: string }>(
-      "/auth/claude-login/apikey",
-      {
-        method: "POST",
-        body: JSON.stringify({ apiKey }),
-      },
-    ),
 
   // Recents API
   getRecents: (limit?: number) =>

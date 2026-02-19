@@ -358,6 +358,22 @@
         <article class="news-item open">
           <div class="news-item-header" onclick="this.parentElement.classList.toggle('open')">
             <div>
+              <h2>The Agent SDK Auth Scare (and Why You're Fine)</h2>
+              <div class="news-item-meta">February 19, 2026 &middot; <a href="/sdk-auth-clarification.html" onclick="event.stopPropagation()">View article</a></div>
+            </div>
+            <span class="news-item-expand">+</span>
+          </div>
+          <div class="news-item-content">
+            <div class="article-content">
+              <p>Anthropic updated their legal docs and the community panicked. One paragraph says Pro/Max covers the Agent SDK, the next says OAuth tokens can't be used with it. A Claude Code product lead clarified on X that nothing is changing. Here's our reading of why individual SDK use is fine.</p>
+              <p><a href="/sdk-auth-clarification.html">Read the full post</a></p>
+            </div>
+          </div>
+        </article>
+
+        <article class="news-item">
+          <div class="news-item-header" onclick="this.parentElement.classList.toggle('open')">
+            <div>
               <h2>Does Your AI Agent Have a Soul?</h2>
               <div class="news-item-meta">February 16, 2026 &middot; <a href="/openclaw-and-yep-anywhere.html" onclick="event.stopPropagation()">View article</a></div>
             </div>
@@ -425,12 +441,7 @@
 
               <p><strong>1. We use the official SDK.</strong> We depend on <code>@anthropic-ai/claude-agent-sdk</code>, Anthropic's official published SDK. We call the SDK's <code>query()</code> function directly without modification or header spoofing.</p>
 
-              <p><strong>2. We don't replace or intercept authentication.</strong> Users provide their own authentication through either:</p>
-              <ul>
-                <li><strong>API Key:</strong> User sets <code>ANTHROPIC_API_KEY</code> environment variable (pays standard API rates)</li>
-                <li><strong>OAuth:</strong> User runs <code>claude</code> CLI themselves to authenticate, which creates <code>~/.claude/.credentials.json</code></li>
-              </ul>
-              <p>We do provide a <code>/login</code> convenience command that helps users re-authenticate remotely when their credentials expire. This works by automating the Claude CLI's own <code>/login</code> command via tmux - we parse the OAuth URL from CLI output and relay it to users, who then complete Anthropic's official OAuth flow in their browser. We're not bypassing or replacing the auth system, just making it accessible when you can't SSH to your machine.</p>
+              <p><strong>2. We don't handle authentication.</strong> Users authenticate via the Claude CLI directly (<code>claude login</code>) or by setting <code>ANTHROPIC_API_KEY</code>. We never touch, intercept, or proxy OAuth tokens.</p>
 
               <p><strong>3. We don't spoof client identity.</strong> Our code makes no attempt to impersonate Claude Code or any other client. We pass requests to the SDK as-is, which identifies itself appropriately.</p>
 
@@ -469,7 +480,7 @@
                   <tr>
                     <td>Handles user auth</td>
                     <td>Yes (OAuth proxy/interception)</td>
-                    <td>Convenience only (relays CLI's official OAuth)</td>
+                    <td>No &mdash; users authenticate via CLI directly</td>
                   </tr>
                 </tbody>
               </table>

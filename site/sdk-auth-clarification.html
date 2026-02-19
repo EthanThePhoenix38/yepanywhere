@@ -3,28 +3,28 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>How We Use the Claude SDK (and Why We're Not Like the Blocked Tools) - Yep Anywhere</title>
-  <meta name="description" content="Yep Anywhere uses the official Claude SDK without spoofing or header manipulation. Here's how we differ from blocked third-party Claude Code clients.">
+  <title>The Agent SDK Auth Scare (and Why You're Fine) - Yep Anywhere</title>
+  <meta name="description" content="Anthropic updated their legal docs and the community panicked. Here's what actually changed, what the docs actually say, and what it means for Agent SDK users.">
 
   <!-- Open Graph / LinkedIn -->
   <meta property="og:type" content="article">
-  <meta property="og:url" content="https://yepanywhere.com/tos-compliance.html">
-  <meta property="og:title" content="How We Use the Claude SDK (and Why We're Not Like the Blocked Tools)">
-  <meta property="og:description" content="Yep Anywhere uses the official Claude SDK without spoofing or header manipulation. Here's how we differ from blocked third-party Claude Code clients.">
+  <meta property="og:url" content="https://yepanywhere.com/sdk-auth-clarification.html">
+  <meta property="og:title" content="The Agent SDK Auth Scare (and Why You're Fine)">
+  <meta property="og:description" content="Anthropic updated their legal docs and the community panicked. Here's what actually changed and what it means for Agent SDK users.">
   <meta property="og:image" content="https://yepanywhere.com/branding/og-image.png">
   <meta property="og:site_name" content="Yep Anywhere">
-  <meta property="article:published_time" content="2026-01-11">
+  <meta property="article:published_time" content="2026-02-19">
 
   <!-- Twitter -->
   <meta name="twitter:card" content="summary_large_image">
-  <meta name="twitter:title" content="How We Use the Claude SDK (and Why We're Not Like the Blocked Tools)">
-  <meta name="twitter:description" content="Yep Anywhere uses the official Claude SDK without spoofing or header manipulation. Here's how we differ from blocked third-party Claude Code clients.">
+  <meta name="twitter:title" content="The Agent SDK Auth Scare (and Why You're Fine)">
+  <meta name="twitter:description" content="Anthropic updated their legal docs and the community panicked. Here's what actually changed and what it means for Agent SDK users.">
   <meta name="twitter:image" content="https://yepanywhere.com/branding/og-image.png">
 
   <link rel="icon" type="image/x-icon" href="favicon.ico">
   <link rel="icon" type="image/svg+xml" href="icon.svg">
   <link rel="apple-touch-icon" href="icon-192.png">
-  <link rel="canonical" href="https://yepanywhere.com/tos-compliance.html">
+  <link rel="canonical" href="https://yepanywhere.com/sdk-auth-clarification.html">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -194,35 +194,6 @@
       font-style: italic;
     }
 
-    /* Comparison table */
-    .comparison-table {
-      width: 100%;
-      border-collapse: collapse;
-      margin: 16px 0;
-      font-size: 14px;
-    }
-
-    .comparison-table th,
-    .comparison-table td {
-      padding: 12px;
-      text-align: left;
-      border: 1px solid var(--border);
-    }
-
-    .comparison-table th {
-      background: var(--bg-tertiary);
-      font-weight: 600;
-      color: var(--text-primary);
-    }
-
-    .comparison-table td {
-      color: var(--text-secondary);
-    }
-
-    .comparison-table tr:nth-child(even) {
-      background: var(--bg-secondary);
-    }
-
     /* Footer */
     footer {
       padding: 40px 0;
@@ -269,15 +240,6 @@
       .article-header h1 {
         font-size: 24px;
       }
-
-      .comparison-table {
-        font-size: 12px;
-      }
-
-      .comparison-table th,
-      .comparison-table td {
-        padding: 8px;
-      }
     }
   </style>
 </head>
@@ -301,9 +263,9 @@
     <article>
       <div class="article-header">
         <div class="container">
-          <h1>How We Use the Claude SDK (and Why We're Not Like the Blocked Tools)</h1>
+          <h1>The Agent SDK Auth Scare (and Why You're Fine)</h1>
           <div class="article-meta">
-            <span>January 11, 2026</span>
+            <span>February 19, 2026</span>
             <a href="/news.html">Back to News</a>
           </div>
         </div>
@@ -312,78 +274,54 @@
       <div class="article-body">
         <div class="container">
           <div class="article-content">
-            <p>In late 2025 and early 2026, Anthropic sent takedown notices to several third-party Claude Code clients. We want to be transparent about how Yep Anywhere differs from those projects.</p>
+            <p>On February 19, 2026, Anthropic updated their <a href="https://code.claude.com/docs/en/legal-and-compliance">Legal and compliance</a> docs for Claude Code. Within hours, Hacker News had <a href="https://news.ycombinator.com/item?id=47069299">160+ comments</a>, X was on fire, and developers were asking whether using the Agent SDK with a Max subscription was about to get them banned.</p>
 
-            <h3>What Got Blocked</h3>
-            <p>Projects like OpenCode, Crush (Charmbracelet), and Windsurf were blocked for <strong>spoofing the Claude Code client identity</strong> to access Claude Max subscription pricing ($200/month) instead of paying per-token API rates.</p>
+            <p>Here's what actually happened, what the docs actually say, and what it means for Yep Anywhere users.</p>
 
-            <p>Claude Max subscriptions offer dramatically cheaper access than API pricing (users reported $1000+ monthly API costs reduced to $200). The blocked tools would:</p>
+            <h3>What the docs say</h3>
+            <p>The updated page has two relevant sections, back to back:</p>
+
+            <p><strong>Usage policy:</strong></p>
+            <blockquote>"Advertised usage limits for Pro and Max plans assume ordinary, individual usage of Claude Code <strong>and the Agent SDK</strong>."</blockquote>
+
+            <p><strong>Authentication and credential use:</strong></p>
+            <blockquote>"OAuth authentication (used with Free, Pro, and Max plans) is intended exclusively for Claude Code and Claude.ai. Using OAuth tokens obtained through Claude Free, Pro, or Max accounts in any other product, tool, or service &mdash; <strong>including the Agent SDK</strong> &mdash; is not permitted."</blockquote>
+
+            <p>Read those paragraphs in order. The first says your subscription covers the Agent SDK. The next says using your subscription's OAuth tokens with the Agent SDK is not permitted. The community's reaction was understandable.</p>
+
+            <h3>The clarification</h3>
+            <p>Thariq, a product leader on Claude Code at Anthropic, <a href="https://x.com/trq212/status/2024212378402095389">posted on X</a> within hours:</p>
+
+            <blockquote>"Apologies, this was a docs clean up we rolled out that's caused some confusion. Nothing is changing about how you can use the Agent SDK and MAX subscriptions!"</blockquote>
+
+            <p>Multiple HN commenters noted that a tweet doesn't override written ToS. They're right &mdash; Anthropic should fix the docs. But the intent is clear: <strong>individual use of the Agent SDK with your subscription is fine.</strong> The restriction targets third-party developers routing other people's subscription credentials through their services.</p>
+
+            <h3>What this means for Yep Anywhere</h3>
+            <p>Yep Anywhere falls squarely under individual use:</p>
+
             <ul>
-              <li>Send fake HTTP headers pretending to be the official Claude Code CLI</li>
-              <li>Trick Anthropic's servers into granting subscription-tier pricing</li>
-              <li>Provide their own alternative UI while freeloading on pricing meant only for Anthropic's official tool</li>
+              <li><strong>You run it on your own machine</strong>, for yourself</li>
+              <li><strong>You authenticate via your own Claude CLI</strong> &mdash; we don't handle, intercept, or proxy OAuth tokens</li>
+              <li><strong>We use the official Agent SDK</strong> (<code>@anthropic-ai/claude-agent-sdk</code>) without modification</li>
+              <li><strong>We don't spoof client identity</strong> or manipulate headers</li>
+              <li><strong>We're not a third-party service</strong> routing your credentials &mdash; we're a local interface to your own Claude Code sessions</li>
             </ul>
 
-            <p>An Anthropic engineer confirmed: <blockquote>"We tightened our safeguards against spoofing the Claude Code harness."</blockquote></p>
+            <p>We covered this in detail in our <a href="/tos-compliance.html">January compliance post</a> when the earlier wave of third-party tools got blocked. The core facts haven't changed.</p>
 
-            <h3>How Yep Anywhere Is Different</h3>
-            <p>Yep Anywhere does <strong>none of the above</strong>. Here's what we actually do:</p>
+            <h3>The bigger picture</h3>
+            <p>The <a href="https://news.ycombinator.com/item?id=47069299">HN thread</a> is worth reading. The community frustration isn't really about Yep Anywhere or any specific tool &mdash; it's about contradictory docs creating uncertainty for developers who want to build on Claude's platform.</p>
 
-            <p><strong>1. We use the official SDK.</strong> We depend on <code>@anthropic-ai/claude-agent-sdk</code>, Anthropic's official published SDK. We call the SDK's <code>query()</code> function directly without modification or header spoofing.</p>
+            <p>The tools that got blocked (OpenCode, Crush, etc.) were spoofing client identity to freeload on subscription pricing. That's clearly different from an individual using the official SDK for personal tooling. But when the written terms don't distinguish between the two, everyone gets nervous.</p>
 
-            <p><strong>2. We don't handle authentication.</strong> Users authenticate via the Claude CLI directly (<code>claude login</code>) or by setting <code>ANTHROPIC_API_KEY</code>. We never touch, intercept, or proxy OAuth tokens.</p>
-
-            <p><strong>3. We don't spoof client identity.</strong> Our code makes no attempt to impersonate Claude Code or any other client. We pass requests to the SDK as-is, which identifies itself appropriately.</p>
-
-            <p><strong>4. We're a remote interface, not a replacement.</strong> Yep Anywhere is a mobile-friendly supervisor for Claude Code sessions running on your own machine. Think of it like SSH for AI agents—we provide remote access to sessions, not a replacement client.</p>
-
-            <h3>Comparison</h3>
-            <table class="comparison-table">
-              <thead>
-                <tr>
-                  <th>Aspect</th>
-                  <th>Blocked Tools</th>
-                  <th>Yep Anywhere</th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr>
-                  <td>Client identity spoofing</td>
-                  <td>Yes</td>
-                  <td>No</td>
-                </tr>
-                <tr>
-                  <td>Header manipulation</td>
-                  <td>Yes</td>
-                  <td>No</td>
-                </tr>
-                <tr>
-                  <td>Pricing tier circumvention</td>
-                  <td>Yes</td>
-                  <td>No</td>
-                </tr>
-                <tr>
-                  <td>Uses official SDK</td>
-                  <td>No (custom API calls)</td>
-                  <td>Yes</td>
-                </tr>
-                <tr>
-                  <td>Handles user auth</td>
-                  <td>Yes (OAuth proxy/interception)</td>
-                  <td>No &mdash; users authenticate via CLI directly</td>
-                </tr>
-              </tbody>
-            </table>
-
-            <h3>Our Stance</h3>
-            <p>We believe our approach aligns with Anthropic's terms of service. Users pay for their own Claude access through legitimate channels, and we provide a remote interface to manage sessions. We're not trying to game pricing or impersonate official tools.</p>
-
-            <p>If Anthropic has concerns about our implementation, we welcome the conversation.</p>
+            <p>We'll update this post if Anthropic clarifies their docs further. In the meantime: you're fine. Use the Agent SDK with your subscription. Build things. Anthropic wants you to &mdash; that's why the SDK exists.</p>
 
             <h3>References</h3>
             <ul>
-              <li><a href="https://news.ycombinator.com/item?id=46549823">Anthropic blocks third-party Claude Code access (Hacker News)</a></li>
-              <li><a href="https://github.com/charmbracelet/crush/pull/1783">Charmbracelet Crush removal PR</a></li>
+              <li><a href="https://code.claude.com/docs/en/legal-and-compliance">Anthropic Legal and Compliance docs</a></li>
+              <li><a href="https://x.com/trq212/status/2024212378402095389">Thariq's clarification on X</a></li>
+              <li><a href="https://news.ycombinator.com/item?id=47069299">HN discussion thread (160+ comments)</a></li>
+              <li><a href="/tos-compliance.html">Our January compliance post</a></li>
             </ul>
           </div>
         </div>
@@ -397,6 +335,7 @@
         <a href="https://github.com/kzahel/yepanywhere">GitHub</a>
         <a href="https://www.npmjs.com/package/yepanywhere">npm</a>
         <a href="https://github.com/kzahel/yepanywhere/issues">Issues</a>
+        <a href="/privacy.html">Privacy</a>
       </div>
       <p>MIT License</p>
     </div>
