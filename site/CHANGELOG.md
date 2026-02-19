@@ -6,6 +6,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [site-v1.4.1] - 2026-02-19
+
+### Changed
+- Rewrite relay value prop and feature card to highlight free relay access (no Tailscale/VPN needed)
+- Restore "Log In to Your Server" as secondary CTA in hero
+- Update hero screenshot caption to "Fix issues from anywhere"
+
+### Added
+- Desktop remote access settings screenshot
+
 ## [site-v1.4.0] - 2026-02-19
 
 ### Changed
