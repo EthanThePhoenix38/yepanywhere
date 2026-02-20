@@ -53,6 +53,10 @@ jobs:
       HAS_MACOS_NOTARIZATION: ${{ secrets.ASC_API_KEY_P8_BASE64 != '' }}
       HAS_WINDOWS_SIGNING: ${{ secrets.AZURE_CLIENT_SECRET != '' }}
       HAS_UPDATER_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY != '' }}
+      # linuxdeploy AppImage compat: strip can't handle .relr.dyn on Ubuntu 22.04+,
+      # and CI runners may lack FUSE for running the linuxdeploy AppImage
+      NO_STRIP: 'true'
+      APPIMAGE_EXTRACT_AND_RUN: '1'
 
     steps:
       - uses: actions/checkout@v4
@@ -169,9 +173,6 @@ jobs:
       - name: Build Tauri app
         uses: tauri-apps/tauri-action@v0
         env:
-          APPIMAGE_EXTRACT_AND_RUN: '1'
-          # linuxdeploy's bundled strip can't handle .relr.dyn sections on Ubuntu 22.04+
-          NO_STRIP: 'true'
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TARGET_TRIPLE: ${{ matrix.target_triple }}
           # Windows signing
@@ -188,8 +189,12 @@ jobs:
           prerelease: false
           includeUpdaterJson: ${{ startsWith(github.ref, 'refs/tags/') }}
           updaterJsonKeepUniversal: true
+          # On Linux, bundle bun as a resource instead of externalBin to avoid Tauri's
+          # built-in patchelf corrupting bun's ELF layout (github.com/tauri-apps/tauri/issues/11898).
+          # Resources land in the same resource_dir() but aren't patchelf'd.
           args: >-
             ${{ matrix.args }}
+            ${{ runner.os == 'Linux' && '--config ''{"bundle":{"externalBin":[],"resources":["binaries/bun-*"]}}''' || '' }}
             ${{ env.HAS_UPDATER_KEY == 'true' && '--config ''{"bundle":{"createUpdaterArtifacts":"v2"}}''' || '' }}
             ${{ matrix.platform == 'windows-latest' && secrets.AZURE_CLIENT_SECRET != '' && '--config ''{"bundle":{"windows":{"signCommand":"trusted-signing-cli -e https://eus.codesigning.azure.net -a kylegraehl -c yep-profile %1"}}}''' || '' }}
 
@@ -248,8 +253,8 @@ jobs:
             echo "| macOS (Apple Silicon) | [.dmg](${BASE}/YepAnywhere_${VERSION}_aarch64.dmg) |"
             echo "| macOS (Intel) | [.dmg](${BASE}/YepAnywhere_${VERSION}_x64.dmg) |"
             echo "| Windows | [.exe](${BASE}/YepAnywhere_${VERSION}_x64-setup.exe) · [.msi](${BASE}/YepAnywhere_${VERSION}_x64_en-US.msi) |"
-            echo "| Linux x86_64 | [.deb](${BASE}/YepAnywhere_${VERSION}_amd64.deb) · [.AppImage](${BASE}/YepAnywhere_${VERSION}_amd64.AppImage) |"
-            echo "| Linux ARM64 | [.deb](${BASE}/YepAnywhere_${VERSION}_arm64.deb) · [.AppImage](${BASE}/YepAnywhere_${VERSION}_aarch64.AppImage) |"
+            echo "| Linux x86_64 | [.AppImage](${BASE}/YepAnywhere_${VERSION}_amd64.AppImage) · [.deb](${BASE}/YepAnywhere_${VERSION}_amd64.deb) · [.rpm](${BASE}/YepAnywhere-${VERSION}-1.x86_64.rpm) |"
+            echo "| Linux ARM64 | [.AppImage](${BASE}/YepAnywhere_${VERSION}_aarch64.AppImage) · [.deb](${BASE}/YepAnywhere_${VERSION}_arm64.deb) · [.rpm](${BASE}/YepAnywhere-${VERSION}-1.aarch64.rpm) |"
           } > /tmp/release-body.md
 
           gh release edit "$TAG" --notes-file /tmp/release-body.md
