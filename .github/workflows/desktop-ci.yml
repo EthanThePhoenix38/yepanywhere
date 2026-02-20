@@ -34,11 +34,11 @@ jobs:
             rust_target: x86_64-apple-darwin
             target_triple: x86_64-apple-darwin
           - platform: ubuntu-22.04
-            args: '--bundles deb,rpm,updater'
+            args: ''
             rust_target: ''
             target_triple: ''
           - platform: ubuntu-22.04-arm
-            args: '--bundles deb,rpm,updater'
+            args: ''
             rust_target: ''
             target_triple: ''
           - platform: windows-latest
@@ -146,6 +146,8 @@ jobs:
         uses: tauri-apps/tauri-action@v0
         env:
           APPIMAGE_EXTRACT_AND_RUN: '1'
+          # linuxdeploy's bundled strip can't handle .relr.dyn sections on Ubuntu 22.04+
+          NO_STRIP: 'true'
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TARGET_TRIPLE: ${{ matrix.target_triple }}
           # Updater signing
