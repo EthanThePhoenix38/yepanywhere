@@ -34,11 +34,11 @@ jobs:
             rust_target: x86_64-apple-darwin
             target_triple: x86_64-apple-darwin
           - platform: ubuntu-22.04
-            args: ''
+            args: '--bundles deb,rpm,updater'
             rust_target: ''
             target_triple: ''
           - platform: ubuntu-22.04-arm
-            args: ''
+            args: '--bundles deb,rpm,updater'
             rust_target: ''
             target_triple: ''
           - platform: windows-latest
@@ -124,8 +124,10 @@ jobs:
         run: cargo install trusted-signing-cli
 
       # --- Install frontend dependencies ---
+      # --ignore-scripts avoids building native modules (e.g. better-sqlite3)
+      # that belong to other workspace packages and aren't needed for the desktop build
       - name: Install frontend dependencies
-        run: pnpm install
+        run: pnpm install --ignore-scripts
 
       # --- Extract changelog ---
       - name: Extract changelog
@@ -152,7 +154,7 @@ jobs:
           # macOS code signing
           APPLE_CERTIFICATE: ${{ secrets.MACOS_CERTIFICATE_P12_BASE64 }}
           APPLE_CERTIFICATE_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
-          APPLE_SIGNING_IDENTITY: "${{ matrix.platform == 'macos-latest' && 'Developer ID Application: Kyle Graehl (VD7BYQ6ABM)' || '' }}"
+          APPLE_SIGNING_IDENTITY: "${{ matrix.platform == 'macos-latest' && env.HAS_MACOS_SIGNING == 'true' && 'Developer ID Application: Kyle Graehl (VD7BYQ6ABM)' || '' }}"
           # macOS notarization
           APPLE_API_KEY: ${{ secrets.ASC_API_KEY_ID }}
           APPLE_API_ISSUER: ${{ secrets.ASC_API_ISSUER_ID }}
