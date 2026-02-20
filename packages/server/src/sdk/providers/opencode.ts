@@ -290,11 +290,18 @@ export class OpenCodeProvider implements AgentProvider {
     try {
       // Process messages from the queue
       const messageGen = queue.generator();
+      let isFirstNewMessage = true;
       for await (const message of messageGen) {
         if (signal.aborted) break;
 
         // Extract text from the user message
-        const userPrompt = this.extractTextFromMessage(message);
+        let userPrompt = this.extractTextFromMessage(message);
+
+        // Prepend global instructions to the first message of new sessions
+        if (isFirstNewMessage && options.globalInstructions) {
+          userPrompt = `[Global context]\n${options.globalInstructions}\n\n---\n\n${userPrompt}`;
+        }
+        isFirstNewMessage = false;
 
         // Emit user message
         yield {

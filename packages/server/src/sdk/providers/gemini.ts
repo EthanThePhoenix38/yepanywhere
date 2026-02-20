@@ -218,7 +218,16 @@ export class GeminiProvider implements AgentProvider {
       if (signal.aborted) break;
 
       // Extract text from the user message
-      const userPrompt = this.extractTextFromMessage(message);
+      let userPrompt = this.extractTextFromMessage(message);
+
+      // Prepend global instructions to the first message of new sessions
+      if (
+        isFirstMessage &&
+        !options.resumeSessionId &&
+        options.globalInstructions
+      ) {
+        userPrompt = `[Global context]\n${options.globalInstructions}\n\n---\n\n${userPrompt}`;
+      }
 
       // Emit user message with UUID from queue to enable deduplication
       // The UUID was set by Process.queueMessage() and passed through MessageQueue

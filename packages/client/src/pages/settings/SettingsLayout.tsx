@@ -4,6 +4,7 @@ import { useReloadNotifications } from "../../hooks/useReloadNotifications";
 import { useRemoteBasePath } from "../../hooks/useRemoteBasePath";
 import { useNavigationLayout } from "../../layouts";
 import { AboutSettings } from "./AboutSettings";
+import { AgentContextSettings } from "./AgentContextSettings";
 import { AppearanceSettings } from "./AppearanceSettings";
 import { DevelopmentSettings } from "./DevelopmentSettings";
 import { DevicesSettings } from "./DevicesSettings";
@@ -23,6 +24,7 @@ import {
 const CATEGORY_COMPONENTS: Record<string, React.ComponentType> = {
   appearance: AppearanceSettings,
   model: ModelSettings,
+  "agent-context": AgentContextSettings,
   notifications: NotificationsSettings,
   devices: DevicesSettings,
   "local-access": LocalAccessSettings,

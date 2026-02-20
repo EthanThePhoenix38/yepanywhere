@@ -35,6 +35,7 @@ import type { GeminiSessionScanner } from "../projects/gemini-scanner.js";
 import type { ProjectScanner } from "../projects/scanner.js";
 import { getProjectDirFromCwd, syncSessions } from "../sdk/session-sync.js";
 import type { PermissionMode, SDKMessage, UserMessage } from "../sdk/types.js";
+import type { ServerSettingsService } from "../services/ServerSettingsService.js";
 import { CodexSessionReader } from "../sessions/codex-reader.js";
 import { cloneClaudeSession } from "../sessions/fork.js";
 import { GeminiSessionReader } from "../sessions/gemini-reader.js";
@@ -80,6 +81,8 @@ export interface SessionsDeps {
   codexSessionsDir?: string;
   geminiScanner?: GeminiSessionScanner;
   geminiSessionsDir?: string;
+  /** ServerSettingsService for reading global instructions */
+  serverSettingsService?: ServerSettingsService;
 }
 
 interface StartSessionBody {
@@ -911,6 +914,9 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
       model: body.model,
     });
 
+    const globalInstructions =
+      deps.serverSettingsService?.getSetting("globalInstructions") || undefined;
+
     const result = await deps.supervisor.startSession(
       project.path,
       userMessage,
@@ -920,6 +926,7 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
         maxThinkingTokens,
         providerName: body.provider,
         executor: body.executor,
+        globalInstructions,
       },
     );
 
@@ -985,6 +992,9 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
     const model =
       body.model && body.model !== "default" ? body.model : undefined;
 
+    const globalInstructions =
+      deps.serverSettingsService?.getSetting("globalInstructions") || undefined;
+
     const result = await deps.supervisor.createSession(
       project.path,
       body.mode,
@@ -993,6 +1003,7 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
         maxThinkingTokens,
         providerName: body.provider,
         executor: body.executor,
+        globalInstructions,
       },
     );
 
@@ -1097,6 +1108,9 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
       }
     }
 
+    const globalInstructions =
+      deps.serverSettingsService?.getSetting("globalInstructions") || undefined;
+
     const result = await deps.supervisor.resumeSession(
       sessionId,
       project.path,
@@ -1107,6 +1121,7 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
         maxThinkingTokens,
         providerName: body.provider,
         executor,
+        globalInstructions,
       },
     );
 
@@ -1184,12 +1199,14 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
 
     // Use queueMessageToSession which handles thinking mode changes
     // If thinking mode changed, it will restart the process automatically
+    const queueGlobalInstructions =
+      deps.serverSettingsService?.getSetting("globalInstructions") || undefined;
     const result = await deps.supervisor.queueMessageToSession(
       sessionId,
       process.projectPath,
       userMessage,
       body.mode,
-      { maxThinkingTokens },
+      { maxThinkingTokens, globalInstructions: queueGlobalInstructions },
     );
 
     if (!result.success) {

@@ -66,6 +66,8 @@ export interface ModelSettings {
   executor?: string;
   /** Environment variables to set on remote (for testing: CLAUDE_SESSIONS_DIR) */
   remoteEnv?: Record<string, string>;
+  /** Global instructions to append to system prompt (from server settings) */
+  globalInstructions?: string;
 }
 
 /** Error response when queue is full */
@@ -334,6 +336,7 @@ export class Supervisor {
       permissionMode: effectiveMode,
       model: modelSettings?.model,
       maxThinkingTokens: modelSettings?.maxThinkingTokens,
+      globalInstructions: modelSettings?.globalInstructions,
       onToolApproval: async (toolName, input, opts) => {
         if (!processHolder.process) {
           return { behavior: "deny", message: "Process not ready" };
@@ -426,6 +429,7 @@ export class Supervisor {
       maxThinkingTokens: modelSettings?.maxThinkingTokens,
       executor: modelSettings?.executor,
       remoteEnv: modelSettings?.remoteEnv,
+      globalInstructions: modelSettings?.globalInstructions,
       onToolApproval: async (toolName, input, opts) => {
         // Delegate to the process's handleToolApproval
         if (!processHolder.process) {
@@ -513,6 +517,7 @@ export class Supervisor {
       maxThinkingTokens: modelSettings?.maxThinkingTokens,
       executor: modelSettings?.executor,
       remoteEnv: modelSettings?.remoteEnv,
+      globalInstructions: modelSettings?.globalInstructions,
       onToolApproval: async (toolName, input, opts) => {
         if (!processHolder.process) {
           return { behavior: "deny", message: "Process not ready" };
@@ -604,6 +609,7 @@ export class Supervisor {
       maxThinkingTokens: modelSettings?.maxThinkingTokens,
       executor: modelSettings?.executor,
       remoteEnv: modelSettings?.remoteEnv,
+      globalInstructions: modelSettings?.globalInstructions,
       onToolApproval: async (toolName, input, opts) => {
         if (!processHolder.process) {
           return { behavior: "deny", message: "Process not ready" };

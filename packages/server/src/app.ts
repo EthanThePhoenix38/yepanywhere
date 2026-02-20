@@ -399,6 +399,7 @@ export function createApp(options: AppOptions): AppResult {
       codexSessionsDir: CODEX_SESSIONS_DIR,
       geminiScanner,
       geminiSessionsDir: GEMINI_TMP_DIR,
+      serverSettingsService: options.serverSettingsService,
     }),
   );
   app.route(

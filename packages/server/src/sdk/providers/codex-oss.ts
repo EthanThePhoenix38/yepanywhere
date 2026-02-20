@@ -335,11 +335,18 @@ export class CodexOSSProvider implements AgentProvider {
     }
 
     const messageGen = queue.generator();
+    let isFirstNewMessage = !options.resumeSessionId;
     for await (const message of messageGen) {
       if (signal.aborted) break;
 
-      const userPrompt = this.extractTextFromMessage(message);
+      let userPrompt = this.extractTextFromMessage(message);
       if (!userPrompt) continue;
+
+      // Prepend global instructions to the first message of new sessions
+      if (isFirstNewMessage && options.globalInstructions) {
+        userPrompt = `[Global context]\n${options.globalInstructions}\n\n---\n\n${userPrompt}`;
+      }
+      isFirstNewMessage = false;
 
       // Emit user message with UUID from queue to enable deduplication
       // The UUID was set by Process.queueMessage() and passed through MessageQueue

@@ -1037,15 +1037,24 @@ export class CodexProvider implements AgentProvider {
       } as SDKMessage;
 
       const messageGen = queue.generator();
+      let isFirstMessage = !options.resumeSessionId;
 
       for await (const message of messageGen) {
         if (signal.aborted) {
           break;
         }
 
-        const userPrompt = this.extractTextFromMessage(message);
+        let userPrompt = this.extractTextFromMessage(message);
         if (!userPrompt) {
           continue;
+        }
+
+        // Prepend global instructions to the first message of new sessions
+        if (isFirstMessage && options.globalInstructions) {
+          userPrompt = `[Global context]\n${options.globalInstructions}\n\n---\n\n${userPrompt}`;
+          isFirstMessage = false;
+        } else {
+          isFirstMessage = false;
         }
 
         // Emit user message with UUID from queue to enable deduplication.

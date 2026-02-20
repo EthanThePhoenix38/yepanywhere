@@ -829,4 +829,6 @@ export interface ServerSettings {
   remoteExecutors?: string[];
   /** Allowed hostnames for host/origin validation. "*" = allow all, comma-separated = specific hosts. */
   allowedHosts?: string;
+  /** Free-form instructions appended to the system prompt for all sessions */
+  globalInstructions?: string;
 }

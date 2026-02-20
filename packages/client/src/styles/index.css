@@ -3767,6 +3767,31 @@ a.sidebar-nav-item {
   font-size: var(--font-size-sm);
 }
 
+.settings-textarea {
+  width: 100%;
+  min-height: 120px;
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border-color);
+  background: var(--bg-hover);
+  color: var(--text-primary);
+  font-family: var(--font-mono);
+  font-size: var(--font-size-sm);
+  line-height: 1.5;
+  resize: vertical;
+  margin-top: var(--space-2);
+}
+
+.settings-textarea:focus {
+  outline: none;
+  border-color: var(--app-yep-green);
+}
+
+.settings-textarea::placeholder {
+  color: var(--text-muted);
+  opacity: 0.6;
+}
+
 .settings-item-header {
   display: flex;
   align-items: center;

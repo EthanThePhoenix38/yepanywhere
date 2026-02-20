@@ -19,6 +19,12 @@ export const SETTINGS_CATEGORIES: SettingsCategory[] = [
     description: "Claude model and thinking settings",
   },
   {
+    id: "agent-context",
+    label: "Agent Context",
+    icon: "📋",
+    description: "Custom instructions for all sessions",
+  },
+  {
     id: "notifications",
     label: "Notifications",
     icon: "🔔",

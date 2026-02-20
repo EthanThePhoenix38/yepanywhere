@@ -64,6 +64,19 @@ export function createSettingsRoutes(deps: SettingsRoutesDeps): Hono {
       }
     }
 
+    // Handle globalInstructions string (free-form text, or undefined/null/"" to clear)
+    if ("globalInstructions" in body) {
+      if (
+        body.globalInstructions === undefined ||
+        body.globalInstructions === null ||
+        body.globalInstructions === ""
+      ) {
+        updates.globalInstructions = undefined;
+      } else if (typeof body.globalInstructions === "string") {
+        updates.globalInstructions = body.globalInstructions.slice(0, 10000);
+      }
+    }
+
     if (Object.keys(updates).length === 0) {
       return c.json({ error: "At least one valid setting is required" }, 400);
     }
