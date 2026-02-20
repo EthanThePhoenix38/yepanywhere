@@ -170,6 +170,30 @@ Tech: React, TypeScript, Vite, Tailwind, pnpm monorepo
 
 ---
 
+### Cogpit
+**GitHub:** https://github.com/gentritbiba/cogpit
+**Website:** cogpit.gentrit.dev
+**Status:** Active (v0.0.7, MIT)
+
+Polished desktop + web dashboard for browsing, inspecting, and interacting with Claude Code sessions (Claude-only):
+- **Electron + Web** from single codebase (electron-vite), with macOS/Linux installers
+- Live streaming via SSE with file watching on `~/.claude/projects/` JSONL files
+- Subagent synthesis — watches child agent JSONL files and merges progress into parent timeline
+- Undo/redo with full branching — archives turns, reverses file operations, branch switcher modal
+- Token analytics with per-turn cost breakdown (cache read/creation, model-aware pricing, SVG charts)
+- Team dashboards — kanban task board, member status grid, inter-agent message timeline
+- Voice input via Whisper WASM (client-side, no external API)
+- Persistent Claude processes (keeps prompt cache warm via `--resume`)
+- Virtualized turn list (@tanstack/react-virtual) for large sessions
+- Optional network access with password auth, local clients bypass auth
+- Responsive layout: 3-column desktop, tab-based mobile
+
+Tech: React 19, Vite 6, Electron, Express 5, Tailwind 4, Radix UI, Shiki, node-pty, Bun
+
+**Note:** CLI-based integration (spawns `claude` with `--output-format stream-json`), not SDK-native. Strongest on analytics and session inspection — the token/cost charts and branching undo are features we don't have. Single author (Gentrit Biba). 870 unit tests (Vitest). No relay or E2E encryption — remote access is basic password + bind to `0.0.0.0`. Tightly coupled to Claude Code JSONL format.
+
+---
+
 ### Claude Code UI (CloudCLI)
 **GitHub:** https://github.com/siteboon/claudecodeui
 **Website:** cloudcli.ai
