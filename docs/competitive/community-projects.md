@@ -128,6 +128,29 @@ Tech: Svelte, TypeScript, Bun, SQLite, Vite
 
 ---
 
+### claude-devtools
+**GitHub:** https://github.com/matt1398/claude-devtools
+**Website:** claude-dev.tools
+**Status:** Active (120 commits, v0.1.0, MIT, Feb 2026)
+
+Read-only desktop app that visualizes Claude Code sessions from raw JSONL logs:
+- Per-turn context attribution across 7 token categories (CLAUDE.md, tool outputs, thinking, etc.)
+- Compaction phase tracking (when/how context was compressed)
+- Rich tool viewers: syntax-highlighted code, inline diffs, search results
+- Subagent execution trees (expandable Task→subagent→sub-subagent chains)
+- Team coordination visualization (color-coded teammate cards)
+- Custom notification triggers with regex matching and ReDoS protection
+- SSH remote session viewing (SFTP to remote `~/.claude/`)
+- Multi-pane drag-and-drop layout for side-by-side session comparison
+- Cross-session search (Cmd+K command palette)
+- Docker standalone mode (read-only mount, zero telemetry)
+
+Tech: Electron, React, Zustand, Fastify, Tailwind, TypeScript, pnpm
+
+**Note:** Complementary to supervisor tools like yepanywhere — this is post-hoc analysis ("what happened in this session") vs real-time control ("drive and approve sessions"). Reads the same `~/.claude/` files. Strong context attribution UI worth studying. See [detailed architecture analysis](../research/claude-devtools.md).
+
+---
+
 ### Farfield
 **GitHub:** https://github.com/achimala/farfield
 **Status:** Active (84 commits, 19 stars, MIT)
@@ -147,6 +170,28 @@ Tech: React, TypeScript, Vite, Tailwind, pnpm monorepo
 
 ---
 
+### Claude Code UI (CloudCLI)
+**GitHub:** https://github.com/siteboon/claudecodeui
+**Website:** cloudcli.ai
+**Status:** Active (v1.18.2, GPL-3.0)
+
+Web UI for multiple AI coding agents with built-in terminal and file editor:
+- Multi-agent: Claude Code (SDK-native), Cursor CLI, OpenAI Codex
+- Built-in terminal (xterm.js) and file explorer with CodeMirror editor
+- Git explorer (status, diffs, commits, branch switching)
+- Granular tool permission controls (strict/default/permissive modes)
+- MCP server management through UI
+- TaskMaster AI integration for project planning
+- i18n support (English, Japanese, Korean, Chinese)
+- PWA with mobile-optimized layout
+- Single-user JWT auth with SQLite + bcrypt
+
+Tech: React, Express, Vite, SQLite (better-sqlite3), node-pty, TypeScript/JSX, Tailwind
+
+**Note:** One of few projects using the Claude Agent SDK directly (v0.1.71) rather than wrapping the CLI. More of a local dev companion than a remote supervisor — no relay, no E2E encryption, no push notifications. Large monolithic server files (index.js ~1930 lines, projects.js ~1826 lines). No visible tests. `npx @siteboon/claude-code-ui` one-liner install is a nice touch.
+
+---
+
 ## Patterns Observed
 
 1. **Tailscale is popular** — Many use it for secure remote access
@@ -154,7 +199,9 @@ Tech: React, TypeScript, Vite, Tailwind, pnpm monorepo
 3. **E2E encryption** — Becoming expected for remote access
 4. **Multi-agent support** — Growing expectation beyond Claude-only
 5. **Codex-specific tools emerging** — Codex Pocket and Farfield target Codex Desktop directly via IPC/app-server APIs rather than wrapping a CLI
+6. **Post-hoc analysis tools** — claude-devtools reads raw JSONL logs rather than wrapping or driving sessions, showing demand for session debugging/inspection
+7. **SDK-native integration emerging** — Claude Code UI uses the Agent SDK directly rather than spawning CLI processes, suggesting the SDK is becoming stable enough for third-party use
 
 ## Last Updated
 
-2026-02-18
+2026-02-20
