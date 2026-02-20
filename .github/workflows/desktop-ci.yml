@@ -52,6 +52,7 @@ jobs:
       HAS_MACOS_SIGNING: ${{ secrets.MACOS_CERTIFICATE_P12_BASE64 != '' }}
       HAS_MACOS_NOTARIZATION: ${{ secrets.ASC_API_KEY_P8_BASE64 != '' }}
       HAS_WINDOWS_SIGNING: ${{ secrets.AZURE_CLIENT_SECRET != '' }}
+      HAS_UPDATER_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY != '' }}
 
     steps:
       - uses: actions/checkout@v4
@@ -118,6 +119,29 @@ jobs:
           chmod 600 "$KEY_PATH"
           echo "APPLE_API_KEY_PATH=$KEY_PATH" >> "$GITHUB_ENV"
 
+      # --- Signing env vars ---
+      # These MUST be set conditionally via GITHUB_ENV, not in the static env block.
+      # Tauri's bundler treats empty-string env vars as "present" and crashes
+      # trying to decode empty keys or import empty certificates.
+      - name: Set signing env vars
+        shell: bash
+        run: |
+          if [ "${{ env.HAS_UPDATER_KEY }}" = "true" ]; then
+            echo "TAURI_SIGNING_PRIVATE_KEY=${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}" >> "$GITHUB_ENV"
+            echo "TAURI_SIGNING_PRIVATE_KEY_PASSWORD=${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}" >> "$GITHUB_ENV"
+          fi
+          if [ "${{ env.HAS_MACOS_SIGNING }}" = "true" ] && [ "${{ matrix.platform }}" = "macos-latest" ]; then
+            echo "APPLE_CERTIFICATE<<CERT_EOF" >> "$GITHUB_ENV"
+            echo "${{ secrets.MACOS_CERTIFICATE_P12_BASE64 }}" >> "$GITHUB_ENV"
+            echo "CERT_EOF" >> "$GITHUB_ENV"
+            echo "APPLE_CERTIFICATE_PASSWORD=${{ secrets.MACOS_CERTIFICATE_PASSWORD }}" >> "$GITHUB_ENV"
+            echo "APPLE_SIGNING_IDENTITY=Developer ID Application: Kyle Graehl (VD7BYQ6ABM)" >> "$GITHUB_ENV"
+          fi
+          if [ "${{ env.HAS_MACOS_NOTARIZATION }}" = "true" ] && [ "${{ matrix.platform }}" = "macos-latest" ]; then
+            echo "APPLE_API_KEY=${{ secrets.ASC_API_KEY_ID }}" >> "$GITHUB_ENV"
+            echo "APPLE_API_ISSUER=${{ secrets.ASC_API_ISSUER_ID }}" >> "$GITHUB_ENV"
+          fi
+
       # --- Windows signing tool ---
       - name: Install trusted-signing-cli
         if: matrix.platform == 'windows-latest' && env.HAS_WINDOWS_SIGNING == 'true'
@@ -150,16 +174,6 @@ jobs:
           NO_STRIP: 'true'
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TARGET_TRIPLE: ${{ matrix.target_triple }}
-          # Updater signing
-          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
-          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
-          # macOS code signing
-          APPLE_CERTIFICATE: ${{ secrets.MACOS_CERTIFICATE_P12_BASE64 }}
-          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
-          APPLE_SIGNING_IDENTITY: "${{ matrix.platform == 'macos-latest' && env.HAS_MACOS_SIGNING == 'true' && 'Developer ID Application: Kyle Graehl (VD7BYQ6ABM)' || '' }}"
-          # macOS notarization
-          APPLE_API_KEY: ${{ secrets.ASC_API_KEY_ID }}
-          APPLE_API_ISSUER: ${{ secrets.ASC_API_ISSUER_ID }}
           # Windows signing
           AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
           AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
@@ -176,6 +190,7 @@ jobs:
           updaterJsonKeepUniversal: true
           args: >-
             ${{ matrix.args }}
+            ${{ env.HAS_UPDATER_KEY == 'true' && '--config ''{"bundle":{"createUpdaterArtifacts":"v2"}}''' || '' }}
             ${{ matrix.platform == 'windows-latest' && secrets.AZURE_CLIENT_SECRET != '' && '--config ''{"bundle":{"windows":{"signCommand":"trusted-signing-cli -e https://eus.codesigning.azure.net -a kylegraehl -c yep-profile %1"}}}''' || '' }}
 
       # --- Diagnose flaky DMG bundling ---
@@ -221,9 +236,6 @@ jobs:
 
           CHANGELOG=$(awk "/^## \\[$VERSION\\]/{found=1; next} /^## \\[/{found=0} found" packages/desktop/CHANGELOG.md)
 
-          # URL-encode the space in "Yep Anywhere" for download links
-          NAME="Yep%20Anywhere"
-
           {
             if [ -n "$CHANGELOG" ]; then
               echo "$CHANGELOG"
@@ -233,11 +245,11 @@ jobs:
             echo ""
             echo "| Platform | |"
             echo "|----------|-|"
-            echo "| macOS (Apple Silicon) | [.dmg](${BASE}/${NAME}_${VERSION}_aarch64.dmg) |"
-            echo "| macOS (Intel) | [.dmg](${BASE}/${NAME}_${VERSION}_x64.dmg) |"
-            echo "| Windows | [.exe](${BASE}/${NAME}_${VERSION}_x64-setup.exe) · [.msi](${BASE}/${NAME}_${VERSION}_x64_en-US.msi) |"
-            echo "| Linux x86_64 | [.deb](${BASE}/yep-anywhere_${VERSION}_amd64.deb) · [.AppImage](${BASE}/yep-anywhere_${VERSION}_amd64.AppImage) |"
-            echo "| Linux ARM64 | [.deb](${BASE}/yep-anywhere_${VERSION}_arm64.deb) · [.AppImage](${BASE}/yep-anywhere_${VERSION}_aarch64.AppImage) |"
+            echo "| macOS (Apple Silicon) | [.dmg](${BASE}/YepAnywhere_${VERSION}_aarch64.dmg) |"
+            echo "| macOS (Intel) | [.dmg](${BASE}/YepAnywhere_${VERSION}_x64.dmg) |"
+            echo "| Windows | [.exe](${BASE}/YepAnywhere_${VERSION}_x64-setup.exe) · [.msi](${BASE}/YepAnywhere_${VERSION}_x64_en-US.msi) |"
+            echo "| Linux x86_64 | [.deb](${BASE}/YepAnywhere_${VERSION}_amd64.deb) · [.AppImage](${BASE}/YepAnywhere_${VERSION}_amd64.AppImage) |"
+            echo "| Linux ARM64 | [.deb](${BASE}/YepAnywhere_${VERSION}_arm64.deb) · [.AppImage](${BASE}/YepAnywhere_${VERSION}_aarch64.AppImage) |"
           } > /tmp/release-body.md
 
           gh release edit "$TAG" --notes-file /tmp/release-body.md

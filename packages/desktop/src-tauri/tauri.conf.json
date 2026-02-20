@@ -1,6 +1,6 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "Yep Anywhere",
+  "productName": "YepAnywhere",
   "version": "0.1.0",
   "identifier": "com.yepanywhere.desktop",
   "build": {
@@ -24,7 +24,7 @@
   },
   "bundle": {
     "active": true,
-    "createUpdaterArtifacts": true,
+    "createUpdaterArtifacts": false,
     "targets": "all",
     "externalBin": [
       "binaries/bun"
