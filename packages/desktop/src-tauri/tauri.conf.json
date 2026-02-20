@@ -53,7 +53,7 @@
       "endpoints": [
         "https://updates.yepanywhere.com/tauri/{{target}}/{{arch}}/{{current_version}}"
       ],
-      "pubkey": "TODO_GENERATE_WITH_tauri_signer_generate"
+      "pubkey": "RWTMbSc7oMFk712l6aKLo0y9iO3kwoYE95lYs38lSkkhch3/QnkLg7zf"
     }
   }
 }

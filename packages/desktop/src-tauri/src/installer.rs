@@ -101,7 +101,6 @@ pub async fn install_codex(app: AppHandle) -> Result<(), String> {
 
     emit_progress(&app, "codex", "installing", "Downloading Codex CLI...");
 
-    // Get latest release info from GitHub API
     let client = reqwest::Client::new();
     let resp = client
         .get("https://api.github.com/repos/openai/codex/releases/latest")
@@ -115,19 +114,12 @@ pub async fn install_codex(app: AppHandle) -> Result<(), String> {
         .await
         .map_err(|e| format!("Failed to parse release info: {e}"))?;
 
-    // Find the right asset for this platform
-    let asset_pattern = if cfg!(target_os = "macos") {
-        if cfg!(target_arch = "aarch64") {
-            "darwin-arm64"
-        } else {
-            "darwin-x64"
-        }
-    } else if cfg!(target_os = "windows") {
-        "win32-x64"
-    } else if cfg!(target_arch = "aarch64") {
-        "linux-arm64"
+    // Codex assets use Rust target triples: codex-{triple}.tar.gz (Unix) or codex-{triple}.exe (Windows)
+    let triple = env!("TARGET_TRIPLE");
+    let (asset_name, is_archive) = if cfg!(windows) {
+        (format!("codex-{triple}.exe"), false)
     } else {
-        "linux-x64"
+        (format!("codex-{triple}.tar.gz"), true)
     };
 
     let assets = release["assets"]
@@ -135,12 +127,8 @@ pub async fn install_codex(app: AppHandle) -> Result<(), String> {
         .ok_or("No assets in release")?;
     let asset = assets
         .iter()
-        .find(|a| {
-            a["name"]
-                .as_str()
-                .is_some_and(|n: &str| n.contains(asset_pattern))
-        })
-        .ok_or(format!("No asset found for platform: {asset_pattern}"))?;
+        .find(|a| a["name"].as_str().is_some_and(|n| n == asset_name))
+        .ok_or_else(|| format!("No asset found: {asset_name}"))?;
 
     let download_url = asset["browser_download_url"]
         .as_str()
@@ -163,9 +151,41 @@ pub async fn install_codex(app: AppHandle) -> Result<(), String> {
         bin_dir.join("codex")
     };
 
-    // Codex releases are tar.gz archives — extract the binary
-    // For now, write raw bytes and we'll handle extraction properly
-    fs::write(&codex_bin, &bytes).map_err(|e| format!("Failed to write binary: {e}"))?;
+    if is_archive {
+        // Extract codex binary from tar.gz
+        emit_progress(&app, "codex", "extracting", "Extracting...");
+
+        use flate2::read::GzDecoder;
+        use std::io::Cursor;
+        use tar::Archive;
+
+        let decoder = GzDecoder::new(Cursor::new(bytes.as_ref()));
+        let mut archive = Archive::new(decoder);
+        let mut found = false;
+
+        for entry in archive
+            .entries()
+            .map_err(|e| format!("Failed to read archive: {e}"))?
+        {
+            let mut entry = entry.map_err(|e| format!("Failed to read entry: {e}"))?;
+            let path = entry
+                .path()
+                .map_err(|e| format!("Failed to read path: {e}"))?;
+            if path.file_name().is_some_and(|n| n == "codex") {
+                entry
+                    .unpack(&codex_bin)
+                    .map_err(|e| format!("Failed to extract codex: {e}"))?;
+                found = true;
+                break;
+            }
+        }
+
+        if !found {
+            return Err("Could not find codex binary in archive".to_string());
+        }
+    } else {
+        fs::write(&codex_bin, &bytes).map_err(|e| format!("Failed to write binary: {e}"))?;
+    }
 
     #[cfg(unix)]
     {

@@ -6393,10 +6393,12 @@ name = "yep-anywhere-desktop"
 version = "0.1.0"
 dependencies = [
  "dirs 5.0.1",
+ "flate2",
  "portable-pty",
  "reqwest 0.12.28",
  "serde",
  "serde_json",
+ "tar",
  "tauri",
  "tauri-build",
  "tauri-plugin-autostart",
