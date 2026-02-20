@@ -189,12 +189,11 @@ jobs:
           prerelease: false
           includeUpdaterJson: ${{ startsWith(github.ref, 'refs/tags/') }}
           updaterJsonKeepUniversal: true
-          # On Linux, bundle bun as a resource instead of externalBin to avoid Tauri's
-          # built-in patchelf corrupting bun's ELF layout (github.com/tauri-apps/tauri/issues/11898).
-          # Resources land in the same resource_dir() but aren't patchelf'd.
+          # On Linux, skip AppImage here — it's built separately below to work around
+          # Tauri's patchelf corrupting the bun sidecar (github.com/tauri-apps/tauri/issues/11898).
           args: >-
             ${{ matrix.args }}
-            ${{ runner.os == 'Linux' && '--config ''{"bundle":{"externalBin":[],"resources":["binaries/bun-*"]}}''' || '' }}
+            ${{ runner.os == 'Linux' && '--bundles deb,rpm' || '' }}
             ${{ env.HAS_UPDATER_KEY == 'true' && '--config ''{"bundle":{"createUpdaterArtifacts":"v2"}}''' || '' }}
             ${{ matrix.platform == 'windows-latest' && secrets.AZURE_CLIENT_SECRET != '' && '--config ''{"bundle":{"windows":{"signCommand":"trusted-signing-cli -e https://eus.codesigning.azure.net -a kylegraehl -c yep-profile %1"}}}''' || '' }}
 
@@ -205,6 +204,56 @@ jobs:
           echo ""
           echo "::error::macOS DMG bundling failed. This is likely the known flaky hdiutil issue on GitHub Actions runners (not a code problem). Re-run this job: gh run rerun ${{ github.run_id }} --failed"
           echo ""
+
+      # --- Linux AppImage (built separately) ---
+      # Tauri's patchelf corrupts large ELF binaries like bun during AppImage bundling
+      # (github.com/tauri-apps/tauri/issues/11898). Work around by building with a tiny
+      # dummy ELF in place of bun, then extracting and swapping in the real binary.
+      - name: Build Linux AppImage
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          cd packages/desktop
+          PROJECT_DIR="$(pwd)"
+          TRIPLE=$(rustc -vV | sed -n 's/^host: //p')
+          BUN_BIN="$PROJECT_DIR/src-tauri/binaries/bun-${TRIPLE}"
+
+          # Save real bun and replace with tiny dummy ELF
+          cp "$BUN_BIN" /tmp/bun-real
+          cp /usr/bin/true "$BUN_BIN"
+
+          # Build AppImage with dummy (Rust binary is cached from deb/rpm build above)
+          pnpm tauri build --bundles appimage
+
+          # Find the built AppImage
+          APPIMAGE=$(find "$PROJECT_DIR/src-tauri/target/release/bundle/appimage" -name '*.AppImage' -type f | head -1)
+          echo "Built AppImage: $APPIMAGE ($(stat -c%s "$APPIMAGE") bytes)"
+
+          # Extract, swap dummy for real bun, recreate
+          WORKDIR=$(mktemp -d)
+          cd "$WORKDIR"
+          "$APPIMAGE" --appimage-extract
+          cp /tmp/bun-real squashfs-root/usr/bin/bun
+          chmod +x squashfs-root/usr/bin/bun
+
+          # Recreate AppImage with appimagetool
+          ARCH_NAME=$(uname -m)
+          curl -fsSL "https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-${ARCH_NAME}.AppImage" -o appimagetool
+          chmod +x appimagetool
+          ARCH="$ARCH_NAME" ./appimagetool squashfs-root/ "$APPIMAGE"
+          echo "Final AppImage: $APPIMAGE ($(stat -c%s "$APPIMAGE") bytes with real bun)"
+
+          # Restore real bun in workspace
+          cp /tmp/bun-real "$BUN_BIN"
+
+      - name: Upload Linux AppImage to release
+        if: runner.os == 'Linux' && startsWith(github.ref, 'refs/tags/desktop-v')
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          APPIMAGE=$(find packages/desktop/src-tauri/target/release/bundle/appimage -name '*.AppImage' -type f | head -1)
+          echo "Uploading: $APPIMAGE"
+          gh release upload "${GITHUB_REF_NAME}" "$APPIMAGE" --clobber
 
       # --- Cleanup ---
       - name: Clean up macOS keychain
