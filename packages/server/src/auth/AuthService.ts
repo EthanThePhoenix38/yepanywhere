@@ -13,6 +13,10 @@ import * as crypto from "node:crypto";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import bcrypt from "bcrypt";
+import {
+  OWNER_READ_WRITE_FILE_MODE,
+  enforceOwnerReadWriteFilePermissions,
+} from "../utils/filePermissions.js";
 
 const BCRYPT_ROUNDS = 12;
 const SESSION_ID_BYTES = 32;
@@ -76,6 +80,10 @@ export class AuthService {
   async initialize(): Promise<void> {
     try {
       await fs.mkdir(this.dataDir, { recursive: true });
+      await enforceOwnerReadWriteFilePermissions(
+        this.filePath,
+        "[AuthService]",
+      );
 
       const content = await fs.readFile(this.filePath, "utf-8");
       const parsed = JSON.parse(content) as AuthState;
@@ -312,7 +320,14 @@ export class AuthService {
   private async doSave(): Promise<void> {
     try {
       const content = JSON.stringify(this.state, null, 2);
-      await fs.writeFile(this.filePath, content, "utf-8");
+      await fs.writeFile(this.filePath, content, {
+        encoding: "utf-8",
+        mode: OWNER_READ_WRITE_FILE_MODE,
+      });
+      await enforceOwnerReadWriteFilePermissions(
+        this.filePath,
+        "[AuthService]",
+      );
     } catch (error) {
       console.error("[AuthService] Failed to save state:", error);
       throw error;

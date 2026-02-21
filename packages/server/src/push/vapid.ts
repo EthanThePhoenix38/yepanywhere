@@ -9,6 +9,10 @@ import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import webPush from "web-push";
 import { getDataDir } from "../config.js";
+import {
+  OWNER_READ_WRITE_FILE_MODE,
+  enforceOwnerReadWriteFilePermissions,
+} from "../utils/filePermissions.js";
 
 /** VAPID keys file path (uses dataDir from config for profile support) */
 const VAPID_FILE = path.join(getDataDir(), "vapid.json");
@@ -93,6 +97,8 @@ export async function loadVapidKeys(
   filePath: string = VAPID_FILE,
 ): Promise<VapidKeys | null> {
   try {
+    await enforceOwnerReadWriteFilePermissions(filePath, "[vapid]");
+
     const content = await fs.readFile(filePath, "utf-8");
     const keys = JSON.parse(content) as VapidKeys;
 
@@ -141,8 +147,9 @@ export async function generateVapidKeys(
   // Save to disk with restricted permissions
   await fs.writeFile(filePath, JSON.stringify(keys, null, 2), {
     encoding: "utf-8",
-    mode: 0o600, // Owner read/write only
+    mode: OWNER_READ_WRITE_FILE_MODE, // Owner read/write only
   });
+  await enforceOwnerReadWriteFilePermissions(filePath, "[vapid]");
 
   return keys;
 }

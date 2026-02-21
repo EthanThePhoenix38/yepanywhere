@@ -12,6 +12,10 @@
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { generateVerifier } from "../crypto/srp-server.js";
+import {
+  OWNER_READ_WRITE_FILE_MODE,
+  enforceOwnerReadWriteFilePermissions,
+} from "../utils/filePermissions.js";
 
 const CURRENT_VERSION = 1;
 
@@ -65,6 +69,10 @@ export class RemoteAccessService {
   async initialize(): Promise<void> {
     try {
       await fs.mkdir(this.dataDir, { recursive: true });
+      await enforceOwnerReadWriteFilePermissions(
+        this.filePath,
+        "[RemoteAccessService]",
+      );
 
       const content = await fs.readFile(this.filePath, "utf-8");
       const parsed = JSON.parse(content) as RemoteAccessState;
@@ -269,6 +277,13 @@ export class RemoteAccessService {
 
   private async doSave(): Promise<void> {
     const content = JSON.stringify(this.state, null, 2);
-    await fs.writeFile(this.filePath, content, "utf-8");
+    await fs.writeFile(this.filePath, content, {
+      encoding: "utf-8",
+      mode: OWNER_READ_WRITE_FILE_MODE,
+    });
+    await enforceOwnerReadWriteFilePermissions(
+      this.filePath,
+      "[RemoteAccessService]",
+    );
   }
 }

@@ -182,6 +182,21 @@ describe("setup-vapid", () => {
       const loaded = await loadVapidKeys(vapidFile);
       expect(loaded).toBeNull();
     });
+
+    it("should tighten permissions on existing vapid.json files at load", async () => {
+      if (process.platform === "win32") {
+        return;
+      }
+
+      await generateVapidKeys(vapidFile);
+      await fs.chmod(vapidFile, 0o644);
+
+      const loaded = await loadVapidKeys(vapidFile);
+      expect(loaded).not.toBeNull();
+
+      const stat = await fs.stat(vapidFile);
+      expect(stat.mode & 0o777).toBe(0o600);
+    });
   });
 
   describe("idempotency", () => {
