@@ -47,6 +47,7 @@ import {
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import WebSocket from "ws";
 import { createApp } from "../../src/app.js";
+import { AuthService } from "../../src/auth/AuthService.js";
 import {
   decrypt,
   decryptBinaryEnvelope,
@@ -87,6 +88,7 @@ describe("Secure WebSocket Transport E2E", () => {
   let serverPort: number;
   let mockSdk: MockClaudeSDK;
   let eventBus: EventBus;
+  let authService: AuthService;
   let remoteAccessService: RemoteAccessService;
   let remoteSessionService: RemoteSessionService;
 
@@ -109,6 +111,11 @@ describe("Secure WebSocket Transport E2E", () => {
     // Create services
     mockSdk = new MockClaudeSDK();
     eventBus = new EventBus();
+    authService = new AuthService({
+      dataDir,
+      cookieSecret: "ws-secure-test-cookie-secret",
+    });
+    await authService.initialize();
 
     // Set up remote access with test credentials
     // First configure relay (relay username is used as SRP identity)
@@ -128,6 +135,8 @@ describe("Secure WebSocket Transport E2E", () => {
       sdk: mockSdk,
       projectsDir: testDir,
       eventBus,
+      authService,
+      authDisabled: true,
     });
 
     // Add WebSocket support
@@ -617,6 +626,35 @@ describe("Secure WebSocket Transport E2E", () => {
         const closeResult = await closePromise;
         expect(closeResult.code).toBe(4008);
         expect(closeResult.reason).toBe("Authentication already in progress");
+      } finally {
+        await closeWebSocket(ws);
+      }
+    }, 15000);
+
+    it("should reject srp_hello after authentication is complete", async () => {
+      const ws = await connectWebSocket();
+
+      try {
+        await performSrpHandshakeV2(ws, TEST_USERNAME, TEST_PASSWORD);
+
+        const hello: SrpClientHello = {
+          type: "srp_hello",
+          identity: TEST_USERNAME,
+        };
+
+        const closePromise = new Promise<{ code: number; reason: string }>(
+          (resolve) => {
+            ws.on("close", (code, reason) => {
+              resolve({ code, reason: reason.toString() });
+            });
+          },
+        );
+
+        ws.send(JSON.stringify(hello));
+
+        const closeResult = await closePromise;
+        expect(closeResult.code).toBe(4005);
+        expect(closeResult.reason).toBe("Already authenticated");
       } finally {
         await closeWebSocket(ws);
       }

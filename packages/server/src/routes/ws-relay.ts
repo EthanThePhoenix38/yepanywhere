@@ -197,10 +197,10 @@ export function createWsRelayRoutes(
         };
         // Create the send function that captures this connection's state
         send = createSendFn(wsAdapter, connState);
-        // Auto-authenticate if:
-        // 1. Remote access is not enabled (local mode, no auth needed), OR
-        // 2. HTTP upgrade request was already authenticated via session cookie
-        if (!remoteAccessService?.isEnabled() || c.get("authenticated")) {
+        // Auto-authenticate only in local mode (remote access disabled).
+        // When remote access is enabled, WS auth state must be derived strictly
+        // from SRP/session-resume messages, not HTTP middleware context.
+        if (!remoteAccessService?.isEnabled()) {
           connState.authState = "authenticated";
         }
 

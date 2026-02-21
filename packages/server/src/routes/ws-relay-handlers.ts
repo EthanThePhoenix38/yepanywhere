@@ -1291,7 +1291,9 @@ export async function handleSrpHello(
     ws.close(4008, "Authentication already in progress");
     return;
   }
-  if (connState.authState === "authenticated") {
+  // Only treat the connection as already authenticated when it has a real SRP
+  // session key. This guards against inconsistent state from external context.
+  if (connState.authState === "authenticated" && connState.sessionKey) {
     sendSrpMessage(ws, {
       type: "srp_error",
       code: "invalid_proof",
