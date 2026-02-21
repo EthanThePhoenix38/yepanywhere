@@ -283,6 +283,13 @@ export function encryptToBinaryEnvelopeWithCompression(
   const nonce = generateNonce();
   const messageBytes = Buffer.from(plaintext, "utf-8");
 
+  // Compression-before-encryption security note (reviewed 2026-02-21):
+  // This can theoretically enable CRIME/BREACH-style length-oracle attacks.
+  // We currently accept the risk because this relay path requires authenticated
+  // E2E traffic, uses per-message gzip streams (no cross-message compression
+  // context), and has no known high-risk secret-reflection responses.
+  // If the threat model changes, prefer ciphertext length bucketing/padding
+  // for sensitive message classes rather than removing compression globally.
   // Check if we should compress
   let innerPayload: Uint8Array;
   if (supportsCompression && messageBytes.length > COMPRESSION_THRESHOLD) {
