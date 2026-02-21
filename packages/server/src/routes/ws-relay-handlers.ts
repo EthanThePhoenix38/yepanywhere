@@ -61,7 +61,7 @@ import {
   encrypt,
   encryptToBinaryEnvelopeWithCompression,
 } from "../crypto/index.js";
-import { SRP_AUTHENTICATED } from "../middleware/internal-auth.js";
+import { WS_INTERNAL_AUTHENTICATED } from "../middleware/internal-auth.js";
 import type {
   RemoteAccessService,
   RemoteSessionService,
@@ -77,6 +77,11 @@ import {
 import type { Supervisor } from "../supervisor/Supervisor.js";
 import type { UploadManager } from "../uploads/manager.js";
 import type { EventBus, FocusedSessionWatchManager } from "../watcher/index.js";
+import {
+  isPolicySrpRequired,
+  isPolicyTrustedWithoutSrp,
+  type WsConnectionPolicy,
+} from "./ws-auth-policy.js";
 
 /** Progress report interval in bytes (64KB) */
 export const PROGRESS_INTERVAL = 64 * 1024;
@@ -105,9 +110,9 @@ const SRP_USERNAME_LIMITER_MAX_ENTRIES = 1024;
 
 /** Connection authentication state */
 export type ConnectionAuthState =
-  | "unauthenticated" // No SRP required (local mode) or waiting for hello
+  | "unauthenticated" // Waiting for SRP handshake to begin
   | "srp_waiting_proof" // Sent challenge, waiting for proof
-  | "authenticated"; // SRP complete, session key established
+  | "authenticated"; // Admitted by trusted policy or SRP complete
 
 interface SrpTokenBucket {
   capacity: number;
@@ -134,6 +139,8 @@ export interface ConnectionState {
   sessionKey: Uint8Array | null;
   /** Authentication state */
   authState: ConnectionAuthState;
+  /** Admission policy for this connection (distinct from SRP transport key state). */
+  connectionPolicy: WsConnectionPolicy;
   /**
    * Whether this authenticated connection must use encrypted envelopes.
    * Set for SRP-authenticated connections; false for trusted local cookie auth.
@@ -230,6 +237,7 @@ export function createConnectionState(): ConnectionState {
     srpSession: null,
     sessionKey: null,
     authState: "unauthenticated",
+    connectionPolicy: "srp_required",
     requiresEncryptedMessages: false,
     username: null,
     sessionId: null,
@@ -435,6 +443,51 @@ export function cleanupConnectionState(connState: ConnectionState): void {
 }
 
 /**
+ * True only when SRP transport authentication completed and key exists.
+ */
+export function hasEstablishedSrpTransport(
+  connState: Pick<ConnectionState, "authState" | "sessionKey">,
+): connState is Pick<ConnectionState, "authState" | "sessionKey"> & {
+  authState: "authenticated";
+  sessionKey: Uint8Array;
+} {
+  return connState.authState === "authenticated" && !!connState.sessionKey;
+}
+
+/**
+ * True while SRP challenge was issued and proof is pending.
+ */
+export function isSrpProofPending(
+  connState: Pick<ConnectionState, "authState">,
+): boolean {
+  return connState.authState === "srp_waiting_proof";
+}
+
+/**
+ * True when the connection was trusted by local websocket policy and does not
+ * require SRP transport keys.
+ */
+export function isTrustedWithoutSrpTransport(
+  connState: Pick<ConnectionState, "connectionPolicy" | "authState">,
+): boolean {
+  return (
+    isPolicyTrustedWithoutSrp(connState.connectionPolicy) &&
+    connState.authState === "authenticated"
+  );
+}
+
+/**
+ * True when the connection can issue internal app requests via websocket relay.
+ */
+export function shouldMarkInternalWsAuthenticated(
+  connState: Pick<ConnectionState, "connectionPolicy" | "authState" | "sessionKey">,
+): boolean {
+  return (
+    hasEstablishedSrpTransport(connState) || isTrustedWithoutSrpTransport(connState)
+  );
+}
+
+/**
  * Create an encryption-aware send function for a connection.
  * Automatically encrypts messages when the connection is authenticated with a session key.
  * Uses binary frames when the client has sent binary frames (Phase 0/1 binary protocol).
@@ -446,7 +499,7 @@ export function createSendFn(
 ): SendFn {
   return (msg: YepMessage) => {
     try {
-      if (connState.authState === "authenticated" && connState.sessionKey) {
+      if (hasEstablishedSrpTransport(connState)) {
         const plaintext = JSON.stringify(msg);
 
         if (connState.useBinaryEncrypted) {
@@ -524,10 +577,9 @@ export async function handleSrpResumeInit(
     return;
   }
 
-  // Resume handshake is only invalid when this socket already has a real
-  // SRP-authenticated session key. Some environments (e.g. AUTH_DISABLED for
-  // E2E) may mark the request authenticated without an SRP session key.
-  if (connState.authState === "authenticated" && connState.sessionKey) {
+  // Resume init is only invalid when this socket already has an established SRP
+  // transport key. Trusted local policy may set authenticated without SRP.
+  if (hasEstablishedSrpTransport(connState)) {
     sendSrpMessage(ws, {
       type: "srp_invalid",
       reason: "invalid_proof",
@@ -676,6 +728,7 @@ export async function handleRequest(
   send: SendFn,
   app: Hono<{ Bindings: HttpBindings }>,
   baseUrl: string,
+  connState: ConnectionState,
 ): Promise<void> {
   try {
     const url = new URL(request.path, baseUrl);
@@ -700,11 +753,12 @@ export async function handleRequest(
     }
 
     const fetchRequest = new Request(url.toString(), fetchInit);
-    // Pass SRP_AUTHENTICATED symbol to bypass local password auth.
-    // Requests through the SRP tunnel have already been authenticated.
-    const response = await app.fetch(fetchRequest, {
-      [SRP_AUTHENTICATED]: true,
-    });
+    // Mark requests from authenticated websocket transport as internal auth so
+    // cookie middleware does not re-challenge routed API requests.
+    const internalEnv = shouldMarkInternalWsAuthenticated(connState)
+      ? { [WS_INTERNAL_AUTHENTICATED]: true }
+      : {};
+    const response = await app.fetch(fetchRequest, internalEnv);
 
     let body: unknown;
     const contentType = response.headers.get("Content-Type") ?? "";
@@ -1289,7 +1343,7 @@ export async function handleSrpHello(
   const now = Date.now();
   cleanupUsernameSrpLimiters(now);
 
-  if (connState.authState === "srp_waiting_proof") {
+  if (isSrpProofPending(connState)) {
     sendSrpMessage(ws, {
       type: "srp_error",
       code: "invalid_proof",
@@ -1298,9 +1352,9 @@ export async function handleSrpHello(
     ws.close(4008, "Authentication already in progress");
     return;
   }
-  // Only treat the connection as already authenticated when it has a real SRP
-  // session key. This guards against inconsistent state from external context.
-  if (connState.authState === "authenticated" && connState.sessionKey) {
+  // Only reject hello when SRP is already established. Trusted local policy may
+  // set authenticated without SRP transport.
+  if (hasEstablishedSrpTransport(connState)) {
     sendSrpMessage(ws, {
       type: "srp_error",
       code: "invalid_proof",
@@ -1510,7 +1564,7 @@ export function isBinaryEncryptedEnvelope(
   connState: ConnectionState,
 ): boolean {
   // Must be authenticated with a session key to receive encrypted data
-  if (connState.authState !== "authenticated" || !connState.sessionKey) {
+  if (!hasEstablishedSrpTransport(connState)) {
     if (bytes.length >= MIN_BINARY_ENVELOPE_LENGTH && bytes[0] === 0x01) {
       console.warn(
         `[WS Relay] Binary envelope rejected: authState=${connState.authState}, hasKey=${!!connState.sessionKey}`,
@@ -1538,8 +1592,6 @@ export function isBinaryEncryptedEnvelope(
  * Options for handleMessage that differ between direct and relay connections.
  */
 export interface HandleMessageOptions {
-  /** Whether remote access is enabled (for auth requirements) */
-  requireAuth: boolean;
   /**
    * Whether the message was received as a binary frame.
    * If provided, this takes precedence over isBinaryData() check.
@@ -1571,6 +1623,7 @@ export async function handleMessage(
     remoteAccessService,
     remoteSessionService,
   } = deps;
+  const srpRequiredPolicy = isPolicySrpRequired(connState.connectionPolicy);
 
   let parsed: unknown;
 
@@ -1626,7 +1679,7 @@ export async function handleMessage(
       return;
     }
 
-    if (isBinaryEncryptedEnvelope(bytes, connState) && connState.sessionKey) {
+    if (hasEstablishedSrpTransport(connState) && isBinaryEncryptedEnvelope(bytes, connState)) {
       try {
         const result = decryptBinaryEnvelopeRaw(bytes, connState.sessionKey);
         if (!result) {
@@ -1679,7 +1732,7 @@ export async function handleMessage(
             return;
           }
 
-          await routeMessage(msg, subscriptions, uploads, send, deps);
+          await routeMessage(msg, subscriptions, uploads, send, deps, connState);
           return;
         } catch {
           console.warn("[WS Relay] Failed to parse decrypted binary envelope");
@@ -1705,8 +1758,8 @@ export async function handleMessage(
     // In remote-auth mode, authenticated connections must only send encrypted
     // envelopes. Reject plaintext binary frames post-auth.
     if (
-      options.requireAuth &&
-      connState.authState === "authenticated" &&
+      srpRequiredPolicy &&
+      hasEstablishedSrpTransport(connState) &&
       connState.requiresEncryptedMessages
     ) {
       console.warn(
@@ -1813,7 +1866,7 @@ export async function handleMessage(
   // Handle encrypted messages (JSON envelope format - legacy)
   let msg: RemoteClientMessage;
   if (isEncryptedEnvelope(parsed)) {
-    if (connState.authState !== "authenticated" || !connState.sessionKey) {
+    if (!hasEstablishedSrpTransport(connState)) {
       console.warn(
         "[WS Relay] Received encrypted message but not authenticated",
       );
@@ -1839,14 +1892,14 @@ export async function handleMessage(
     }
   } else {
     // Plaintext message - check auth requirements
-    if (options.requireAuth && connState.authState !== "authenticated") {
+    if (srpRequiredPolicy && !hasEstablishedSrpTransport(connState)) {
       console.warn("[WS Relay] Received plaintext message but auth required");
       ws.close(4001, "Authentication required");
       return;
     }
     if (
-      options.requireAuth &&
-      connState.authState === "authenticated" &&
+      srpRequiredPolicy &&
+      hasEstablishedSrpTransport(connState) &&
       connState.requiresEncryptedMessages
     ) {
       console.warn(
@@ -1858,7 +1911,7 @@ export async function handleMessage(
     msg = parsed as RemoteClientMessage;
   }
 
-  await routeMessage(msg, subscriptions, uploads, send, deps);
+  await routeMessage(msg, subscriptions, uploads, send, deps, connState);
 }
 
 /**
@@ -1889,6 +1942,7 @@ async function routeMessage(
   uploads: Map<string, RelayUploadState>,
   send: SendFn,
   deps: RelayHandlerDeps,
+  connState: ConnectionState,
 ): Promise<void> {
   const {
     app,
@@ -1904,7 +1958,7 @@ async function routeMessage(
   try {
     switch (msg.type) {
       case "request":
-        await handleRequest(msg, send, app, baseUrl);
+        await handleRequest(msg, send, app, baseUrl, connState);
         break;
 
       case "subscribe":

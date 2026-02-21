@@ -1,12 +1,8 @@
 /**
- * Symbol used to mark requests as pre-authenticated from internal sources.
+ * Symbol used to mark requests as pre-authenticated from trusted internal WS
+ * sources (SRP tunnel or trusted local websocket policy).
  *
- * This is used by the WebSocket relay handler to indicate that a request
- * has already been authenticated via SRP tunnel. The auth middleware
- * checks for this symbol and skips local password authentication.
- *
- * Using a Symbol ensures this cannot be forged by external clients since
- * Symbols are not serializable and can only be set by code running in
- * the same process.
+ * The auth middleware checks for this symbol and skips local password auth.
+ * Using a Symbol ensures this cannot be forged by external HTTP clients.
  */
-export const SRP_AUTHENTICATED = Symbol("srp-authenticated");
+export const WS_INTERNAL_AUTHENTICATED = Symbol("ws-internal-authenticated");

@@ -26,6 +26,10 @@ import {
   createSendFn,
   handleMessage,
 } from "./ws-relay-handlers.js";
+import {
+  deriveWsConnectionPolicy,
+  isPolicyTrustedWithoutSrp,
+} from "./ws-auth-policy.js";
 
 // biome-ignore lint/suspicious/noExplicitAny: Complex third-party type from @hono/node-ws
 type UpgradeWebSocketFn = (createEvents: (c: Context) => WSEvents) => any;
@@ -198,11 +202,17 @@ export function createWsRelayRoutes(
         // Create the send function that captures this connection's state
         send = createSendFn(wsAdapter, connState);
         const hasSessionCookieAuth = c.get("authenticatedViaSession") === true;
+        const connectionPolicy = deriveWsConnectionPolicy({
+          remoteAccessEnabled: remoteAccessService?.isEnabled() ?? false,
+          hasSessionCookieAuth,
+          isRelayConnection: false,
+        });
+        connState.connectionPolicy = connectionPolicy;
         // Auto-authenticate for:
         // 1) local mode (remote access disabled), or
         // 2) local cookie-authenticated upgrade requests.
         // Avoid treating AUTH_DISABLED/middleware bypass as WS authentication.
-        if (!remoteAccessService?.isEnabled() || hasSessionCookieAuth) {
+        if (isPolicyTrustedWithoutSrp(connectionPolicy)) {
           connState.authState = "authenticated";
         }
 
@@ -230,7 +240,7 @@ export function createWsRelayRoutes(
             send,
             evt.data,
             handlerDeps,
-            { requireAuth: remoteAccessService?.isEnabled() ?? false },
+            {},
           ).catch((err) => {
             console.error("[WS Relay] Unexpected error:", err);
           }),
@@ -321,6 +331,7 @@ export function createAcceptRelayConnection(
 
     // Connection state - requires authentication for relay connections
     const connState: ConnectionState = createConnectionState();
+    connState.connectionPolicy = "srp_required";
 
     // Create WSAdapter for raw WebSocket
     const wsAdapter = createWSAdapter(rawWs);
@@ -338,7 +349,7 @@ export function createAcceptRelayConnection(
           send,
           data,
           handlerDeps,
-          { requireAuth: true, isBinary }, // Relay connections always require auth
+          { isBinary },
         ).catch((err) => {
           console.error("[WS Relay] Unexpected error:", err);
         }),
@@ -383,7 +394,7 @@ export function createAcceptRelayConnection(
         send,
         firstMessage,
         handlerDeps,
-        { requireAuth: true, isBinary: firstMessageIsBinary },
+        { isBinary: firstMessageIsBinary },
       ).catch((err) => {
         console.error("[WS Relay] Error processing first message:", err);
       }),

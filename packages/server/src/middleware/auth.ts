@@ -13,7 +13,7 @@ import type { MiddlewareHandler } from "hono";
 import { getCookie } from "hono/cookie";
 import type { AuthService } from "../auth/AuthService.js";
 import { SESSION_COOKIE_NAME } from "../auth/routes.js";
-import { SRP_AUTHENTICATED } from "./internal-auth.js";
+import { WS_INTERNAL_AUTHENTICATED } from "./internal-auth.js";
 
 export interface AuthMiddlewareOptions {
   authService: AuthService;
@@ -60,7 +60,7 @@ export function createAuthMiddleware(
     // Skip local password auth for requests from the SRP tunnel.
     // The relay handler sets this Symbol when routing requests through app.fetch().
     // Using a Symbol ensures this cannot be forged by external HTTP requests.
-    if (c.env[SRP_AUTHENTICATED]) {
+    if (c.env[WS_INTERNAL_AUTHENTICATED]) {
       c.set("authenticated", true);
       await next();
       return;
