@@ -333,7 +333,13 @@ class ActivityBus {
         this.hasConnected = true;
       },
       onError: (err) => {
-        console.error("[ActivityBus] Connection error:", err);
+        const isExpectedReconnectError =
+          err.message === "Connection reconnecting";
+        if (!isExpectedReconnectError) {
+          console.error("[ActivityBus] Connection error:", err);
+        } else if (this.debugEnabled) {
+          console.log("[ActivityBus] Connection reconnecting");
+        }
         this._connected = false;
         this.wsSubscription = null;
         connectionManager.handleError(err);

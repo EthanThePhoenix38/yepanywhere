@@ -684,6 +684,50 @@ describe("ConnectionManager", () => {
       expect(cm.state).toBe("connected");
       expect(reconnectFn).toHaveBeenCalledTimes(1);
     });
+
+    it("ignores stale failure from a superseded reconnect attempt", async () => {
+      const { cm, reconnectFn, timers } = setup();
+      const pending: Array<{
+        resolve: () => void;
+        reject: (err: Error) => void;
+      }> = [];
+
+      reconnectFn.mockImplementation(
+        () =>
+          new Promise<void>((resolve, reject) => {
+            pending.push({
+              resolve,
+              reject: (err: Error) => reject(err),
+            });
+          }),
+      );
+      cm.start(reconnectFn);
+
+      cm.handleClose();
+      timers.advance(1000);
+      await flush();
+      expect(reconnectFn).toHaveBeenCalledTimes(1);
+
+      // Start a new reconnect cycle while the first attempt is still pending.
+      cm.forceReconnect();
+      timers.advance(1000);
+      await flush();
+      expect(reconnectFn).toHaveBeenCalledTimes(2);
+
+      // Newer attempt succeeds first.
+      pending[1]?.resolve();
+      await flush();
+      expect(cm.state).toBe("connected");
+
+      // Older attempt fails later; must be ignored (no new reconnect scheduled).
+      pending[0]?.reject(new Error("WebSocket connection timeout"));
+      await flush();
+      expect(cm.state).toBe("connected");
+
+      timers.advance(60000);
+      await flush();
+      expect(reconnectFn).toHaveBeenCalledTimes(2);
+    });
   });
 
   describe("stop()", () => {

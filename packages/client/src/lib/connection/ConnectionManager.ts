@@ -382,14 +382,21 @@ export class ConnectionManager {
     if (this._reconnectPromise) return;
 
     const fn = this._reconnectFn;
-    this._reconnectPromise = fn()
+    const reconnectPromise = fn();
+    this._reconnectPromise = reconnectPromise;
+
+    reconnectPromise
       .then(() => {
+        // Ignore stale outcomes from superseded reconnect attempts.
+        if (this._reconnectPromise !== reconnectPromise) return;
         // Transport reconnected — transition to connected so consumers
         // (e.g. ActivityBus stateChange listener) can re-subscribe.
         // The new subscription's onOpen will call markConnected() again (no-op).
         this.markConnected();
       })
       .catch((error: unknown) => {
+        // Ignore stale outcomes from superseded reconnect attempts.
+        if (this._reconnectPromise !== reconnectPromise) return;
         this._reconnectPromise = null;
         const err = error instanceof Error ? error : new Error(String(error));
         this._log(`reconnect failed: ${err.message}`);
