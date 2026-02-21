@@ -190,6 +190,7 @@ class ActivityBus {
   private listeners = new Map<ActivityEventType, Set<Listener<unknown>>>();
   private hasConnected = false;
   private _connected = false;
+  private _isDisconnecting = false;
   private _connectionManagerStarted = false;
   private _stateChangeUnsub: (() => void) | null = null;
   private _visibilityRestoredUnsub: (() => void) | null = null;
@@ -333,6 +334,11 @@ class ActivityBus {
         this.hasConnected = true;
       },
       onError: (err) => {
+        if (this._isDisconnecting) {
+          this._connected = false;
+          this.wsSubscription = null;
+          return;
+        }
         const isExpectedReconnectError =
           err.message === "Connection reconnecting";
         if (!isExpectedReconnectError) {
@@ -345,6 +351,11 @@ class ActivityBus {
         connectionManager.handleError(err);
       },
       onClose: (error?: Error) => {
+        if (this._isDisconnecting) {
+          this._connected = false;
+          this.wsSubscription = null;
+          return;
+        }
         if (this.debugEnabled) {
           console.log("[ActivityBus] Activity stream closed", error);
         }
@@ -408,16 +419,31 @@ class ActivityBus {
    * Disconnect from the activity stream.
    */
   disconnect(): void {
-    if (this.wsSubscription) {
-      if (this.debugEnabled) {
-        console.log("[ActivityBus] disconnect() closing subscription");
+    this._isDisconnecting = true;
+    try {
+      if (this.wsSubscription) {
+        if (this.debugEnabled) {
+          console.log("[ActivityBus] disconnect() closing subscription");
+        }
+        this.wsSubscription.close();
+        this.wsSubscription = null;
       }
-      this.wsSubscription.close();
-      this.wsSubscription = null;
+
+      this._stateChangeUnsub?.();
+      this._stateChangeUnsub = null;
+      this._visibilityRestoredUnsub?.();
+      this._visibilityRestoredUnsub = null;
+
+      if (this._connectionManagerStarted) {
+        connectionManager.stop();
+        this._connectionManagerStarted = false;
+      }
+
+      this.hasConnected = false;
+      this._connected = false;
+    } finally {
+      this._isDisconnecting = false;
     }
-    this._visibilityRestoredUnsub?.();
-    this._visibilityRestoredUnsub = null;
-    this._connected = false;
   }
 
   /**
