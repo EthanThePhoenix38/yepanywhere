@@ -134,6 +134,11 @@ export interface ConnectionState {
   sessionKey: Uint8Array | null;
   /** Authentication state */
   authState: ConnectionAuthState;
+  /**
+   * Whether this authenticated connection must use encrypted envelopes.
+   * Set for SRP-authenticated connections; false for trusted local cookie auth.
+   */
+  requiresEncryptedMessages: boolean;
   /** Username if authenticated */
   username: string | null;
   /** Persistent session ID for resumption (set after successful auth) */
@@ -225,6 +230,7 @@ export function createConnectionState(): ConnectionState {
     srpSession: null,
     sessionKey: null,
     authState: "unauthenticated",
+    requiresEncryptedMessages: false,
     username: null,
     sessionId: null,
     useBinaryFrames: false,
@@ -638,6 +644,7 @@ export async function handleSrpResume(
 
     connState.sessionKey = Buffer.from(session.sessionKey, "base64");
     connState.authState = "authenticated";
+    connState.requiresEncryptedMessages = true;
     connState.username = session.username;
     connState.sessionId = session.sessionId;
 
@@ -1429,6 +1436,7 @@ export async function handleSrpProof(
     }
     connState.sessionKey = deriveSecretboxKey(rawKey);
     connState.authState = "authenticated";
+    connState.requiresEncryptedMessages = true;
     connState.pendingResumeChallenge = null;
     resetFailedProofPenalty(connState.srpLimiter);
     if (connState.username) {
@@ -1696,7 +1704,11 @@ export async function handleMessage(
 
     // In remote-auth mode, authenticated connections must only send encrypted
     // envelopes. Reject plaintext binary frames post-auth.
-    if (options.requireAuth && connState.authState === "authenticated") {
+    if (
+      options.requireAuth &&
+      connState.authState === "authenticated" &&
+      connState.requiresEncryptedMessages
+    ) {
       console.warn(
         "[WS Relay] Received plaintext binary frame after authentication",
       );
@@ -1832,7 +1844,11 @@ export async function handleMessage(
       ws.close(4001, "Authentication required");
       return;
     }
-    if (options.requireAuth && connState.authState === "authenticated") {
+    if (
+      options.requireAuth &&
+      connState.authState === "authenticated" &&
+      connState.requiresEncryptedMessages
+    ) {
       console.warn(
         "[WS Relay] Received plaintext message after authentication",
       );

@@ -91,6 +91,7 @@ export function createAuthMiddleware(
 
     // Mark request as authenticated (for downstream handlers if needed)
     c.set("authenticated", true);
+    c.set("authenticatedViaSession", true);
 
     await next();
   };

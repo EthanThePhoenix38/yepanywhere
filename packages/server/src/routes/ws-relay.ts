@@ -197,10 +197,12 @@ export function createWsRelayRoutes(
         };
         // Create the send function that captures this connection's state
         send = createSendFn(wsAdapter, connState);
-        // Auto-authenticate only in local mode (remote access disabled).
-        // When remote access is enabled, WS auth state must be derived strictly
-        // from SRP/session-resume messages, not HTTP middleware context.
-        if (!remoteAccessService?.isEnabled()) {
+        const hasSessionCookieAuth = c.get("authenticatedViaSession") === true;
+        // Auto-authenticate for:
+        // 1) local mode (remote access disabled), or
+        // 2) local cookie-authenticated upgrade requests.
+        // Avoid treating AUTH_DISABLED/middleware bypass as WS authentication.
+        if (!remoteAccessService?.isEnabled() || hasSessionCookieAuth) {
           connState.authState = "authenticated";
         }
 
