@@ -2,6 +2,9 @@
 
 This document describes the four connection modes, their reconnection behavior, and test coverage.
 
+For server-side WebSocket auth semantics (policy vs SRP transport state), see
+[`ws-auth-state-model.md`](ws-auth-state-model.md).
+
 ## Connection Modes Overview
 
 | Mode | Transport | Auth | When Used |
