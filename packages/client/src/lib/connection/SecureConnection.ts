@@ -16,6 +16,7 @@ import type {
   SrpClientHello,
   SrpClientProof,
   SrpSessionResume,
+  SrpSessionResumeInit,
   UploadedFile,
   YepMessage,
 } from "@yep-anywhere/shared";
@@ -31,6 +32,7 @@ import {
   isSrpServerChallenge,
   isSrpServerVerify,
   isSrpSessionInvalid,
+  isSrpSessionResumeChallenge,
   isSrpSessionResumed,
 } from "@yep-anywhere/shared";
 import { getRelayDebugEnabled } from "../../hooks/useDeveloperMode";
@@ -58,7 +60,8 @@ import {
 type ConnectionState =
   | "disconnected"
   | "connecting"
-  | "srp_resume_sent"
+  | "srp_resume_init_sent"
+  | "srp_resume_proof_sent"
   | "srp_hello_sent"
   | "srp_proof_sent"
   | "authenticated"
@@ -274,34 +277,40 @@ export class SecureConnection implements Connection {
       };
 
       ws.onmessage = (event) => {
-        this.handleSrpResumeResponse(event.data, authResolveHandler, reject);
+        this.handleSrpResumeResponse(
+          event.data,
+          authResolveHandler,
+          authRejectHandler,
+        );
       };
 
-      // Send resume message
-      const proof = this.generateResumeProof(this.storedSession.sessionKey);
-      const resume: SrpSessionResume = {
-        type: "srp_resume",
+      // Start resume handshake by requesting a nonce challenge.
+      const resumeInit: SrpSessionResumeInit = {
+        type: "srp_resume_init",
         identity: this.username,
         sessionId: this.storedSession.sessionId,
-        proof,
       };
-      ws.send(JSON.stringify(resume));
-      this.connectionState = "srp_resume_sent";
-      console.log("[SecureConnection] SRP resume sent");
+      ws.send(JSON.stringify(resumeInit));
+      this.connectionState = "srp_resume_init_sent";
+      console.log("[SecureConnection] SRP resume init sent");
 
       authPromise.then(resolve).catch(reject);
     });
   }
 
   /**
-   * Generate a resume proof by encrypting the current timestamp with the session key.
+   * Generate a resume proof bound to the server-issued challenge.
    */
-  private generateResumeProof(base64SessionKey: string): string {
+  private generateResumeProof(
+    base64SessionKey: string,
+    challenge: string,
+    sessionId: string,
+  ): string {
     const sessionKeyBytes = Uint8Array.from(atob(base64SessionKey), (c) =>
       c.charCodeAt(0),
     );
     const timestamp = Date.now();
-    const proofData = JSON.stringify({ timestamp });
+    const proofData = JSON.stringify({ timestamp, challenge, sessionId });
     const { nonce, ciphertext } = encrypt(proofData, sessionKeyBytes);
     return JSON.stringify({ nonce, ciphertext });
   }
@@ -352,6 +361,34 @@ export class SecureConnection implements Connection {
   ): Promise<void> {
     try {
       const msg = JSON.parse(data);
+
+      if (isSrpSessionResumeChallenge(msg)) {
+        if (!this.storedSession) {
+          reject(new Error("No stored session for resumption"));
+          return;
+        }
+        if (msg.sessionId !== this.storedSession.sessionId) {
+          reject(new Error("Resume challenge session mismatch"));
+          this.ws?.close();
+          return;
+        }
+
+        const proof = this.generateResumeProof(
+          this.storedSession.sessionKey,
+          msg.nonce,
+          this.storedSession.sessionId,
+        );
+        const resume: SrpSessionResume = {
+          type: "srp_resume",
+          identity: this.username,
+          sessionId: this.storedSession.sessionId,
+          proof,
+        };
+        this.ws?.send(JSON.stringify(resume));
+        this.connectionState = "srp_resume_proof_sent";
+        console.log("[SecureConnection] SRP resume proof sent");
+        return;
+      }
 
       if (isSrpSessionResumed(msg)) {
         console.log("[SecureConnection] Session resumed successfully");
@@ -530,18 +567,14 @@ export class SecureConnection implements Connection {
         try {
           if (this.storedSession) {
             console.log("[SecureConnection] Attempting session resumption");
-            const proof = this.generateResumeProof(
-              this.storedSession.sessionKey,
-            );
-            const resume: SrpSessionResume = {
-              type: "srp_resume",
+            const resumeInit: SrpSessionResumeInit = {
+              type: "srp_resume_init",
               identity: this.username,
               sessionId: this.storedSession.sessionId,
-              proof,
             };
-            ws.send(JSON.stringify(resume));
-            this.connectionState = "srp_resume_sent";
-            console.log("[SecureConnection] SRP resume sent");
+            ws.send(JSON.stringify(resumeInit));
+            this.connectionState = "srp_resume_init_sent";
+            console.log("[SecureConnection] SRP resume init sent");
             return;
           }
 
@@ -565,7 +598,10 @@ export class SecureConnection implements Connection {
       };
 
       ws.onmessage = async (event) => {
-        if (this.connectionState === "srp_resume_sent") {
+        if (
+          this.connectionState === "srp_resume_init_sent" ||
+          this.connectionState === "srp_resume_proof_sent"
+        ) {
           await this.handleSrpResumeResponse(
             event.data,
             authResolveHandler,

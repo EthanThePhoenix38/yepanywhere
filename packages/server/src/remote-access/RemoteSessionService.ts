@@ -27,8 +27,8 @@ const IDLE_TIMEOUT_MS = 7 * 24 * 60 * 60 * 1000;
 /** Maximum lifetime of a session (30 days) */
 const MAX_LIFETIME_MS = 30 * 24 * 60 * 60 * 1000;
 
-/** Maximum proof timestamp age (5 minutes) */
-const MAX_PROOF_AGE_MS = 5 * 60 * 1000;
+/** Maximum proof timestamp age (60 seconds) */
+const MAX_PROOF_AGE_MS = 60 * 1000;
 
 /** Maximum sessions per user */
 const MAX_SESSIONS_PER_USER = 5;
@@ -201,16 +201,19 @@ export class RemoteSessionService {
   /**
    * Validate a session resume proof.
    *
-   * The proof is an encrypted timestamp. We decrypt it with the stored
-   * session key and verify the timestamp is recent.
+   * The proof is an encrypted payload containing timestamp + sessionId + challenge.
+   * We decrypt it with the stored session key, verify freshness, and bind it to
+   * the server-issued challenge for this connection.
    *
    * @param sessionId - The session to validate
    * @param proof - Encrypted proof (JSON: { nonce: string, ciphertext: string })
+   * @param expectedChallenge - Server-issued one-time challenge nonce
    * @returns The session if valid, null otherwise
    */
   async validateProof(
     sessionId: string,
     proof: string,
+    expectedChallenge: string,
   ): Promise<RemoteSession | null> {
     const session = this.getSession(sessionId);
     if (!session) return null;
@@ -229,12 +232,21 @@ export class RemoteSessionService {
       const plaintext = decrypt(nonce, ciphertext, sessionKey);
       if (!plaintext) return null;
 
-      // Parse timestamp
-      const proofData = JSON.parse(plaintext) as { timestamp: number };
+      const proofData = JSON.parse(plaintext) as {
+        timestamp: number;
+        sessionId: string;
+        challenge: string;
+      };
       const now = Date.now();
 
-      // Verify timestamp is recent (within 5 minutes)
+      // Verify the proof is fresh and bound to this resume attempt
       if (Math.abs(now - proofData.timestamp) > MAX_PROOF_AGE_MS) {
+        return null;
+      }
+      if (proofData.sessionId !== sessionId) {
+        return null;
+      }
+      if (proofData.challenge !== expectedChallenge) {
         return null;
       }
 

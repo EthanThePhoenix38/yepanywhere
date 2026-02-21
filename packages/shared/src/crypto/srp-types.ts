@@ -58,14 +58,32 @@ export type SrpErrorCode =
 // Session Resumption (skip SRP handshake with stored session key)
 // ============================================================================
 
-/** Client attempts to resume existing session */
+/** Client starts a resume handshake and requests a server nonce challenge */
+export interface SrpSessionResumeInit {
+  type: "srp_resume_init";
+  /** Username/identity */
+  identity: string;
+  /** Session ID from previous authentication */
+  sessionId: string;
+}
+
+/** Server provides a nonce challenge for session resume proof */
+export interface SrpSessionResumeChallenge {
+  type: "srp_resume_challenge";
+  /** Session ID being resumed */
+  sessionId: string;
+  /** Server-issued nonce challenge (base64) */
+  nonce: string;
+}
+
+/** Client sends resume proof bound to the server nonce challenge */
 export interface SrpSessionResume {
   type: "srp_resume";
   /** Username/identity */
   identity: string;
   /** Session ID from previous authentication */
   sessionId: string;
-  /** Encrypted timestamp proving key possession (hex string) */
+  /** Encrypted proof payload proving key possession */
   proof: string;
 }
 
@@ -99,6 +117,7 @@ export interface SrpError {
 export type SrpClientMessage =
   | SrpClientHello
   | SrpClientProof
+  | SrpSessionResumeInit
   | SrpSessionResume;
 
 /** All SRP messages from server to client */
@@ -106,6 +125,7 @@ export type SrpServerMessage =
   | SrpServerChallenge
   | SrpServerVerify
   | SrpError
+  | SrpSessionResumeChallenge
   | SrpSessionResumed
   | SrpSessionInvalid;
 
@@ -158,6 +178,26 @@ export function isSrpSessionResume(msg: unknown): msg is SrpSessionResume {
     typeof msg === "object" &&
     msg !== null &&
     (msg as SrpSessionResume).type === "srp_resume"
+  );
+}
+
+export function isSrpSessionResumeInit(
+  msg: unknown,
+): msg is SrpSessionResumeInit {
+  return (
+    typeof msg === "object" &&
+    msg !== null &&
+    (msg as SrpSessionResumeInit).type === "srp_resume_init"
+  );
+}
+
+export function isSrpSessionResumeChallenge(
+  msg: unknown,
+): msg is SrpSessionResumeChallenge {
+  return (
+    typeof msg === "object" &&
+    msg !== null &&
+    (msg as SrpSessionResumeChallenge).type === "srp_resume_challenge"
   );
 }
 

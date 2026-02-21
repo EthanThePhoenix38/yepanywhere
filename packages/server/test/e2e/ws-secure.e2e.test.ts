@@ -20,6 +20,11 @@ import type {
   SrpError,
   SrpServerChallenge,
   SrpServerVerify,
+  SrpSessionInvalid,
+  SrpSessionResume,
+  SrpSessionResumeChallenge,
+  SrpSessionResumeInit,
+  SrpSessionResumed,
   YepMessage,
 } from "@yep-anywhere/shared";
 import {
@@ -30,6 +35,8 @@ import {
   isSrpError,
   isSrpServerChallenge,
   isSrpServerVerify,
+  isSrpSessionInvalid,
+  isSrpSessionResumed,
 } from "@yep-anywhere/shared";
 import {
   SRPClientSession,
@@ -50,6 +57,7 @@ import {
   encryptToBinaryEnvelope,
 } from "../../src/crypto/index.js";
 import { attachUnifiedUpgradeHandler } from "../../src/frontend/index.js";
+import { RemoteSessionService } from "../../src/remote-access/RemoteSessionService.js";
 import { RemoteAccessService } from "../../src/remote-access/index.js";
 import { createWsRelayRoutes } from "../../src/routes/ws-relay.js";
 import { MockClaudeSDK } from "../../src/sdk/mock.js";
@@ -80,6 +88,7 @@ describe("Secure WebSocket Transport E2E", () => {
   let mockSdk: MockClaudeSDK;
   let eventBus: EventBus;
   let remoteAccessService: RemoteAccessService;
+  let remoteSessionService: RemoteSessionService;
 
   beforeAll(async () => {
     // Create temp directory for project data
@@ -111,6 +120,9 @@ describe("Secure WebSocket Transport E2E", () => {
     });
     await remoteAccessService.configure(TEST_PASSWORD);
 
+    remoteSessionService = new RemoteSessionService({ dataDir });
+    await remoteSessionService.initialize();
+
     // Create the app
     const { app, supervisor } = createApp({
       sdk: mockSdk,
@@ -134,6 +146,7 @@ describe("Secure WebSocket Transport E2E", () => {
       eventBus,
       uploadManager,
       remoteAccessService,
+      remoteSessionService,
     });
     app.get("/api/ws", wsRelayHandler);
 
@@ -158,6 +171,7 @@ describe("Secure WebSocket Transport E2E", () => {
   }, 30000);
 
   afterAll(async () => {
+    remoteSessionService?.shutdown();
     server?.close();
     await rm(testDir, { recursive: true, force: true });
   });
@@ -358,12 +372,70 @@ describe("Secure WebSocket Transport E2E", () => {
   }
 
   /**
+   * Perform full SRP handshake and return both session key and sessionId.
+   */
+  async function performSrpHandshakeWithSession(
+    ws: WebSocket,
+    username: string,
+    password: string,
+  ): Promise<{ sessionKey: Uint8Array; sessionId: string }> {
+    const clientSession = new SRPClientSession(SRP_ROUTINES);
+    const clientStep1 = await clientSession.step1(username, password);
+
+    const hello: SrpClientHello = {
+      type: "srp_hello",
+      identity: username,
+    };
+    ws.send(JSON.stringify(hello));
+
+    const challenge = await waitForMessage<SrpServerChallenge>(
+      ws,
+      (msg): msg is SrpServerChallenge => isSrpServerChallenge(msg),
+      5000,
+    );
+
+    const saltBigInt = hexToBigInt(challenge.salt);
+    const B = hexToBigInt(challenge.B);
+    const clientStep2 = await clientStep1.step2(saltBigInt, B);
+
+    const proof: SrpClientProof = {
+      type: "srp_proof",
+      A: bigIntToHex(clientStep2.A),
+      M1: bigIntToHex(clientStep2.M1),
+    };
+    ws.send(JSON.stringify(proof));
+
+    const verify = await waitForMessage<SrpServerVerify>(
+      ws,
+      (msg): msg is SrpServerVerify => isSrpServerVerify(msg),
+      5000,
+    );
+
+    if (!verify.sessionId) {
+      throw new Error("Expected sessionId in SRP verify");
+    }
+
+    const M2 = hexToBigInt(verify.M2);
+    await clientStep2.step3(M2);
+
+    const keyBuffer = bigIntToArrayBuffer(clientStep2.S);
+    const rawKey = new Uint8Array(keyBuffer);
+    const sessionKey = deriveSecretboxKey(rawKey);
+
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    return { sessionKey, sessionId: verify.sessionId };
+  }
+
+  /**
    * Helper to wait for a specific message type.
    */
   function waitForMessage<T>(
     ws: WebSocket,
     predicate: (msg: unknown) => msg is T,
     timeoutMs: number,
+    options?: {
+      allowSrpSessionInvalid?: boolean;
+    },
   ): Promise<T> {
     return new Promise((resolve, reject) => {
       const timeout = setTimeout(
@@ -378,6 +450,14 @@ describe("Secure WebSocket Transport E2E", () => {
           ws.off("message", handler);
           reject(new Error(`SRP error: ${msg.message}`));
           return;
+        }
+        if (isSrpSessionInvalid(msg)) {
+          if (!options?.allowSrpSessionInvalid) {
+            clearTimeout(timeout);
+            ws.off("message", handler);
+            reject(new Error(`SRP session invalid: ${msg.reason}`));
+            return;
+          }
         }
         if (predicate(msg)) {
           clearTimeout(timeout);
@@ -509,6 +589,163 @@ describe("Secure WebSocket Transport E2E", () => {
     }, 15000);
   });
 
+  describe("Session Resume Nonce Challenge", () => {
+    it("should resume session with server-issued nonce challenge", async () => {
+      const ws1 = await connectWebSocket();
+      const { sessionKey, sessionId } = await performSrpHandshakeWithSession(
+        ws1,
+        TEST_USERNAME,
+        TEST_PASSWORD,
+      );
+      await closeWebSocket(ws1);
+
+      const ws2 = await connectWebSocket();
+      try {
+        const resumeInit: SrpSessionResumeInit = {
+          type: "srp_resume_init",
+          identity: TEST_USERNAME,
+          sessionId,
+        };
+        ws2.send(JSON.stringify(resumeInit));
+
+        const challenge = await waitForMessage<SrpSessionResumeChallenge>(
+          ws2,
+          (msg): msg is SrpSessionResumeChallenge =>
+            typeof msg === "object" &&
+            msg !== null &&
+            (msg as { type?: string }).type === "srp_resume_challenge",
+          5000,
+        );
+        expect(challenge.sessionId).toBe(sessionId);
+
+        const proofData = JSON.stringify({
+          timestamp: Date.now(),
+          sessionId,
+          challenge: challenge.nonce,
+        });
+        const { nonce, ciphertext } = encrypt(proofData, sessionKey);
+        const resume: SrpSessionResume = {
+          type: "srp_resume",
+          identity: TEST_USERNAME,
+          sessionId,
+          proof: JSON.stringify({ nonce, ciphertext }),
+        };
+        ws2.send(JSON.stringify(resume));
+
+        const resumed = await waitForMessage<SrpSessionResumed>(
+          ws2,
+          (msg): msg is SrpSessionResumed => isSrpSessionResumed(msg),
+          5000,
+        );
+        expect(resumed.sessionId).toBe(sessionId);
+
+        const request: RelayRequest = {
+          type: "request",
+          id: randomUUID(),
+          method: "GET",
+          path: "/health",
+        };
+        const response = await sendEncryptedRequest(ws2, sessionKey, request);
+        expect(response.status).toBe(200);
+      } finally {
+        await closeWebSocket(ws2);
+      }
+    }, 15000);
+
+    it("should reject replayed resume proof from a previous challenge", async () => {
+      const ws1 = await connectWebSocket();
+      const { sessionKey, sessionId } = await performSrpHandshakeWithSession(
+        ws1,
+        TEST_USERNAME,
+        TEST_PASSWORD,
+      );
+      await closeWebSocket(ws1);
+
+      // First resume attempt (valid) to produce a replayable captured proof.
+      const ws2 = await connectWebSocket();
+      let capturedProof = "";
+      try {
+        const resumeInit: SrpSessionResumeInit = {
+          type: "srp_resume_init",
+          identity: TEST_USERNAME,
+          sessionId,
+        };
+        ws2.send(JSON.stringify(resumeInit));
+
+        const challenge1 = await waitForMessage<SrpSessionResumeChallenge>(
+          ws2,
+          (msg): msg is SrpSessionResumeChallenge =>
+            typeof msg === "object" &&
+            msg !== null &&
+            (msg as { type?: string }).type === "srp_resume_challenge",
+          5000,
+        );
+
+        const proofData1 = JSON.stringify({
+          timestamp: Date.now(),
+          sessionId,
+          challenge: challenge1.nonce,
+        });
+        const { nonce, ciphertext } = encrypt(proofData1, sessionKey);
+        capturedProof = JSON.stringify({ nonce, ciphertext });
+
+        const resume1: SrpSessionResume = {
+          type: "srp_resume",
+          identity: TEST_USERNAME,
+          sessionId,
+          proof: capturedProof,
+        };
+        ws2.send(JSON.stringify(resume1));
+
+        await waitForMessage<SrpSessionResumed>(
+          ws2,
+          (msg): msg is SrpSessionResumed => isSrpSessionResumed(msg),
+          5000,
+        );
+      } finally {
+        await closeWebSocket(ws2);
+      }
+
+      // Second resume attempt with a fresh challenge must reject old proof.
+      const ws3 = await connectWebSocket();
+      try {
+        const resumeInit: SrpSessionResumeInit = {
+          type: "srp_resume_init",
+          identity: TEST_USERNAME,
+          sessionId,
+        };
+        ws3.send(JSON.stringify(resumeInit));
+
+        await waitForMessage<SrpSessionResumeChallenge>(
+          ws3,
+          (msg): msg is SrpSessionResumeChallenge =>
+            typeof msg === "object" &&
+            msg !== null &&
+            (msg as { type?: string }).type === "srp_resume_challenge",
+          5000,
+        );
+
+        const replayedResume: SrpSessionResume = {
+          type: "srp_resume",
+          identity: TEST_USERNAME,
+          sessionId,
+          proof: capturedProof,
+        };
+        ws3.send(JSON.stringify(replayedResume));
+
+        const invalid = await waitForMessage<SrpSessionInvalid>(
+          ws3,
+          (msg): msg is SrpSessionInvalid => isSrpSessionInvalid(msg),
+          5000,
+          { allowSrpSessionInvalid: true },
+        );
+        expect(invalid.reason).toBe("invalid_proof");
+      } finally {
+        await closeWebSocket(ws3);
+      }
+    }, 20000);
+  });
+
   describe("Encrypted Request/Response", () => {
     it("should handle encrypted GET request", async () => {
       const ws = await connectWebSocket();
@@ -590,6 +827,33 @@ describe("Secure WebSocket Transport E2E", () => {
 
       expect(closeResult.code).toBe(4001);
       expect(closeResult.reason).toBe("Authentication required");
+    }, 5000);
+
+    it("should close connection with code 4005 when plaintext message sent after auth", async () => {
+      const ws = await connectWebSocket();
+
+      await performSrpHandshakeV2(ws, TEST_USERNAME, TEST_PASSWORD);
+
+      const closePromise = new Promise<{ code: number; reason: string }>(
+        (resolve) => {
+          ws.on("close", (code, reason) => {
+            resolve({ code, reason: reason.toString() });
+          });
+        },
+      );
+
+      const request: RelayRequest = {
+        type: "request",
+        id: randomUUID(),
+        method: "GET",
+        path: "/health",
+      };
+
+      ws.send(JSON.stringify(request));
+
+      const closeResult = await closePromise;
+      expect(closeResult.code).toBe(4005);
+      expect(closeResult.reason).toBe("Encrypted message required");
     }, 5000);
   });
 

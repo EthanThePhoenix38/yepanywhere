@@ -9,6 +9,7 @@
  * allowing both entry points to share the same implementation.
  */
 
+import { randomBytes } from "node:crypto";
 import type { HttpBindings } from "@hono/node-server";
 import type {
   BinaryFormatValue,
@@ -28,6 +29,8 @@ import type {
   SrpServerVerify,
   SrpSessionInvalid,
   SrpSessionResume,
+  SrpSessionResumeChallenge,
+  SrpSessionResumeInit,
   SrpSessionResumed,
   UrlProjectId,
   YepMessage,
@@ -46,6 +49,7 @@ import {
   isSrpClientHello,
   isSrpClientProof,
   isSrpSessionResume,
+  isSrpSessionResumeInit,
 } from "@yep-anywhere/shared";
 import type { Hono } from "hono";
 import {
@@ -76,6 +80,8 @@ import type { EventBus, FocusedSessionWatchManager } from "../watcher/index.js";
 
 /** Progress report interval in bytes (64KB) */
 export const PROGRESS_INTERVAL = 64 * 1024;
+/** Maximum age for a resume challenge nonce (60s) */
+const RESUME_CHALLENGE_MAX_AGE_MS = 60 * 1000;
 
 /** Connection authentication state */
 export type ConnectionAuthState =
@@ -105,6 +111,13 @@ export interface ConnectionState {
   browserProfileId: string | null;
   /** Origin metadata from SRP hello (for session tracking) */
   originMetadata: OriginMetadata | null;
+  /** Pending one-time challenge for session resume (if any) */
+  pendingResumeChallenge: {
+    nonce: string;
+    sessionId: string;
+    username: string;
+    issuedAt: number;
+  } | null;
 }
 
 /** Tracks an active upload over WebSocket relay */
@@ -180,6 +193,7 @@ export function createConnectionState(): ConnectionState {
     supportedFormats: new Set([BinaryFormat.JSON]),
     browserProfileId: null,
     originMetadata: null,
+    pendingResumeChallenge: null,
   };
 }
 
@@ -249,6 +263,7 @@ export function sendSrpMessage(
     | SrpServerChallenge
     | SrpServerVerify
     | SrpError
+    | SrpSessionResumeChallenge
     | SrpSessionResumed
     | SrpSessionInvalid,
 ): void {
@@ -256,7 +271,71 @@ export function sendSrpMessage(
 }
 
 /**
- * Handle SRP session resume (reconnect with stored session).
+ * Handle session resume init and issue a one-time nonce challenge.
+ */
+export async function handleSrpResumeInit(
+  ws: WSAdapter,
+  connState: ConnectionState,
+  msg: SrpSessionResumeInit,
+  remoteSessionService: RemoteSessionService | undefined,
+): Promise<void> {
+  if (!remoteSessionService) {
+    sendSrpMessage(ws, {
+      type: "srp_invalid",
+      reason: "unknown",
+    });
+    return;
+  }
+
+  // Resume handshake is only valid before authentication.
+  if (connState.authState === "authenticated") {
+    sendSrpMessage(ws, {
+      type: "srp_invalid",
+      reason: "invalid_proof",
+    });
+    return;
+  }
+
+  try {
+    const session = remoteSessionService.getSession(msg.sessionId);
+
+    // Keep failure mode generic (don't leak session validity details).
+    if (!session || session.username !== msg.identity) {
+      sendSrpMessage(ws, {
+        type: "srp_invalid",
+        reason: "invalid_proof",
+      });
+      return;
+    }
+
+    const nonce = randomBytes(24).toString("base64");
+    connState.pendingResumeChallenge = {
+      nonce,
+      sessionId: msg.sessionId,
+      username: msg.identity,
+      issuedAt: Date.now(),
+    };
+
+    sendSrpMessage(ws, {
+      type: "srp_resume_challenge",
+      sessionId: msg.sessionId,
+      nonce,
+    });
+
+    console.log(
+      `[WS Relay] Resume challenge sent for ${msg.identity} (${msg.sessionId})`,
+    );
+  } catch (err) {
+    console.error("[WS Relay] Session resume init error:", err);
+    sendSrpMessage(ws, {
+      type: "srp_invalid",
+      reason: "unknown",
+    });
+  }
+}
+
+/**
+ * Handle SRP session resume proof (reconnect with stored session).
  */
 export async function handleSrpResume(
   ws: WSAdapter,
@@ -273,9 +352,33 @@ export async function handleSrpResume(
   }
 
   try {
+    const pendingChallenge = connState.pendingResumeChallenge;
+    connState.pendingResumeChallenge = null;
+
+    if (
+      !pendingChallenge ||
+      pendingChallenge.sessionId !== msg.sessionId ||
+      pendingChallenge.username !== msg.identity
+    ) {
+      sendSrpMessage(ws, {
+        type: "srp_invalid",
+        reason: "invalid_proof",
+      });
+      return;
+    }
+
+    if (Date.now() - pendingChallenge.issuedAt > RESUME_CHALLENGE_MAX_AGE_MS) {
+      sendSrpMessage(ws, {
+        type: "srp_invalid",
+        reason: "invalid_proof",
+      });
+      return;
+    }
+
     const session = await remoteSessionService.validateProof(
       msg.sessionId,
       msg.proof,
+      pendingChallenge.nonce,
     );
 
     if (!session) {
@@ -973,6 +1076,7 @@ export async function handleSrpHello(
   }
 
   try {
+    connState.pendingResumeChallenge = null;
     connState.srpSession = new SrpServerSession();
     connState.username = msg.identity;
 
@@ -1016,6 +1120,7 @@ export async function handleSrpProof(
   remoteSessionService: RemoteSessionService | undefined,
 ): Promise<void> {
   if (!connState.srpSession || connState.authState !== "srp_waiting_proof") {
+    connState.pendingResumeChallenge = null;
     sendSrpMessage(ws, {
       type: "srp_error",
       code: "server_error",
@@ -1038,6 +1143,7 @@ export async function handleSrpProof(
       });
       connState.authState = "unauthenticated";
       connState.srpSession = null;
+      connState.pendingResumeChallenge = null;
       return;
     }
 
@@ -1047,6 +1153,7 @@ export async function handleSrpProof(
     }
     connState.sessionKey = deriveSecretboxKey(rawKey);
     connState.authState = "authenticated";
+    connState.pendingResumeChallenge = null;
 
     let sessionId: string | undefined;
     console.log("[WS Relay] Session creation check:", {
@@ -1087,6 +1194,7 @@ export async function handleSrpProof(
     });
     connState.authState = "unauthenticated";
     connState.srpSession = null;
+    connState.pendingResumeChallenge = null;
   }
 }
 
@@ -1300,6 +1408,16 @@ export async function handleMessage(
       }
     }
 
+    // In remote-auth mode, authenticated connections must only send encrypted
+    // envelopes. Reject plaintext binary frames post-auth.
+    if (options.requireAuth && connState.authState === "authenticated") {
+      console.warn(
+        "[WS Relay] Received plaintext binary frame after authentication",
+      );
+      ws.close(4005, "Encrypted message required");
+      return;
+    }
+
     // Phase 0: Binary frame with format byte + payload
     try {
       const format = bytes[0] as number;
@@ -1374,6 +1492,11 @@ export async function handleMessage(
   }
 
   // Handle SRP messages first (always plaintext)
+  if (isSrpSessionResumeInit(parsed)) {
+    await handleSrpResumeInit(ws, connState, parsed, remoteSessionService);
+    return;
+  }
+
   if (isSrpSessionResume(parsed)) {
     await handleSrpResume(ws, connState, parsed, remoteSessionService);
     return;
@@ -1421,6 +1544,13 @@ export async function handleMessage(
     if (options.requireAuth && connState.authState !== "authenticated") {
       console.warn("[WS Relay] Received plaintext message but auth required");
       ws.close(4001, "Authentication required");
+      return;
+    }
+    if (options.requireAuth && connState.authState === "authenticated") {
+      console.warn(
+        "[WS Relay] Received plaintext message after authentication",
+      );
+      ws.close(4005, "Encrypted message required");
       return;
     }
     msg = parsed as RemoteClientMessage;

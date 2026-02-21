@@ -103,14 +103,19 @@ describe("RemoteSessionService", () => {
     it("validates correct proof", async () => {
       const sessionKey = new Uint8Array(32).fill(0x42);
       const sessionId = await service.createSession("testuser", sessionKey);
+      const challenge = "test-challenge";
 
-      // Generate a valid proof (encrypted timestamp)
+      // Generate a valid proof (encrypted timestamp + sessionId + challenge)
       const timestamp = Date.now();
-      const proofData = JSON.stringify({ timestamp });
+      const proofData = JSON.stringify({ timestamp, sessionId, challenge });
       const { nonce, ciphertext } = encrypt(proofData, sessionKey);
       const proof = JSON.stringify({ nonce, ciphertext });
 
-      const validatedSession = await service.validateProof(sessionId, proof);
+      const validatedSession = await service.validateProof(
+        sessionId,
+        proof,
+        challenge,
+      );
       expect(validatedSession).not.toBeNull();
       expect(validatedSession?.sessionId).toBe(sessionId);
     });
@@ -119,42 +124,105 @@ describe("RemoteSessionService", () => {
       const sessionKey = new Uint8Array(32).fill(0x42);
       const wrongKey = new Uint8Array(32).fill(0x43);
       const sessionId = await service.createSession("testuser", sessionKey);
+      const challenge = "test-challenge";
 
       // Generate proof with wrong key
       const timestamp = Date.now();
-      const proofData = JSON.stringify({ timestamp });
+      const proofData = JSON.stringify({ timestamp, sessionId, challenge });
       const { nonce, ciphertext } = encrypt(proofData, wrongKey);
       const proof = JSON.stringify({ nonce, ciphertext });
 
-      const validatedSession = await service.validateProof(sessionId, proof);
+      const validatedSession = await service.validateProof(
+        sessionId,
+        proof,
+        challenge,
+      );
       expect(validatedSession).toBeNull();
     });
 
     it("rejects proof with old timestamp", async () => {
       const sessionKey = new Uint8Array(32).fill(0x42);
       const sessionId = await service.createSession("testuser", sessionKey);
+      const challenge = "test-challenge";
 
-      // Generate proof with timestamp 10 minutes ago (> 5 min max age)
+      // Generate proof with timestamp 10 minutes ago (> 1 min max age)
       const oldTimestamp = Date.now() - 10 * 60 * 1000;
-      const proofData = JSON.stringify({ timestamp: oldTimestamp });
+      const proofData = JSON.stringify({
+        timestamp: oldTimestamp,
+        sessionId,
+        challenge,
+      });
       const { nonce, ciphertext } = encrypt(proofData, sessionKey);
       const proof = JSON.stringify({ nonce, ciphertext });
 
-      const validatedSession = await service.validateProof(sessionId, proof);
+      const validatedSession = await service.validateProof(
+        sessionId,
+        proof,
+        challenge,
+      );
+      expect(validatedSession).toBeNull();
+    });
+
+    it("rejects proof with wrong challenge", async () => {
+      const sessionKey = new Uint8Array(32).fill(0x42);
+      const sessionId = await service.createSession("testuser", sessionKey);
+
+      const timestamp = Date.now();
+      const proofData = JSON.stringify({
+        timestamp,
+        sessionId,
+        challenge: "challenge-a",
+      });
+      const { nonce, ciphertext } = encrypt(proofData, sessionKey);
+      const proof = JSON.stringify({ nonce, ciphertext });
+
+      const validatedSession = await service.validateProof(
+        sessionId,
+        proof,
+        "challenge-b",
+      );
+      expect(validatedSession).toBeNull();
+    });
+
+    it("rejects proof with mismatched sessionId in payload", async () => {
+      const sessionKey = new Uint8Array(32).fill(0x42);
+      const sessionId = await service.createSession("testuser", sessionKey);
+      const challenge = "test-challenge";
+
+      const timestamp = Date.now();
+      const proofData = JSON.stringify({
+        timestamp,
+        sessionId: "different-session-id",
+        challenge,
+      });
+      const { nonce, ciphertext } = encrypt(proofData, sessionKey);
+      const proof = JSON.stringify({ nonce, ciphertext });
+
+      const validatedSession = await service.validateProof(
+        sessionId,
+        proof,
+        challenge,
+      );
       expect(validatedSession).toBeNull();
     });
 
     it("rejects proof for non-existent session", async () => {
       const sessionKey = new Uint8Array(32).fill(0x42);
+      const challenge = "test-challenge";
 
       const timestamp = Date.now();
-      const proofData = JSON.stringify({ timestamp });
+      const proofData = JSON.stringify({
+        timestamp,
+        sessionId: "nonexistent",
+        challenge,
+      });
       const { nonce, ciphertext } = encrypt(proofData, sessionKey);
       const proof = JSON.stringify({ nonce, ciphertext });
 
       const validatedSession = await service.validateProof(
         "nonexistent",
         proof,
+        challenge,
       );
       expect(validatedSession).toBeNull();
     });
@@ -162,6 +230,7 @@ describe("RemoteSessionService", () => {
     it("updates lastUsed on successful validation", async () => {
       const sessionKey = new Uint8Array(32).fill(0x42);
       const sessionId = await service.createSession("testuser", sessionKey);
+      const challenge = "test-challenge";
 
       const sessionBefore = service.getSession(sessionId);
       const lastUsedBefore = sessionBefore?.lastUsed;
@@ -171,11 +240,11 @@ describe("RemoteSessionService", () => {
 
       // Validate proof
       const timestamp = Date.now();
-      const proofData = JSON.stringify({ timestamp });
+      const proofData = JSON.stringify({ timestamp, sessionId, challenge });
       const { nonce, ciphertext } = encrypt(proofData, sessionKey);
       const proof = JSON.stringify({ nonce, ciphertext });
 
-      await service.validateProof(sessionId, proof);
+      await service.validateProof(sessionId, proof, challenge);
 
       const sessionAfter = service.getSession(sessionId);
       expect(sessionAfter?.lastUsed).not.toBe(lastUsedBefore);
