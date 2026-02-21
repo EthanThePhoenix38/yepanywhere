@@ -13,11 +13,19 @@ export interface SettingsRoutesDeps {
   serverSettingsService: ServerSettingsService;
   /** Callback to apply allowedHosts changes at runtime */
   onAllowedHostsChanged?: (value: string | undefined) => void;
+  /** Callback to apply remote session persistence changes at runtime */
+  onRemoteSessionPersistenceChanged?: (
+    enabled: boolean,
+  ) => Promise<void> | void;
 }
 
 export function createSettingsRoutes(deps: SettingsRoutesDeps): Hono {
   const app = new Hono();
-  const { serverSettingsService, onAllowedHostsChanged } = deps;
+  const {
+    serverSettingsService,
+    onAllowedHostsChanged,
+    onRemoteSessionPersistenceChanged,
+  } = deps;
 
   /**
    * GET /api/settings
@@ -40,6 +48,9 @@ export function createSettingsRoutes(deps: SettingsRoutesDeps): Hono {
     // Handle boolean settings
     if (typeof body.serviceWorkerEnabled === "boolean") {
       updates.serviceWorkerEnabled = body.serviceWorkerEnabled;
+    }
+    if (typeof body.persistRemoteSessionsToDisk === "boolean") {
+      updates.persistRemoteSessionsToDisk = body.persistRemoteSessionsToDisk;
     }
 
     // Handle remoteExecutors array
@@ -86,6 +97,14 @@ export function createSettingsRoutes(deps: SettingsRoutesDeps): Hono {
     // Apply allowedHosts change to middleware at runtime
     if ("allowedHosts" in updates && onAllowedHostsChanged) {
       onAllowedHostsChanged(settings.allowedHosts);
+    }
+    if (
+      "persistRemoteSessionsToDisk" in updates &&
+      onRemoteSessionPersistenceChanged
+    ) {
+      await onRemoteSessionPersistenceChanged(
+        settings.persistRemoteSessionsToDisk,
+      );
     }
 
     return c.json({ settings });

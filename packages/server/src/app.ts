@@ -469,6 +469,10 @@ export function createApp(options: AppOptions): AppResult {
       createSettingsRoutes({
         serverSettingsService: options.serverSettingsService,
         onAllowedHostsChanged: updateAllowedHosts,
+        onRemoteSessionPersistenceChanged: options.remoteSessionService
+          ? (enabled) =>
+              options.remoteSessionService?.setDiskPersistenceEnabled(enabled)
+          : undefined,
       }),
     );
   }

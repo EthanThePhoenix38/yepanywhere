@@ -1,5 +1,6 @@
 /**
- * RemoteSessionService manages persistent sessions for remote access.
+ * RemoteSessionService manages active sessions for remote access.
+ * Session persistence to disk is optional and disabled by default.
  *
  * When a client successfully authenticates via SRP, a session is created
  * with the derived session key. Clients can then reconnect without
@@ -20,6 +21,10 @@ import { randomUUID } from "node:crypto";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { decrypt } from "../crypto/nacl-wrapper.js";
+import {
+  OWNER_READ_WRITE_FILE_MODE,
+  enforceOwnerReadWriteFilePermissions,
+} from "../utils/filePermissions.js";
 
 /** How long a session can be idle before expiring (7 days) */
 const IDLE_TIMEOUT_MS = 7 * 24 * 60 * 60 * 1000;
@@ -76,19 +81,24 @@ interface RemoteSessionsState {
 export interface RemoteSessionServiceOptions {
   /** Directory to store state (defaults to dataDir) */
   dataDir: string;
+  /** Whether remote sessions should persist to disk (default: false/in-memory only) */
+  persistSessionsToDisk?: boolean;
 }
 
 export class RemoteSessionService {
   private state: RemoteSessionsState;
   private dataDir: string;
   private filePath: string;
+  private persistSessionsToDisk: boolean;
   private savePromise: Promise<void> | null = null;
   private pendingSave = false;
   private cleanupTimer: ReturnType<typeof setInterval> | null = null;
+  private initialized = false;
 
   constructor(options: RemoteSessionServiceOptions) {
     this.dataDir = options.dataDir;
     this.filePath = path.join(this.dataDir, "remote-sessions.json");
+    this.persistSessionsToDisk = options.persistSessionsToDisk ?? false;
     this.state = { version: CURRENT_VERSION, sessions: {} };
   }
 
@@ -96,8 +106,80 @@ export class RemoteSessionService {
    * Initialize the service by loading state from disk and starting cleanup.
    */
   async initialize(): Promise<void> {
+    if (this.initialized) {
+      return;
+    }
+
+    await fs.mkdir(this.dataDir, { recursive: true });
+
+    if (this.persistSessionsToDisk) {
+      await this.loadStateFromDisk();
+    } else {
+      // In-memory mode: never load persisted session keys from disk.
+      this.state = { version: CURRENT_VERSION, sessions: {} };
+      await this.deleteStateFile();
+    }
+
+    // Clean up expired sessions on startup
+    await this.cleanupExpiredSessions();
+
+    // Run cleanup every hour
+    this.cleanupTimer = setInterval(
+      () => {
+        void this.cleanupExpiredSessions();
+      },
+      60 * 60 * 1000,
+    );
+
+    this.initialized = true;
+  }
+
+  /**
+   * Enable/disable disk persistence for remote sessions at runtime.
+   * When disabled, the persisted session file is deleted.
+   */
+  async setDiskPersistenceEnabled(enabled: boolean): Promise<void> {
+    if (this.persistSessionsToDisk === enabled) {
+      return;
+    }
+
+    this.persistSessionsToDisk = enabled;
+
+    // If called before initialize(), just update the mode.
+    if (!this.initialized) {
+      return;
+    }
+
+    if (enabled) {
+      await this.save();
+      return;
+    }
+
+    // Stop queued writes and remove on-disk session keys.
+    this.pendingSave = false;
+    if (this.savePromise) {
+      try {
+        await this.savePromise;
+      } catch {
+        // Ignore prior write errors while switching to in-memory mode.
+      } finally {
+        this.savePromise = null;
+      }
+    }
+
+    await this.deleteStateFile();
+  }
+
+  isDiskPersistenceEnabled(): boolean {
+    return this.persistSessionsToDisk;
+  }
+
+  private async loadStateFromDisk(): Promise<void> {
     try {
-      await fs.mkdir(this.dataDir, { recursive: true });
+      await enforceOwnerReadWriteFilePermissions(
+        this.filePath,
+        "[RemoteSessionService]",
+      );
 
       const content = await fs.readFile(this.filePath, "utf-8");
       const parsed = JSON.parse(content) as RemoteSessionsState;
@@ -121,17 +203,19 @@ export class RemoteSessionService {
       }
       this.state = { version: CURRENT_VERSION, sessions: {} };
     }
+  }
 
-    // Clean up expired sessions on startup
-    await this.cleanupExpiredSessions();
-
-    // Run cleanup every hour
-    this.cleanupTimer = setInterval(
-      () => {
-        void this.cleanupExpiredSessions();
-      },
-      60 * 60 * 1000,
-    );
+  private async deleteStateFile(): Promise<void> {
+    try {
+      await fs.unlink(this.filePath);
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
+        console.warn(
+          "[RemoteSessionService] Failed to delete persisted session file:",
+          error,
+        );
+      }
+    }
   }
 
   /**
@@ -394,6 +478,10 @@ export class RemoteSessionService {
    * Save state to disk with debouncing to avoid excessive writes.
    */
   private async save(): Promise<void> {
+    if (!this.persistSessionsToDisk) {
+      return;
+    }
+
     if (this.savePromise) {
       this.pendingSave = true;
       return;
@@ -411,6 +499,13 @@ export class RemoteSessionService {
 
   private async doSave(): Promise<void> {
     const content = JSON.stringify(this.state, null, 2);
-    await fs.writeFile(this.filePath, content, "utf-8");
+    await fs.writeFile(this.filePath, content, {
+      encoding: "utf-8",
+      mode: OWNER_READ_WRITE_FILE_MODE,
+    });
+    await enforceOwnerReadWriteFilePermissions(
+      this.filePath,
+      "[RemoteSessionService]",
+    );
   }
 }

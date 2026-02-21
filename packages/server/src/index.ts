@@ -349,9 +349,12 @@ async function startServer() {
   await recentsService.initialize();
   await authService.initialize();
   await remoteAccessService.initialize();
+  await serverSettingsService.initialize();
+  await remoteSessionService.setDiskPersistenceEnabled(
+    serverSettingsService.getSetting("persistRemoteSessionsToDisk"),
+  );
   await remoteSessionService.initialize();
   await networkBindingService.initialize();
-  await serverSettingsService.initialize();
 
   // Seed allowed hosts middleware from persisted settings
   updateAllowedHosts(serverSettingsService.getSetting("allowedHosts"));

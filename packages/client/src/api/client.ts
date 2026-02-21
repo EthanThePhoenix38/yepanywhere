@@ -827,6 +827,8 @@ export interface RemoteExecutorTestResult {
 export interface ServerSettings {
   /** Whether clients should register the service worker */
   serviceWorkerEnabled: boolean;
+  /** Whether remote SRP resume sessions should be persisted to disk */
+  persistRemoteSessionsToDisk: boolean;
   /** SSH host aliases for remote executors */
   remoteExecutors?: string[];
   /** Allowed hostnames for host/origin validation. "*" = allow all, comma-separated = specific hosts. */

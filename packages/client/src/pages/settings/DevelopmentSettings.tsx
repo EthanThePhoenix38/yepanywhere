@@ -122,6 +122,29 @@ export function DevelopmentSettings() {
             <span className="toggle-slider" />
           </label>
         </div>
+        <div className="settings-item">
+          <div className="settings-item-info">
+            <strong>Persist Remote Sessions To Disk</strong>
+            <p>
+              Store remote SRP resume sessions in{" "}
+              <code>remote-sessions.json</code> so relay reconnect survives
+              server restarts. Disabled by default for security.
+            </p>
+          </div>
+          <label className="toggle-switch">
+            <input
+              type="checkbox"
+              checked={serverSettings?.persistRemoteSessionsToDisk ?? false}
+              onChange={(e) =>
+                updateServerSetting(
+                  "persistRemoteSessionsToDisk",
+                  e.target.checked,
+                )
+              }
+            />
+            <span className="toggle-slider" />
+          </label>
+        </div>
       </div>
 
       <div className="settings-group">

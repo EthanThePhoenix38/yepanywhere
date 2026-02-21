@@ -308,7 +308,7 @@ describe("RemoteSessionService", () => {
   });
 
   describe("persistence", () => {
-    it("persists sessions to disk", async () => {
+    it("does not persist sessions to disk by default", async () => {
       const sessionKey = new Uint8Array(32).fill(0x42);
       const sessionId = await service.createSession("testuser", sessionKey);
 
@@ -319,10 +319,79 @@ describe("RemoteSessionService", () => {
       const newService = new RemoteSessionService({ dataDir: testDir });
       await newService.initialize();
 
-      // Session should still exist
+      // Session should not exist after restart in default in-memory mode
+      const session = newService.getSession(sessionId);
+      expect(session).toBeNull();
+
+      newService.shutdown();
+    });
+
+    it("persists sessions to disk when enabled", async () => {
+      await service.setDiskPersistenceEnabled(true);
+
+      const sessionKey = new Uint8Array(32).fill(0x42);
+      const sessionId = await service.createSession("testuser", sessionKey);
+
+      service.shutdown();
+
+      const newService = new RemoteSessionService({ dataDir: testDir });
+      await newService.setDiskPersistenceEnabled(true);
+      await newService.initialize();
+
       const session = newService.getSession(sessionId);
       expect(session).not.toBeNull();
       expect(session?.username).toBe("testuser");
+
+      newService.shutdown();
+    });
+
+    it("deletes persisted session file when persistence is disabled", async () => {
+      await service.setDiskPersistenceEnabled(true);
+      await service.createSession("testuser", new Uint8Array(32).fill(0x42));
+
+      const filePath = path.join(testDir, "remote-sessions.json");
+      await expect(fs.stat(filePath)).resolves.toBeTruthy();
+
+      await service.setDiskPersistenceEnabled(false);
+
+      await expect(fs.stat(filePath)).rejects.toMatchObject({ code: "ENOENT" });
+    });
+  });
+
+  describe("file permissions", () => {
+    it("writes remote-sessions.json with 0600 permissions", async () => {
+      if (process.platform === "win32") {
+        return;
+      }
+
+      await service.setDiskPersistenceEnabled(true);
+      const sessionKey = new Uint8Array(32).fill(0x42);
+      await service.createSession("testuser", sessionKey);
+
+      const filePath = path.join(testDir, "remote-sessions.json");
+      const stat = await fs.stat(filePath);
+      expect(stat.mode & 0o777).toBe(0o600);
+    });
+
+    it("tightens permissions on existing remote-sessions.json files at startup", async () => {
+      if (process.platform === "win32") {
+        return;
+      }
+
+      const filePath = path.join(testDir, "remote-sessions.json");
+      await fs.writeFile(
+        filePath,
+        JSON.stringify({ version: 1, sessions: {} }, null, 2),
+        "utf-8",
+      );
+      await fs.chmod(filePath, 0o644);
+
+      const newService = new RemoteSessionService({ dataDir: testDir });
+      await newService.setDiskPersistenceEnabled(true);
+      await newService.initialize();
+
+      const stat = await fs.stat(filePath);
+      expect(stat.mode & 0o777).toBe(0o600);
 
       newService.shutdown();
     });
