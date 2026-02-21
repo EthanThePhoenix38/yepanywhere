@@ -518,8 +518,10 @@ export async function handleSrpResumeInit(
     return;
   }
 
-  // Resume handshake is only valid before authentication.
-  if (connState.authState === "authenticated") {
+  // Resume handshake is only invalid when this socket already has a real
+  // SRP-authenticated session key. Some environments (e.g. AUTH_DISABLED for
+  // E2E) may mark the request authenticated without an SRP session key.
+  if (connState.authState === "authenticated" && connState.sessionKey) {
     sendSrpMessage(ws, {
       type: "srp_invalid",
       reason: "invalid_proof",
