@@ -29,6 +29,7 @@ export type {
   PatchHunk,
   EditAugment,
   MarkdownAugment,
+  PermissionRules,
 } from "./types.js";
 export {
   ALL_PROVIDERS,

@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import {
+  type PermissionRules,
   type ProviderName,
   SESSION_TITLE_MAX_LENGTH,
   type UrlProjectId,
@@ -68,6 +69,8 @@ export interface ModelSettings {
   remoteEnv?: Record<string, string>;
   /** Global instructions to append to system prompt (from server settings) */
   globalInstructions?: string;
+  /** Permission rules for tool filtering (deny/allow patterns) */
+  permissions?: PermissionRules;
 }
 
 /** Error response when queue is full */
@@ -374,6 +377,7 @@ export class Supervisor {
       model: modelSettings?.model,
       maxThinkingTokens: modelSettings?.maxThinkingTokens,
       executor: modelSettings?.executor,
+      permissions: modelSettings?.permissions,
     };
 
     const process = new Process(iterator, options);
@@ -467,6 +471,7 @@ export class Supervisor {
       model: modelSettings?.model,
       maxThinkingTokens: modelSettings?.maxThinkingTokens,
       executor: modelSettings?.executor,
+      permissions: modelSettings?.permissions,
     };
 
     const process = new Process(iterator, options);
@@ -557,6 +562,7 @@ export class Supervisor {
       model: modelSettings?.model,
       maxThinkingTokens: modelSettings?.maxThinkingTokens,
       executor: modelSettings?.executor,
+      permissions: modelSettings?.permissions,
     };
 
     const process = new Process(iterator, options);
@@ -648,6 +654,7 @@ export class Supervisor {
       model: modelSettings?.model,
       maxThinkingTokens: modelSettings?.maxThinkingTokens,
       executor: modelSettings?.executor,
+      permissions: modelSettings?.permissions,
     };
 
     const process = new Process(iterator, options);

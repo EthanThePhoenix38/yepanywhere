@@ -3,6 +3,7 @@ import type {
   ContextUsage,
   InputRequest,
   PendingInputType,
+  PermissionRules,
   ProviderName,
   UrlProjectId,
 } from "@yep-anywhere/shared";
@@ -225,4 +226,6 @@ export interface ProcessOptions {
   model?: string;
   /** SSH host for remote execution (undefined = local) */
   executor?: string;
+  /** Permission rules for tool filtering (deny/allow patterns) */
+  permissions?: PermissionRules;
 }

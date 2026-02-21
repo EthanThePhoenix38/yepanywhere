@@ -1,6 +1,7 @@
 import {
   type ContextUsage,
   type ModelOption,
+  type PermissionRules,
   type ProviderName,
   type ThinkingOption,
   type UploadedFile,
@@ -98,6 +99,8 @@ interface StartSessionBody {
   tempId?: string;
   /** SSH host alias for remote execution (undefined = local) */
   executor?: string;
+  /** Permission rules for tool filtering (deny/allow patterns) */
+  permissions?: PermissionRules;
 }
 
 interface CreateSessionBody {
@@ -107,6 +110,8 @@ interface CreateSessionBody {
   provider?: ProviderName;
   /** SSH host alias for remote execution (undefined = local) */
   executor?: string;
+  /** Permission rules for tool filtering (deny/allow patterns) */
+  permissions?: PermissionRules;
 }
 
 interface InputResponseBody {
@@ -596,6 +601,7 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
           processId: process.id,
           permissionMode: process.permissionMode,
           modeVersion: process.modeVersion,
+          state: process.state.type,
         }
       : isExternal
         ? { owner: "external" as const }
@@ -927,6 +933,7 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
         providerName: body.provider,
         executor: body.executor,
         globalInstructions,
+        permissions: body.permissions,
       },
     );
 
@@ -1004,6 +1011,7 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
         providerName: body.provider,
         executor: body.executor,
         globalInstructions,
+        permissions: body.permissions,
       },
     );
 
@@ -1122,6 +1130,7 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
         providerName: body.provider,
         executor,
         globalInstructions,
+        permissions: body.permissions,
       },
     );
 

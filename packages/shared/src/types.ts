@@ -232,6 +232,18 @@ export interface EditAugment {
 }
 
 /**
+ * Permission rules for session tool filtering.
+ * Patterns like "Bash(curl *)" match tool name + glob against tool input.
+ * Evaluation order: deny first, then allow, then fall through to permission mode.
+ */
+export interface PermissionRules {
+  // Patterns to auto-approve (e.g., ["Bash(tsx */browser-cli.ts *)"])
+  allow?: string[];
+  // Patterns to auto-deny (e.g., ["Bash(curl *)", "Bash(*| bash*)"])
+  deny?: string[];
+}
+
+/**
  * Pre-rendered markdown augment for text blocks.
  * Contains HTML with syntax highlighting from server.
  */

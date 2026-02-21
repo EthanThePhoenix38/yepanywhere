@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import path from "node:path";
 import type {
   ModelInfo,
+  PermissionRules,
   ProviderName,
   SlashCommand,
   UrlProjectId,
@@ -122,6 +123,9 @@ export class Process {
   /** Current permission mode for tool approvals */
   private _permissionMode: PermissionMode = "default";
 
+  /** Permission rules for tool filtering (deny/allow patterns from API caller) */
+  private _permissions: PermissionRules | undefined;
+
   /** Version counter for permission mode changes (for multi-tab sync) */
   private _modeVersion = 0;
 
@@ -182,6 +186,7 @@ export class Process {
     this.messageQueue = options.queue ?? null;
     this.abortFn = options.abortFn ?? null;
     this._permissionMode = options.permissionMode ?? "default";
+    this._permissions = options.permissions;
     this.provider = options.provider;
     this.model = options.model;
     this.executor = options.executor;
@@ -918,6 +923,86 @@ export class Process {
   }
 
   /**
+   * Convert a simple glob pattern (with * wildcards) to a RegExp.
+   * Only supports * as wildcard (matches any characters).
+   */
+  private static globToRegex(glob: string): RegExp {
+    const escaped = glob.replace(/[.+^${}()|[\]\\]/g, "\\$&");
+    const pattern = escaped.replace(/\*/g, ".*");
+    return new RegExp(`^${pattern}$`);
+  }
+
+  /**
+   * Check if a tool invocation matches a permission pattern like "Bash(curl *)".
+   * Returns true if the pattern matches the tool name and input.
+   */
+  private static matchesPermissionPattern(
+    pattern: string,
+    toolName: string,
+    input: unknown,
+  ): boolean {
+    // Parse "ToolName(glob)" pattern
+    const match = pattern.match(/^(\w+)\((.+)\)$/);
+    if (!match) return false;
+    const patternTool = match[1];
+    const glob = match[2];
+    if (!patternTool || !glob || patternTool !== toolName) return false;
+
+    // Extract the string to match against from the tool input
+    let commandStr = "";
+    if (toolName === "Bash") {
+      commandStr = (input as { command?: string })?.command ?? "";
+    } else {
+      // For non-Bash tools, match against JSON-stringified input
+      commandStr = typeof input === "string" ? input : JSON.stringify(input);
+    }
+
+    return Process.globToRegex(glob).test(commandStr);
+  }
+
+  /**
+   * Check permission rules (deny/allow patterns) against a tool invocation.
+   * Returns a ToolApprovalResult if a rule matches, or undefined to fall through.
+   * Evaluation order: deny first, then allow.
+   */
+  private checkPermissionRules(
+    toolName: string,
+    input: unknown,
+  ): ToolApprovalResult | undefined {
+    if (!this._permissions) return undefined;
+
+    // Check deny rules first
+    if (this._permissions.deny) {
+      for (const pattern of this._permissions.deny) {
+        if (Process.matchesPermissionPattern(pattern, toolName, input)) {
+          const command =
+            toolName === "Bash"
+              ? ((input as { command?: string })?.command ?? "")
+              : "";
+          getLogger().warn(
+            `[permissions] Denied ${toolName}: "${command}" matched deny pattern "${pattern}"`,
+          );
+          return {
+            behavior: "deny",
+            message: `Blocked by permission rule: ${pattern}`,
+          };
+        }
+      }
+    }
+
+    // Check allow rules
+    if (this._permissions.allow) {
+      for (const pattern of this._permissions.allow) {
+        if (Process.matchesPermissionPattern(pattern, toolName, input)) {
+          return { behavior: "allow" };
+        }
+      }
+    }
+
+    return undefined;
+  }
+
+  /**
    * Handle tool approval request from SDK's canUseTool callback.
    * This is called by the Supervisor when creating the session.
    * Behavior depends on current permission mode:
@@ -942,6 +1027,12 @@ export class Process {
         message: "Operation aborted",
         interrupt: true,
       };
+    }
+
+    // Check permission rules (deny/allow patterns) before mode-based logic
+    const permissionResult = this.checkPermissionRules(toolName, input);
+    if (permissionResult) {
+      return permissionResult;
     }
 
     // Handle based on permission mode
