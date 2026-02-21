@@ -25,14 +25,10 @@ import type {
   YepMessage,
 } from "@yep-anywhere/shared";
 import {
-  BinaryEnvelopeError,
   BinaryFormat,
-  BinaryFrameError,
   UploadChunkError,
   decodeUploadChunkPayload,
   encodeJsonFrame,
-  isBinaryData,
-  isClientCapabilities,
   isSrpClientHello,
   isSrpClientProof,
   isSrpSessionResume,
@@ -40,8 +36,6 @@ import {
 } from "@yep-anywhere/shared";
 import type { Hono } from "hono";
 import {
-  decompressGzip,
-  decryptBinaryEnvelopeRaw,
   encrypt,
   encryptToBinaryEnvelopeWithCompression,
 } from "../crypto/index.js";
@@ -67,6 +61,10 @@ import {
   isPolicySrpRequired,
 } from "./ws-auth-policy.js";
 import {
+  decodeFrameToParsedMessage,
+  routeClientMessageSafely,
+} from "./ws-message-router.js";
+import {
   cleanupSrpConnectionState,
   createInitialSrpLimiterState,
   handleSrpHello,
@@ -78,11 +76,7 @@ import {
   hasEstablishedSrpTransport,
   shouldMarkInternalWsAuthenticated,
 } from "./ws-transport-auth.js";
-import {
-  isBinaryEncryptedEnvelope,
-  parseApplicationClientMessage,
-  rejectPlaintextBinaryWhenEncryptedRequired,
-} from "./ws-transport-message-auth.js";
+import { parseApplicationClientMessage } from "./ws-transport-message-auth.js";
 
 /** Progress report interval in bytes (64KB) */
 export const PROGRESS_INTERVAL = 64 * 1024;
@@ -939,8 +933,6 @@ export async function handleMessage(
   } = deps;
   const srpRequiredPolicy = isPolicySrpRequired(connState.connectionPolicy);
 
-  let parsed: unknown;
-
   // Debug: log incoming data type and preview
   // Check Buffer BEFORE Uint8Array since Buffer extends Uint8Array
   const dataType =
@@ -969,199 +961,48 @@ export async function handleMessage(
     `[WS Relay] handleMessage: type=${dataType}, isBinary=${options.isBinary}, preview=${preview}`,
   );
 
-  // Determine if this is a binary frame.
-  // If options.isBinary is provided (raw ws connections), use it directly.
-  // Otherwise, fall back to checking if data is binary (Hono connections where
-  // text frames arrive as strings and binary frames as ArrayBuffer).
-  const isFrameBinary = options.isBinary ?? isBinaryData(data);
+  const routeClientMessage = async (msg: RemoteClientMessage): Promise<void> =>
+    routeClientMessageSafely(msg, send, {
+      onRequest: async (requestMsg) =>
+        handleRequest(requestMsg, send, app, baseUrl, connState),
+      onSubscribe: async (subscribeMsg) =>
+        handleSubscribe(
+          subscriptions,
+          subscribeMsg,
+          send,
+          supervisor,
+          eventBus,
+          deps.focusedSessionWatchManager,
+          deps.connectedBrowsers,
+          deps.browserProfileService,
+        ),
+      onUnsubscribe: async (unsubscribeMsg) =>
+        handleUnsubscribe(subscriptions, unsubscribeMsg),
+      onUploadStart: async (uploadStartMsg) =>
+        handleUploadStart(uploads, uploadStartMsg, send, uploadManager),
+      onUploadChunk: async (uploadChunkMsg) =>
+        handleUploadChunk(uploads, uploadChunkMsg, send, uploadManager),
+      onUploadEnd: async (uploadEndMsg) =>
+        handleUploadEnd(uploads, uploadEndMsg, send, uploadManager),
+      onPing: async (pingMsg) => send({ type: "pong", id: pingMsg.id }),
+    });
 
-  if (isFrameBinary) {
-    // For binary frames, data is ArrayBuffer (browser) or Buffer/Uint8Array (Node.js)
-    // When options.isBinary is provided, data is guaranteed to be Buffer from raw ws
-    let bytes: Uint8Array;
-    if (data instanceof ArrayBuffer) {
-      bytes = new Uint8Array(data);
-    } else if (data instanceof Uint8Array || Buffer.isBuffer(data)) {
-      bytes = data;
-    } else {
-      console.warn("[WS Relay] Binary frame has unexpected data type");
-      return;
-    }
-
-    if (bytes.length === 0) {
-      console.warn("[WS Relay] Empty binary frame");
-      return;
-    }
-
-    if (
-      hasEstablishedSrpTransport(connState) &&
-      isBinaryEncryptedEnvelope(bytes, connState)
-    ) {
-      try {
-        const result = decryptBinaryEnvelopeRaw(bytes, connState.sessionKey);
-        if (!result) {
-          console.warn("[WS Relay] Failed to decrypt binary envelope");
-          ws.close(4004, "Decryption failed");
-          return;
-        }
-
-        const { format, payload } = result;
-        connState.useBinaryEncrypted = true;
-
-        if (format === BinaryFormat.BINARY_UPLOAD) {
-          await handleBinaryUploadChunk(uploads, payload, send, uploadManager);
-          return;
-        }
-
-        if (
-          format !== BinaryFormat.JSON &&
-          format !== BinaryFormat.COMPRESSED_JSON
-        ) {
-          const formatByte = format as number;
-          console.warn(
-            `[WS Relay] Unsupported encrypted format: 0x${formatByte.toString(16).padStart(2, "0")}`,
-          );
-          send({
-            type: "response",
-            id: "binary-format-error",
-            status: 400,
-            body: {
-              error: `Unsupported binary format: 0x${formatByte.toString(16).padStart(2, "0")}`,
-            },
-          });
-          return;
-        }
-
-        try {
-          let jsonStr: string;
-          if (format === BinaryFormat.COMPRESSED_JSON) {
-            jsonStr = decompressGzip(payload);
-          } else {
-            jsonStr = new TextDecoder().decode(payload);
-          }
-          const msg = JSON.parse(jsonStr) as RemoteClientMessage;
-
-          if (isClientCapabilities(msg)) {
-            connState.supportedFormats = new Set(msg.formats);
-            console.log(
-              `[WS Relay] Client capabilities: formats=${[...connState.supportedFormats].map((f) => `0x${f.toString(16).padStart(2, "0")}`).join(", ")}`,
-            );
-            return;
-          }
-
-          await routeMessage(
-            msg,
-            subscriptions,
-            uploads,
-            send,
-            deps,
-            connState,
-          );
-          return;
-        } catch {
-          console.warn("[WS Relay] Failed to parse decrypted binary envelope");
-          ws.close(4004, "Decryption failed");
-          return;
-        }
-      } catch (err) {
-        if (err instanceof BinaryEnvelopeError) {
-          console.warn(
-            `[WS Relay] Binary envelope error (${err.code}):`,
-            err.message,
-          );
-          if (err.code === "UNKNOWN_VERSION") {
-            ws.close(4002, err.message);
-          }
-        } else {
-          console.warn("[WS Relay] Failed to process binary envelope:", err);
-        }
-        return;
-      }
-    }
-
-    // In remote-auth mode, authenticated connections must only send encrypted
-    // envelopes. Reject plaintext binary frames post-auth.
-    if (
-      rejectPlaintextBinaryWhenEncryptedRequired(
-        ws,
-        connState,
-        srpRequiredPolicy,
-      )
-    ) {
-      return;
-    }
-
-    // Phase 0: Binary frame with format byte + payload
-    try {
-      const format = bytes[0] as number;
-      if (
-        format !== BinaryFormat.JSON &&
-        format !== BinaryFormat.BINARY_UPLOAD &&
-        format !== BinaryFormat.COMPRESSED_JSON
-      ) {
-        throw new BinaryFrameError(
-          `Unknown format byte: 0x${format.toString(16).padStart(2, "0")}`,
-          "UNKNOWN_FORMAT",
-        );
-      }
-      const payload = bytes.slice(1);
-      connState.useBinaryFrames = true;
-
-      if (format === BinaryFormat.BINARY_UPLOAD) {
-        await handleBinaryUploadChunk(uploads, payload, send, uploadManager);
-        return;
-      }
-
-      if (format !== BinaryFormat.JSON) {
-        console.warn(
-          `[WS Relay] Unsupported binary format: 0x${format.toString(16).padStart(2, "0")}`,
-        );
-        send({
-          type: "response",
-          id: "binary-format-error",
-          status: 400,
-          body: {
-            error: `Unsupported binary format: 0x${format.toString(16).padStart(2, "0")}`,
-          },
-        });
-        return;
-      }
-
-      const decoder = new TextDecoder("utf-8", { fatal: true });
-      const json = decoder.decode(payload);
-      parsed = JSON.parse(json);
-    } catch (err) {
-      if (err instanceof BinaryFrameError) {
-        console.warn(
-          `[WS Relay] Binary frame error (${err.code}):`,
-          err.message,
-        );
-        if (err.code === "UNKNOWN_FORMAT") {
-          ws.close(4002, err.message);
-        }
-      } else {
-        console.warn("[WS Relay] Failed to decode binary frame:", err);
-      }
-      return;
-    }
-  } else {
-    // Text frame - could be string (Hono) or Buffer (raw ws with isBinary=false)
-    let textData: string;
-    if (typeof data === "string") {
-      textData = data;
-    } else if (data instanceof Uint8Array || Buffer.isBuffer(data)) {
-      // Raw ws delivers text frames as Buffers, convert to string
-      textData = Buffer.from(data).toString("utf-8");
-    } else {
-      console.warn("[WS Relay] Ignoring unknown message type");
-      return;
-    }
-    try {
-      parsed = JSON.parse(textData);
-    } catch {
-      console.warn("[WS Relay] Failed to parse message:", textData);
-      return;
-    }
+  const parsed = await decodeFrameToParsedMessage(
+    ws,
+    data,
+    options,
+    connState,
+    srpRequiredPolicy,
+    {
+      uploads,
+      send,
+      uploadManager,
+      routeClientMessage,
+      handleBinaryUploadChunk,
+    },
+  );
+  if (parsed === null) {
+    return;
   }
 
   // Handle SRP messages first (always plaintext)
@@ -1195,115 +1036,7 @@ export async function handleMessage(
     return;
   }
 
-  await routeMessage(msg, subscriptions, uploads, send, deps, connState);
-}
-
-/**
- * Extract the message ID for error responses based on message type.
- */
-function getMessageId(msg: RemoteClientMessage): string | undefined {
-  switch (msg.type) {
-    case "request":
-      return msg.id;
-    case "subscribe":
-      return msg.subscriptionId;
-    case "upload_start":
-    case "upload_chunk":
-    case "upload_end":
-      return msg.uploadId;
-    default:
-      return undefined;
-  }
-}
-
-/**
- * Route a parsed message to the appropriate handler.
- * Wraps handlers in try/catch to ensure error responses are sent to clients.
- */
-async function routeMessage(
-  msg: RemoteClientMessage,
-  subscriptions: Map<string, () => void>,
-  uploads: Map<string, RelayUploadState>,
-  send: SendFn,
-  deps: RelayHandlerDeps,
-  connState: ConnectionState,
-): Promise<void> {
-  const {
-    app,
-    baseUrl,
-    supervisor,
-    eventBus,
-    uploadManager,
-    focusedSessionWatchManager,
-    connectedBrowsers,
-    browserProfileService,
-  } = deps;
-
-  try {
-    switch (msg.type) {
-      case "request":
-        await handleRequest(msg, send, app, baseUrl, connState);
-        break;
-
-      case "subscribe":
-        handleSubscribe(
-          subscriptions,
-          msg,
-          send,
-          supervisor,
-          eventBus,
-          focusedSessionWatchManager,
-          connectedBrowsers,
-          browserProfileService,
-        );
-        break;
-
-      case "unsubscribe":
-        handleUnsubscribe(subscriptions, msg);
-        break;
-
-      case "upload_start":
-        await handleUploadStart(uploads, msg, send, uploadManager);
-        break;
-
-      case "upload_chunk":
-        await handleUploadChunk(uploads, msg, send, uploadManager);
-        break;
-
-      case "upload_end":
-        await handleUploadEnd(uploads, msg, send, uploadManager);
-        break;
-
-      case "ping":
-        send({ type: "pong", id: msg.id });
-        break;
-
-      default:
-        console.warn(
-          "[WS Relay] Unknown message type:",
-          (msg as { type?: string }).type,
-        );
-    }
-  } catch (err) {
-    // Send error response so client doesn't hang waiting
-    const messageId = getMessageId(msg);
-    console.error(
-      `[WS Relay] Unhandled error in routeMessage (type=${msg.type}, id=${messageId}):`,
-      err,
-    );
-    if (messageId) {
-      try {
-        send({
-          type: "response",
-          id: messageId,
-          status: 500,
-          body: { error: "Internal server error" },
-        });
-      } catch (sendErr) {
-        console.warn("[WS Relay] Failed to send error response:", sendErr);
-      }
-    }
-  }
+  await routeClientMessage(msg);
 }
 
 /**
