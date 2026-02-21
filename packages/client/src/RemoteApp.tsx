@@ -16,12 +16,13 @@
  * Both ConnectionGate and RelayConnectionGate render ConnectedAppContent when connected.
  */
 
-import { type ReactNode, useEffect } from "react";
+import { type ReactNode, useEffect, useMemo, useState } from "react";
 import { Navigate, Outlet } from "react-router-dom";
 import { ConnectionBar } from "./components/ConnectionBar";
 import { FloatingActionButton } from "./components/FloatingActionButton";
 import { HostOfflineModal } from "./components/HostOfflineModal";
 import { ReloadBanner } from "./components/ReloadBanner";
+import { Modal } from "./components/ui/Modal";
 import { InboxProvider } from "./contexts/InboxContext";
 import {
   RemoteConnectionProvider,
@@ -34,6 +35,7 @@ import { useSyncNotifyInAppSetting } from "./hooks/useNotifyInApp";
 import { useReloadNotifications } from "./hooks/useReloadNotifications";
 import { useRemoteActivityBusConnection } from "./hooks/useRemoteActivityBusConnection";
 import { useRemoteBasePath } from "./hooks/useRemoteBasePath";
+import { useVersion } from "./hooks/useVersion";
 import { connectionManager } from "./lib/connection";
 import { initClientLogCollection } from "./lib/diagnostics";
 
@@ -48,6 +50,10 @@ interface Props {
  */
 export function ConnectedAppContent({ children }: { children: ReactNode }) {
   useRemoteActivityBusConnection();
+  const { currentRelayUsername } = useRemoteConnection();
+  const { version: versionInfo } = useVersion();
+  const [dismissedRelayResumeWarning, setDismissedRelayResumeWarning] =
+    useState(false);
 
   const {
     isManualReloadMode,
@@ -59,8 +65,44 @@ export function ConnectedAppContent({ children }: { children: ReactNode }) {
     workerActivity,
   } = useReloadNotifications();
 
+  const showRelayResumeWarning = useMemo(() => {
+    if (dismissedRelayResumeWarning) return false;
+    if (!currentRelayUsername) return false;
+    if (!versionInfo) return false;
+    return (versionInfo.resumeProtocolVersion ?? 1) < 2;
+  }, [dismissedRelayResumeWarning, currentRelayUsername, versionInfo]);
+
   return (
     <>
+      {showRelayResumeWarning && (
+        <Modal
+          title="Server Update Required"
+          onClose={() => setDismissedRelayResumeWarning(true)}
+        >
+          <div className="host-offline-modal-content">
+            <p className="host-offline-message">
+              This relay host is running an older server version. New login
+              works, but session resume/reconnect will fail until the server is
+              updated.
+            </p>
+            <p className="host-offline-detail">
+              <strong>Host:</strong> {currentRelayUsername}
+            </p>
+            <p className="host-offline-hint">
+              Update the yepanywhere server package, then reconnect.
+            </p>
+            <div className="host-offline-actions">
+              <button
+                type="button"
+                className="btn-primary"
+                onClick={() => setDismissedRelayResumeWarning(true)}
+              >
+                OK
+              </button>
+            </div>
+          </div>
+        </Modal>
+      )}
       {isManualReloadMode && pendingReloads.backend && (
         <ReloadBanner
           target="backend"

@@ -864,6 +864,7 @@ describe("Secure WebSocket Transport E2E", () => {
 
         expect(response.status).toBe(200);
         expect(response.body).toHaveProperty("current");
+        expect(response.body).toHaveProperty("resumeProtocolVersion", 2);
       } finally {
         await closeWebSocket(ws);
       }
@@ -1113,6 +1114,7 @@ describe("Secure WebSocket Transport E2E", () => {
 
         expect(response.status).toBe(200);
         expect(response.body).toHaveProperty("current");
+        expect(response.body).toHaveProperty("resumeProtocolVersion", 2);
       } finally {
         await closeWebSocket(ws);
       }

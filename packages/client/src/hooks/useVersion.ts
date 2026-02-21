@@ -5,7 +5,7 @@ import { type VersionInfo, api } from "../api/client";
  * Hook to fetch and cache server version info.
  *
  * Returns:
- * - version: Version info (current, latest, updateAvailable)
+ * - version: Version info (current, latest, updateAvailable, optional capabilities)
  * - loading: Whether the fetch is in progress
  * - error: Any error that occurred during fetch
  * - refetch: Function to manually refresh version info

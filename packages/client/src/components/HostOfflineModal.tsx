@@ -29,6 +29,8 @@ function getErrorTitle(reason: AutoResumeErrorReason): string {
       return "Relay Unreachable";
     case "direct_unreachable":
       return "Host Unreachable";
+    case "resume_incompatible":
+      return "Server Update Required";
     default:
       return "Connection Failed";
   }
@@ -61,6 +63,9 @@ function getErrorMessage(error: AutoResumeError): string {
         ? "Could not connect to the server. Make sure the server is running and accessible."
         : "Could not establish a connection to the host.";
 
+    case "resume_incompatible":
+      return "This server is using an older relay resume protocol. New login still works, but automatic session resume is disabled until the server is updated.";
+
     default:
       return "An unexpected error occurred while trying to reconnect.";
   }
@@ -86,9 +91,11 @@ export function HostOfflineModal({
         )}
 
         <p className="host-offline-hint">
-          {error.mode === "relay"
-            ? "Make sure your server is running and has relay enabled."
-            : "Make sure your server is running and accessible."}
+          {error.reason === "resume_incompatible"
+            ? "Update the yepanywhere server package, then reconnect."
+            : error.mode === "relay"
+              ? "Make sure your server is running and has relay enabled."
+              : "Make sure your server is running and accessible."}
         </p>
 
         <div className="host-offline-actions">

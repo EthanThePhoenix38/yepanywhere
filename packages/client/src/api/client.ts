@@ -204,6 +204,8 @@ export interface VersionInfo {
   current: string;
   latest: string | null;
   updateAvailable: boolean;
+  /** Session resume protocol version supported by server (undefined on older servers). */
+  resumeProtocolVersion?: number;
 }
 
 export interface ServerInfo {

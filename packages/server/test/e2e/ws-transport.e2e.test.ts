@@ -220,7 +220,8 @@ describe("WebSocket Transport E2E", () => {
         const response = await sendRequest(ws, request);
 
         expect(response.status).toBe(200);
-        expect(response.body).toHaveProperty("current"); // version endpoint returns { current, latest, updateAvailable }
+        expect(response.body).toHaveProperty("current");
+        expect(response.body).toHaveProperty("resumeProtocolVersion", 2);
       } finally {
         ws.close();
       }

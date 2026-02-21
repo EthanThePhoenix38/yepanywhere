@@ -130,7 +130,12 @@ export interface VersionInfo {
   current: string;
   latest: string | null;
   updateAvailable: boolean;
+  /** Session resume protocol version supported by this server. */
+  resumeProtocolVersion: number;
 }
+
+/** Resume protocol version with nonce challenge + proof binding. */
+const RESUME_PROTOCOL_VERSION = 2;
 
 export const version = new Hono();
 
@@ -147,6 +152,7 @@ version.get("/", async (c) => {
     current,
     latest,
     updateAvailable,
+    resumeProtocolVersion: RESUME_PROTOCOL_VERSION,
   };
 
   return c.json(info);

@@ -67,6 +67,11 @@ type ConnectionState =
   | "authenticated"
   | "failed";
 
+/** Timeout waiting for resume challenge/proof responses before assuming old server protocol. */
+const RESUME_PHASE_TIMEOUT_MS = 5000;
+const RESUME_INCOMPATIBLE_ERROR =
+  "resume_incompatible: session resume unsupported by server";
+
 /** Stored session for resumption (persisted to localStorage) */
 export interface StoredSession {
   wsUrl: string;
@@ -277,11 +282,30 @@ export class SecureConnection implements Connection {
       };
 
       ws.onmessage = (event) => {
+        armResumeTimeout();
         this.handleSrpResumeResponse(
           event.data,
           authResolveHandler,
           authRejectHandler,
         );
+      };
+
+      let resumeTimeout: ReturnType<typeof setTimeout> | null = null;
+      const armResumeTimeout = () => {
+        if (resumeTimeout) {
+          clearTimeout(resumeTimeout);
+        }
+        resumeTimeout = setTimeout(() => {
+          if (
+            this.connectionState !== "srp_resume_init_sent" &&
+            this.connectionState !== "srp_resume_proof_sent"
+          ) {
+            return;
+          }
+          this.connectionState = "failed";
+          authRejectHandler(new Error(RESUME_INCOMPATIBLE_ERROR));
+          ws.close();
+        }, RESUME_PHASE_TIMEOUT_MS);
       };
 
       // Start resume handshake by requesting a nonce challenge.
@@ -293,8 +317,17 @@ export class SecureConnection implements Connection {
       ws.send(JSON.stringify(resumeInit));
       this.connectionState = "srp_resume_init_sent";
       console.log("[SecureConnection] SRP resume init sent");
+      armResumeTimeout();
 
-      authPromise.then(resolve).catch(reject);
+      authPromise
+        .then(() => {
+          if (resumeTimeout) clearTimeout(resumeTimeout);
+          resolve();
+        })
+        .catch((err) => {
+          if (resumeTimeout) clearTimeout(resumeTimeout);
+          reject(err);
+        });
     });
   }
 
@@ -559,6 +592,45 @@ export class SecureConnection implements Connection {
         authResolveHandler = res;
         authRejectHandler = rej;
       });
+      let resumeTimeout: ReturnType<typeof setTimeout> | null = null;
+
+      const clearResumeTimeout = () => {
+        if (resumeTimeout) {
+          clearTimeout(resumeTimeout);
+          resumeTimeout = null;
+        }
+      };
+
+      const armResumeTimeout = () => {
+        clearResumeTimeout();
+        resumeTimeout = setTimeout(() => {
+          if (
+            this.connectionState !== "srp_resume_init_sent" &&
+            this.connectionState !== "srp_resume_proof_sent"
+          ) {
+            return;
+          }
+
+          if (this.password) {
+            console.log(
+              "[SecureConnection] Session resume timed out, falling back to full SRP",
+            );
+            this.storedSession = null;
+            this.startFullSrpHandshake(authRejectHandler).catch((err) => {
+              this.connectionState = "failed";
+              authRejectHandler(
+                err instanceof Error ? err : new Error(String(err)),
+              );
+              ws.close();
+            });
+            return;
+          }
+
+          this.connectionState = "failed";
+          authRejectHandler(new Error(RESUME_INCOMPATIBLE_ERROR));
+          ws.close();
+        }, RESUME_PHASE_TIMEOUT_MS);
+      };
 
       ws.onopen = async () => {
         console.log("[SecureConnection] WebSocket connected");
@@ -575,6 +647,7 @@ export class SecureConnection implements Connection {
             ws.send(JSON.stringify(resumeInit));
             this.connectionState = "srp_resume_init_sent";
             console.log("[SecureConnection] SRP resume init sent");
+            armResumeTimeout();
             return;
           }
 
@@ -602,6 +675,7 @@ export class SecureConnection implements Connection {
           this.connectionState === "srp_resume_init_sent" ||
           this.connectionState === "srp_resume_proof_sent"
         ) {
+          armResumeTimeout();
           await this.handleSrpResumeResponse(
             event.data,
             authResolveHandler,
@@ -634,10 +708,12 @@ export class SecureConnection implements Connection {
 
       authPromise
         .then(() => {
+          clearResumeTimeout();
           clearTimeout(timeout);
           resolve();
         })
         .catch((err) => {
+          clearResumeTimeout();
           clearTimeout(timeout);
           reject(err);
         });

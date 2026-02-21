@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { api, fetchJSON } from "../../api/client";
+import { useOptionalRemoteConnection } from "../../contexts/RemoteConnectionContext";
 import { useDeveloperMode } from "../../hooks/useDeveloperMode";
 import { useOnboarding } from "../../hooks/useOnboarding";
 import { usePwaInstall } from "../../hooks/usePwaInstall";
@@ -9,9 +10,15 @@ import { activityBus } from "../../lib/activityBus";
 export function AboutSettings() {
   const { canInstall, isInstalled, install } = usePwaInstall();
   const { version: versionInfo } = useVersion();
+  const remoteConnection = useOptionalRemoteConnection();
   const { resetOnboarding } = useOnboarding();
   const { remoteLogCollectionEnabled, setRemoteLogCollectionEnabled } =
     useDeveloperMode();
+  const isRelayConnection = !!remoteConnection?.currentRelayUsername;
+  const hasResumeProtocolSupport =
+    (versionInfo?.resumeProtocolVersion ?? 1) >= 2;
+  const showRelayResumeUpdateWarning =
+    isRelayConnection && !!versionInfo && !hasResumeProtocolSupport;
 
   // Server restart state
   const [restarting, setRestarting] = useState(false);
@@ -93,6 +100,12 @@ export function AboutSettings() {
               )}
             </p>
             <p>Client: v{__APP_VERSION__}</p>
+            {showRelayResumeUpdateWarning && (
+              <p className="settings-warning">
+                Relay session resume requires a server update. New login works,
+                but reconnect/resume will fail until the server is upgraded.
+              </p>
+            )}
             {versionInfo?.updateAvailable && (
               <p className="settings-update-hint">
                 Run <code>npm i -g yepanywhere</code> to update

@@ -43,6 +43,11 @@ function createAutoResumeError(
   } else if (lowerMessage.includes("unknown_username")) {
     reason = "unknown_username";
   } else if (
+    lowerMessage.includes("resume_incompatible") ||
+    lowerMessage.includes("session resume unsupported")
+  ) {
+    reason = "resume_incompatible";
+  } else if (
     lowerMessage.includes("timeout") ||
     lowerMessage.includes("timed out")
   ) {

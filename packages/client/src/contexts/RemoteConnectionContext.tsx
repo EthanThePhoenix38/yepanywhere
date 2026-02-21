@@ -66,6 +66,7 @@ export type AutoResumeErrorReason =
   | "relay_timeout" // Timeout waiting for relay or server
   | "relay_unreachable" // Can't connect to relay server
   | "direct_unreachable" // Can't reach server via direct WebSocket
+  | "resume_incompatible" // Server is too old for two-phase session resume
   | "auth_failed" // Session expired or auth error
   | "other"; // Unexpected error
 
@@ -191,6 +192,13 @@ function clearStoredCredentials(): void {
 /** Categorize an error message into a structured AutoResumeErrorReason */
 function categorizeError(message: string): AutoResumeErrorReason {
   const lowerMessage = message.toLowerCase();
+
+  if (
+    lowerMessage.includes("resume_incompatible") ||
+    lowerMessage.includes("session resume unsupported")
+  ) {
+    return "resume_incompatible";
+  }
 
   // Relay-specific errors
   if (lowerMessage.includes("server_offline")) {
