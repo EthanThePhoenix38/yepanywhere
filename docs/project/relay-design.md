@@ -225,6 +225,12 @@ This allows rebalancing by telling yepanywhere servers to reconnect to different
 - Message contents (encrypted)
 - Files being uploaded (encrypted)
 
+### Compression Before Encryption (reviewed 2026-02-21)
+- Relay payloads may be gzip-compressed before encryption for bandwidth/latency wins on large responses.
+- This pattern can theoretically enable CRIME/BREACH-style length-oracle attacks when attacker-controlled input and secrets share the same compressed payload and an attacker can repeatedly observe ciphertext lengths.
+- Current risk is accepted as low for this architecture: authenticated E2E relay traffic, per-message gzip streams (no shared cross-message compression context), and no known high-risk secret-reflection response classes in relay payloads.
+- If this threat model changes, keep compression and add ciphertext length bucketing/padding for sensitive message classes rather than disabling compression globally.
+
 ### Abuse Prevention
 - Rate limit registration (3 per IP per hour)
 - Rate limit SRP attempts (prevent brute force)
