@@ -28,13 +28,11 @@ import {
   BinaryEnvelopeError,
   BinaryFormat,
   BinaryFrameError,
-  MIN_BINARY_ENVELOPE_LENGTH,
   UploadChunkError,
   decodeUploadChunkPayload,
   encodeJsonFrame,
   isBinaryData,
   isClientCapabilities,
-  isEncryptedEnvelope,
   isSrpClientHello,
   isSrpClientProof,
   isSrpSessionResume,
@@ -43,7 +41,6 @@ import {
 import type { Hono } from "hono";
 import {
   decompressGzip,
-  decrypt,
   decryptBinaryEnvelopeRaw,
   encrypt,
   encryptToBinaryEnvelopeWithCompression,
@@ -81,6 +78,11 @@ import {
   hasEstablishedSrpTransport,
   shouldMarkInternalWsAuthenticated,
 } from "./ws-transport-auth.js";
+import {
+  isBinaryEncryptedEnvelope,
+  parseApplicationClientMessage,
+  rejectPlaintextBinaryWhenEncryptedRequired,
+} from "./ws-transport-message-auth.js";
 
 /** Progress report interval in bytes (64KB) */
 export const PROGRESS_INTERVAL = 64 * 1024;
@@ -901,48 +903,6 @@ export async function cleanupUploads(
 }
 
 /**
- * Check if binary data is a binary encrypted envelope.
- * Binary envelope: [1 byte: version 0x01][24 bytes: nonce][ciphertext]
- * vs Phase 0 binary: [1 byte: format 0x01-0x03][payload]
- *
- * Once a connection has sent one encrypted envelope (useBinaryEncrypted=true),
- * all subsequent binary frames are encrypted — no ambiguity.
- *
- * For the first binary frame, the auth state is the primary discriminator:
- * authenticated connections always use encrypted envelopes, while
- * unauthenticated connections use Phase 0 frames. These are mutually exclusive
- * because clients must complete SRP before sending application messages.
- */
-export function isBinaryEncryptedEnvelope(
-  bytes: Uint8Array,
-  connState: ConnectionState,
-): boolean {
-  // Must be authenticated with a session key to receive encrypted data
-  if (!hasEstablishedSrpTransport(connState)) {
-    if (bytes.length >= MIN_BINARY_ENVELOPE_LENGTH && bytes[0] === 0x01) {
-      console.warn(
-        `[WS Relay] Binary envelope rejected: authState=${connState.authState}, hasKey=${!!connState.sessionKey}`,
-      );
-    }
-    return false;
-  }
-  // Once we've seen one encrypted envelope, all binary frames are encrypted.
-  // No heuristic needed — the connection has committed to encrypted mode.
-  if (connState.useBinaryEncrypted) {
-    return true;
-  }
-  // Must be at least minimum envelope length
-  if (bytes.length < MIN_BINARY_ENVELOPE_LENGTH) {
-    return false;
-  }
-  // First byte must be version 0x01
-  if (bytes[0] !== 0x01) {
-    return false;
-  }
-  return true;
-}
-
-/**
  * Options for handleMessage that differ between direct and relay connections.
  */
 export interface HandleMessageOptions {
@@ -1122,14 +1082,12 @@ export async function handleMessage(
     // In remote-auth mode, authenticated connections must only send encrypted
     // envelopes. Reject plaintext binary frames post-auth.
     if (
-      srpRequiredPolicy &&
-      hasEstablishedSrpTransport(connState) &&
-      connState.requiresEncryptedMessages
+      rejectPlaintextBinaryWhenEncryptedRequired(
+        ws,
+        connState,
+        srpRequiredPolicy,
+      )
     ) {
-      console.warn(
-        "[WS Relay] Received plaintext binary frame after authentication",
-      );
-      ws.close(4005, "Encrypted message required");
       return;
     }
 
@@ -1227,52 +1185,14 @@ export async function handleMessage(
     return;
   }
 
-  // Handle encrypted messages (JSON envelope format - legacy)
-  let msg: RemoteClientMessage;
-  if (isEncryptedEnvelope(parsed)) {
-    if (!hasEstablishedSrpTransport(connState)) {
-      console.warn(
-        "[WS Relay] Received encrypted message but not authenticated",
-      );
-      ws.close(4001, "Authentication required");
-      return;
-    }
-    const decrypted = decrypt(
-      parsed.nonce,
-      parsed.ciphertext,
-      connState.sessionKey,
-    );
-    if (!decrypted) {
-      console.warn("[WS Relay] Failed to decrypt message");
-      ws.close(4004, "Decryption failed");
-      return;
-    }
-    try {
-      msg = JSON.parse(decrypted) as RemoteClientMessage;
-    } catch {
-      console.warn("[WS Relay] Failed to parse decrypted message");
-      ws.close(4004, "Decryption failed");
-      return;
-    }
-  } else {
-    // Plaintext message - check auth requirements
-    if (srpRequiredPolicy && !hasEstablishedSrpTransport(connState)) {
-      console.warn("[WS Relay] Received plaintext message but auth required");
-      ws.close(4001, "Authentication required");
-      return;
-    }
-    if (
-      srpRequiredPolicy &&
-      hasEstablishedSrpTransport(connState) &&
-      connState.requiresEncryptedMessages
-    ) {
-      console.warn(
-        "[WS Relay] Received plaintext message after authentication",
-      );
-      ws.close(4005, "Encrypted message required");
-      return;
-    }
-    msg = parsed as RemoteClientMessage;
+  const msg = parseApplicationClientMessage(
+    ws,
+    connState,
+    srpRequiredPolicy,
+    parsed,
+  );
+  if (!msg) {
+    return;
   }
 
   await routeMessage(msg, subscriptions, uploads, send, deps, connState);
