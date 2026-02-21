@@ -64,7 +64,7 @@ function getErrorMessage(error: AutoResumeError): string {
         : "Could not establish a connection to the host.";
 
     case "resume_incompatible":
-      return "This server is using an older relay resume protocol. New login still works, but automatic session resume is disabled until the server is updated.";
+      return "The server needs to be updated for improved session resume security. Resume won't work until then, but you can still log in normally.";
 
     default:
       return "An unexpected error occurred while trying to reconnect.";
@@ -92,7 +92,7 @@ export function HostOfflineModal({
 
         <p className="host-offline-hint">
           {error.reason === "resume_incompatible"
-            ? "Update the yepanywhere server package, then reconnect."
+            ? "Run `npm update -g yepanywhere`, restart the server, then reconnect."
             : error.mode === "relay"
               ? "Make sure your server is running and has relay enabled."
               : "Make sure your server is running and accessible."}

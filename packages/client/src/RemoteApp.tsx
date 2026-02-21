@@ -81,15 +81,15 @@ export function ConnectedAppContent({ children }: { children: ReactNode }) {
         >
           <div className="host-offline-modal-content">
             <p className="host-offline-message">
-              This relay host is running an older server version. New login
-              works, but session resume/reconnect will fail until the server is
-              updated.
+              The server on <strong>{currentRelayUsername}</strong> needs to be
+              updated for improved session resume security. Resume won't work
+              until then, but you can still log in normally.
             </p>
             <p className="host-offline-detail">
-              <strong>Host:</strong> {currentRelayUsername}
+              <code>npm update -g yepanywhere</code>
             </p>
             <p className="host-offline-hint">
-              Update the yepanywhere server package, then reconnect.
+              Then restart the server and reconnect.
             </p>
             <div className="host-offline-actions">
               <button
