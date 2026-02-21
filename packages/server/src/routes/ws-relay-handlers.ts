@@ -78,10 +78,14 @@ import type { Supervisor } from "../supervisor/Supervisor.js";
 import type { UploadManager } from "../uploads/manager.js";
 import type { EventBus, FocusedSessionWatchManager } from "../watcher/index.js";
 import {
-  isPolicySrpRequired,
-  isPolicyTrustedWithoutSrp,
   type WsConnectionPolicy,
+  isPolicySrpRequired,
 } from "./ws-auth-policy.js";
+import {
+  hasEstablishedSrpTransport,
+  isSrpProofPending,
+  shouldMarkInternalWsAuthenticated,
+} from "./ws-transport-auth.js";
 
 /** Progress report interval in bytes (64KB) */
 export const PROGRESS_INTERVAL = 64 * 1024;
@@ -440,51 +444,6 @@ function startSrpHandshakeTimeout(
 
 export function cleanupConnectionState(connState: ConnectionState): void {
   cleanupSrpHandshakeState(connState);
-}
-
-/**
- * True only when SRP transport authentication completed and key exists.
- */
-export function hasEstablishedSrpTransport(
-  connState: Pick<ConnectionState, "authState" | "sessionKey">,
-): connState is Pick<ConnectionState, "authState" | "sessionKey"> & {
-  authState: "authenticated";
-  sessionKey: Uint8Array;
-} {
-  return connState.authState === "authenticated" && !!connState.sessionKey;
-}
-
-/**
- * True while SRP challenge was issued and proof is pending.
- */
-export function isSrpProofPending(
-  connState: Pick<ConnectionState, "authState">,
-): boolean {
-  return connState.authState === "srp_waiting_proof";
-}
-
-/**
- * True when the connection was trusted by local websocket policy and does not
- * require SRP transport keys.
- */
-export function isTrustedWithoutSrpTransport(
-  connState: Pick<ConnectionState, "connectionPolicy" | "authState">,
-): boolean {
-  return (
-    isPolicyTrustedWithoutSrp(connState.connectionPolicy) &&
-    connState.authState === "authenticated"
-  );
-}
-
-/**
- * True when the connection can issue internal app requests via websocket relay.
- */
-export function shouldMarkInternalWsAuthenticated(
-  connState: Pick<ConnectionState, "connectionPolicy" | "authState" | "sessionKey">,
-): boolean {
-  return (
-    hasEstablishedSrpTransport(connState) || isTrustedWithoutSrpTransport(connState)
-  );
 }
 
 /**
@@ -1679,7 +1638,10 @@ export async function handleMessage(
       return;
     }
 
-    if (hasEstablishedSrpTransport(connState) && isBinaryEncryptedEnvelope(bytes, connState)) {
+    if (
+      hasEstablishedSrpTransport(connState) &&
+      isBinaryEncryptedEnvelope(bytes, connState)
+    ) {
       try {
         const result = decryptBinaryEnvelopeRaw(bytes, connState.sessionKey);
         if (!result) {
@@ -1732,7 +1694,14 @@ export async function handleMessage(
             return;
           }
 
-          await routeMessage(msg, subscriptions, uploads, send, deps, connState);
+          await routeMessage(
+            msg,
+            subscriptions,
+            uploads,
+            send,
+            deps,
+            connState,
+          );
           return;
         } catch {
           console.warn("[WS Relay] Failed to parse decrypted binary envelope");

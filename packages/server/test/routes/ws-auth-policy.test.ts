@@ -1,9 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
+  type WsConnectionPolicy,
   deriveWsConnectionPolicy,
   isPolicySrpRequired,
   isPolicyTrustedWithoutSrp,
-  type WsConnectionPolicy,
 } from "../../src/routes/ws-auth-policy.js";
 
 describe("WebSocket Auth Policy", () => {

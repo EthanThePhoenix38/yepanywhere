@@ -15,6 +15,10 @@ import type { Supervisor } from "../supervisor/Supervisor.js";
 import type { UploadManager } from "../uploads/manager.js";
 import type { EventBus, FocusedSessionWatchManager } from "../watcher/index.js";
 import {
+  deriveWsConnectionPolicy,
+  isPolicyTrustedWithoutSrp,
+} from "./ws-auth-policy.js";
+import {
   type ConnectionState,
   type RelayHandlerDeps,
   type RelayUploadState,
@@ -26,10 +30,6 @@ import {
   createSendFn,
   handleMessage,
 } from "./ws-relay-handlers.js";
-import {
-  deriveWsConnectionPolicy,
-  isPolicyTrustedWithoutSrp,
-} from "./ws-auth-policy.js";
 
 // biome-ignore lint/suspicious/noExplicitAny: Complex third-party type from @hono/node-ws
 type UpgradeWebSocketFn = (createEvents: (c: Context) => WSEvents) => any;

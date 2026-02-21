@@ -41,9 +41,7 @@ export function deriveWsConnectionPolicy(
   return "srp_required";
 }
 
-export function isPolicyTrustedWithoutSrp(
-  policy: WsConnectionPolicy,
-): boolean {
+export function isPolicyTrustedWithoutSrp(policy: WsConnectionPolicy): boolean {
   return policy === "local_unrestricted" || policy === "local_cookie_trusted";
 }
 

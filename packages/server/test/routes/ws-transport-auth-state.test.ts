@@ -1,11 +1,11 @@
 import { describe, expect, it } from "vitest";
+import { createConnectionState } from "../../src/routes/ws-relay-handlers.js";
 import {
-  createConnectionState,
   hasEstablishedSrpTransport,
-  isTrustedWithoutSrpTransport,
   isSrpProofPending,
+  isTrustedWithoutSrpTransport,
   shouldMarkInternalWsAuthenticated,
-} from "../../src/routes/ws-relay-handlers.js";
+} from "../../src/routes/ws-transport-auth.js";
 
 describe("WebSocket Transport Auth State Helpers", () => {
   it("starts unauthenticated with no established SRP transport", () => {
