@@ -13,7 +13,7 @@ Official apps from AI providers:
 | [Codex App](codex-app.md) | macOS + cloud | Cloud sandboxes, automations, GitHub integration |
 | [Claude Code Desktop](claude-code-desktop.md) | Desktop (Electron) | Remote execution, Cowork for non-coders |
 
-## Third-Party Tools
+## Third-Party Tools (Agent Supervisors)
 
 | Tool | Type | Agents | Key Differentiator |
 |------|------|--------|-------------------|
@@ -23,6 +23,22 @@ Official apps from AI providers:
 | [Happy](happy.md) | Mobile + CLI | Claude | Voice commands, native mobile apps |
 
 See also [Community Projects](community-projects.md) for smaller tools shared on Reddit/forums.
+
+## The "Claw" Ecosystem (Adjacent Category)
+
+"Claw" is now a recognized category term (Karpathy coined it, Willison validated it, Feb 2026) for AI agents that run on personal hardware, communicate via messaging, and schedule autonomous tasks. These are **runtimes that wrap LLM APIs**, not agent supervisors like yepanywhere. But they overlap enough to track.
+
+| Project | Stars | Language | Key Differentiator |
+|---------|-------|----------|-------------------|
+| [OpenClaw](https://github.com/openclaw/openclaw) | 215k | TypeScript | The original. 38+ channels, 5,700+ skills on ClawHub |
+| [Nanobot](https://github.com/HKUDS/nanobot) | 22.4k | Python | ~4K lines. Research-friendly. MCP integration |
+| [PicoClaw](https://github.com/sipeed/picoclaw) | 17.2k | Go | <10MB RAM, runs on $10 RISC-V boards |
+| [ZeroClaw](https://github.com/zeroclaw-labs/zeroclaw) | 16k | Rust | <5MB RAM, single binary, 22+ providers |
+| [NanoClaw](https://github.com/qwibitai/nanoclaw) | 10.2k | TypeScript | Container isolation (Docker/Apple Container) |
+| [Moltworker](https://github.com/cloudflare/moltworker) | 8.6k | TypeScript | Serverless on Cloudflare Workers |
+| [IronClaw](https://github.com/nearai/ironclaw) | 2.6k | Rust | WASM sandboxing, PostgreSQL, defense-in-depth |
+
+**Why we're different:** Claws are runtimes — they manage LLM API calls, tool execution, and session state. We're a supervisor/relay — we manage existing agents (Claude Code, Codex) that handle their own execution. See the [Seneschal competitive analysis](../../../assistant-data/assistants/scout/docs/seneschal-ideas.md) for detailed positioning.
 
 ## Common Features Across Competitors
 
@@ -54,4 +70,4 @@ Features competitors have that we should consider:
 
 ## Last Updated
 
-2026-02-03
+2026-02-21
