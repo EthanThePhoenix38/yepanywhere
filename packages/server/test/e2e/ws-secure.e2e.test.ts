@@ -587,6 +587,76 @@ describe("Secure WebSocket Transport E2E", () => {
         await closeWebSocket(ws);
       }
     }, 15000);
+
+    it("should reject a second srp_hello while waiting for proof", async () => {
+      const ws = await connectWebSocket();
+
+      try {
+        const hello: SrpClientHello = {
+          type: "srp_hello",
+          identity: TEST_USERNAME,
+        };
+        ws.send(JSON.stringify(hello));
+
+        await waitForMessage<SrpServerChallenge>(
+          ws,
+          (msg): msg is SrpServerChallenge => isSrpServerChallenge(msg),
+          5000,
+        );
+
+        const closePromise = new Promise<{ code: number; reason: string }>(
+          (resolve) => {
+            ws.on("close", (code, reason) => {
+              resolve({ code, reason: reason.toString() });
+            });
+          },
+        );
+
+        ws.send(JSON.stringify(hello));
+
+        const closeResult = await closePromise;
+        expect(closeResult.code).toBe(4008);
+        expect(closeResult.reason).toBe("Authentication already in progress");
+      } finally {
+        await closeWebSocket(ws);
+      }
+    }, 15000);
+
+    it("should close connection when SRP proof is not provided in time", async () => {
+      const ws = await connectWebSocket();
+
+      try {
+        const hello: SrpClientHello = {
+          type: "srp_hello",
+          identity: TEST_USERNAME,
+        };
+        ws.send(JSON.stringify(hello));
+
+        await waitForMessage<SrpServerChallenge>(
+          ws,
+          (msg): msg is SrpServerChallenge => isSrpServerChallenge(msg),
+          5000,
+        );
+
+        const closeResult = await new Promise<{ code: number; reason: string }>(
+          (resolve, reject) => {
+            const timer = setTimeout(
+              () => reject(new Error("Expected SRP timeout close")),
+              15000,
+            );
+            ws.on("close", (code, reason) => {
+              clearTimeout(timer);
+              resolve({ code, reason: reason.toString() });
+            });
+          },
+        );
+
+        expect(closeResult.code).toBe(4008);
+        expect(closeResult.reason).toBe("Authentication timeout");
+      } finally {
+        await closeWebSocket(ws);
+      }
+    }, 20000);
   });
 
   describe("Session Resume Nonce Challenge", () => {

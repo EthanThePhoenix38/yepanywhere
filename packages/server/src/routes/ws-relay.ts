@@ -19,6 +19,7 @@ import {
   type RelayHandlerDeps,
   type RelayUploadState,
   type WSAdapter,
+  cleanupConnectionState,
   cleanupSubscriptions,
   cleanupUploads,
   createConnectionState,
@@ -236,6 +237,7 @@ export function createWsRelayRoutes(
 
       onClose(_evt, _ws) {
         if (pingInterval) clearInterval(pingInterval);
+        cleanupConnectionState(connState);
 
         // Clean up all uploads
         cleanupUploads(uploads, uploadManager).catch((err) => {
@@ -353,6 +355,7 @@ export function createAcceptRelayConnection(
     // Wire up close handling
     rawWs.on("close", () => {
       clearInterval(pingInterval);
+      cleanupConnectionState(connState);
 
       cleanupUploads(uploads, uploadManager).catch((err) => {
         console.error("[WS Relay] Error cleaning up uploads:", err);
