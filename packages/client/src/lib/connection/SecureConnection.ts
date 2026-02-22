@@ -1080,7 +1080,9 @@ export class SecureConnection implements Connection {
    * Send an encrypted message over the WebSocket.
    */
   private send(msg: RemoteClientMessage): void {
-    if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
+    const websocketOpenState =
+      typeof WebSocket !== "undefined" ? WebSocket.OPEN : 1;
+    if (!this.ws || this.ws.readyState !== websocketOpenState) {
       throw new Error("WebSocket not connected");
     }
     if (!this.sessionKey) {
