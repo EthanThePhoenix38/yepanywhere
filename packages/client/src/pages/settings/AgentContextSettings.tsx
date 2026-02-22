@@ -49,9 +49,8 @@ export function AgentContextSettings() {
     <section className="settings-section">
       <h2>Agent Context</h2>
       <p className="settings-section-description">
-        Custom instructions appended to the system prompt for all sessions,
-        across all providers. Use this for personal context, coding conventions,
-        or paths to reference files the agent should consult.
+        Instructions included in every session's system prompt. Use this for
+        coding conventions, project context, or paths to reference files.
       </p>
 
       <div className="settings-group">
@@ -62,9 +61,8 @@ export function AgentContextSettings() {
           <div className="settings-item-info">
             <strong>Global Instructions</strong>
             <p>
-              These instructions are included in every new session. For Claude,
-              they are appended to the system prompt. For other providers, they
-              are prepended to the first message.
+              Appended to the system prompt for Claude. Prepended to the first
+              message for other providers.
             </p>
           </div>
           <textarea
@@ -76,7 +74,9 @@ export function AgentContextSettings() {
               setHasChanges(value !== serverValue);
               setSaveError(null);
             }}
-            placeholder={`Example:\n\nMy name is Kyle. I'm a software engineer working on multiple projects.\n\nFor cross-project context and how my projects relate, see ~/code/dotfiles/projects/README.md\n\nPersonal goals and career context: ~/notes/about-me.md\n\nCoding conventions:\n- Always use TypeScript strict mode\n- Prefer functional patterns over classes\n- Run tests before committing`}
+            placeholder={
+              "Use TypeScript strict mode. Prefer functional patterns.\n\nProject context: ~/code/dotfiles/projects/README.md"
+            }
             rows={10}
           />
           <div

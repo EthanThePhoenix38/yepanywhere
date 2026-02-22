@@ -580,8 +580,13 @@ function SessionPageContent({
   // If process is actively in-turn or waiting for input, don't mark tools as orphaned.
   // "orphanedToolUseIds" from server just means "no result yet" - but if the process is
   // in-turn (e.g., executing a Task subagent) or waiting for approval, they're not orphaned.
+  // Also suppress orphan marking when the session stream is disconnected - we can't trust
+  // processState without the stream, so show tools as pending (spinner) rather than
+  // incorrectly marking them as interrupted.
   const activeToolApproval =
-    processState === "in-turn" || processState === "waiting-input";
+    processState === "in-turn" ||
+    processState === "waiting-input" ||
+    (hasSessionUpdateStream && !sessionUpdatesConnected);
 
   // Detect if session has pending tool calls without results
   // This can happen when the session is unowned but was active in another process (VS Code, CLI)
