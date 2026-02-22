@@ -365,6 +365,25 @@ export const CodexTurnAbortedEventSchema = z
 export type CodexTurnAbortedEvent = z.infer<typeof CodexTurnAbortedEventSchema>;
 
 /**
+ * Task started event - emitted at the beginning of an agent turn.
+ */
+export const CodexTaskStartedEventSchema = z.object({
+  type: z.literal("task_started"),
+  turn_id: z.string(),
+  model_context_window: z.number(),
+  collaboration_mode_kind: z.string(),
+});
+
+/**
+ * Task complete event - emitted when an agent turn finishes.
+ */
+export const CodexTaskCompleteEventSchema = z.object({
+  type: z.literal("task_complete"),
+  turn_id: z.string(),
+  last_agent_message: z.string(),
+});
+
+/**
  * Union of event message types.
  */
 export const CodexEventMsgPayloadSchema = z.discriminatedUnion("type", [
@@ -375,6 +394,8 @@ export const CodexEventMsgPayloadSchema = z.discriminatedUnion("type", [
   CodexContextCompactedEventSchema,
   CodexItemCompletedEventSchema,
   CodexTurnAbortedEventSchema,
+  CodexTaskStartedEventSchema,
+  CodexTaskCompleteEventSchema,
 ]);
 
 export type CodexEventMsgPayload = z.infer<typeof CodexEventMsgPayloadSchema>;
