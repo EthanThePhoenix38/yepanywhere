@@ -74,7 +74,8 @@ export function createStaticRoutes(options: StaticServeOptions): Hono {
 
         // Add CSP frame-ancestors for HTML files (must be HTTP header, not meta tag)
         if (ext === ".html") {
-          headers["Content-Security-Policy"] = "frame-ancestors 'self' tauri://localhost https://tauri.localhost";
+          headers["Content-Security-Policy"] =
+            "frame-ancestors 'self' tauri://localhost https://tauri.localhost";
         }
 
         return c.body(content, 200, headers);
@@ -97,7 +98,8 @@ export function createStaticRoutes(options: StaticServeOptions): Hono {
       const indexHtml = await fs.promises.readFile(indexPath, "utf-8");
       return c.html(indexHtml, 200, {
         // frame-ancestors must be set via HTTP header (not meta tag)
-        "Content-Security-Policy": "frame-ancestors 'self' tauri://localhost https://tauri.localhost",
+        "Content-Security-Policy":
+          "frame-ancestors 'self' tauri://localhost https://tauri.localhost",
         // Don't cache index.html (hashed asset paths change on rebuild)
         "Cache-Control": "no-cache",
       });

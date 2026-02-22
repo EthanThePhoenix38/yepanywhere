@@ -63,7 +63,12 @@ export function Modal({ title, children, onClose }: ModalProps) {
       onMouseDown={(e) => e.stopPropagation()}
     >
       {/* biome-ignore lint/a11y/useKeyWithClickEvents: click only stops propagation, keyboard handled globally */}
-      <div className="modal" role="dialog" aria-modal="true" onClick={handleModalClick}>
+      <div
+        className="modal"
+        role="dialog"
+        aria-modal="true"
+        onClick={handleModalClick}
+      >
         <div className="modal-header">
           <span className="modal-title">{title}</span>
           <button

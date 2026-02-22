@@ -35,6 +35,9 @@
       "recommended": true,
       "suspicious": {
         "noExplicitAny": "warn"
+      },
+      "a11y": {
+        "useSemanticElements": "off"
       }
     }
   },

@@ -105,7 +105,6 @@ export function SchemaWarning({ toolName, errors }: SchemaWarningProps) {
 
   return (
     <>
-      {/* biome-ignore lint/a11y/useSemanticElements: span+role avoids nested button issues in clickable containers */}
       <span
         role="button"
         tabIndex={0}
