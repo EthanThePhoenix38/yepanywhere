@@ -236,6 +236,48 @@ Tech: Bash (launcher), vanilla JS (bridge ~200 lines, server ~900 lines injected
 
 ---
 
+### Chroxy
+**GitHub:** https://github.com/blamechris/chroxy
+**Status:** Active (700+ commits, v0.1.0, MIT)
+
+React Native mobile app + Node.js daemon for remote Claude Code supervision:
+- Dual-mode: clean chat UI **and** full xterm.js terminal (PTY/tmux mode)
+- Cloudflare Quick Tunnels (zero-config, no account) or Named Tunnels (stable URL)
+- LAN discovery via mDNS/Bonjour
+- E2E encryption (NaCl X25519 + XSalsa20-Poly1305 — same scheme as yepanywhere)
+- Voice input via `expo-speech-recognition`
+- QR code connection setup
+- Plan mode approval UI (inline card in chat view)
+- File browser with syntax highlighting + diff viewer
+- Push notifications via Expo Push Service
+- Provider registry: pluggable backends (SDK, legacy CLI, PTY) with capability flags
+- Claude Agent SDK v0.1.0 integration (in-process permissions, live model switching)
+- Session ring buffer (500 messages in-memory, lost on crash)
+- Docker support (headless CLI mode only)
+
+Tech: Plain JavaScript server (no TypeScript, no build step), React Native (Expo SDK 54, TypeScript), Zustand, node-pty, Cloudflare tunnels
+
+**Note:** Closest direct competitor to yepanywhere — same problem space, same E2E encryption approach. Key differences: native mobile app (no web client), Cloudflare tunnels (vs self-hosted relay), plain JS server (no type safety). High velocity but no CI/CD, no app tests (700+ server tests only), tokens stored in plaintext. The no-TypeScript server is a ceiling — 11k LOC with no compiler catching refactoring breakages. Expo app requires custom dev builds (not on app stores). Cloudflare Quick Tunnels have no SLA.
+
+---
+
+### claude-remote-approver
+**GitHub:** https://github.com/yuuichieguchi/claude-remote-approver
+**Status:** Early (minimal)
+
+Remote approval of Claude Code permission prompts via phone notifications:
+- Sends tool permission prompts (Bash, Write, Edit) as push notifications via ntfy.sh
+- Tap-to-approve from phone
+- 120-second timeout with auto-deny
+- Configurable ntfy server (self-hostable)
+- Secure topic generation (128-bit random)
+
+Tech: JavaScript, Node.js, ntfy.sh
+
+**Note:** Single-purpose tool — only handles approval, not session viewing or chat. Lightweight alternative to a full supervisor for users who just want mobile approvals.
+
+---
+
 ## Patterns Observed
 
 1. **Tailscale is popular** — Many use it for secure remote access
@@ -249,4 +291,4 @@ Tech: Bash (launcher), vanilla JS (bridge ~200 lines, server ~900 lines injected
 
 ## Last Updated
 
-2026-02-20
+2026-02-22
