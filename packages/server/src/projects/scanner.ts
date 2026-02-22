@@ -148,11 +148,14 @@ export class ProjectScanner {
       // On Unix/macOS: /home/user/project → -home-user-project (starts with -)
       // On Windows: C:\Users\kaa\project → c--Users-kaa-project (drive letter + --)
       if (dir.startsWith("-") || /^[a-zA-Z]--/.test(dir)) {
-        const projectPath = await this.getProjectPathFromSessions(dirPath);
-        if (projectPath) {
-          const sessionCount = await this.countSessions(dirPath);
-          const lastActivity = await this.getLastActivity(dirPath);
-          addOrMerge(projectPath, dirPath, sessionCount, lastActivity);
+        const info = await this.getProjectDirInfo(dirPath);
+        if (info) {
+          addOrMerge(
+            info.projectPath,
+            dirPath,
+            info.sessionCount,
+            info.lastActivity,
+          );
         }
         continue;
       }
@@ -171,13 +174,14 @@ export class ProjectScanner {
 
       for (const projectDir of projectDirs) {
         const projectDirPath = join(dirPath, projectDir);
-        const projectPath =
-          await this.getProjectPathFromSessions(projectDirPath);
-        if (!projectPath) continue;
-
-        const sessionCount = await this.countSessions(projectDirPath);
-        const lastActivity = await this.getLastActivity(projectDirPath);
-        addOrMerge(projectPath, projectDirPath, sessionCount, lastActivity);
+        const info = await this.getProjectDirInfo(projectDirPath);
+        if (!info) continue;
+        addOrMerge(
+          info.projectPath,
+          projectDirPath,
+          info.sessionCount,
+          info.lastActivity,
+        );
       }
     }
 
@@ -375,70 +379,40 @@ export class ProjectScanner {
   }
 
   /**
-   * Get the actual project path by reading the cwd from a session file.
-   *
-   * NOTE: This is necessary because the directory names use a lossy
-   * slash-to-hyphen encoding that cannot be reversed reliably.
-   * See packages/server/src/projects/paths.ts for full documentation.
+   * Get project info from a session directory in a single readdir pass.
+   * Uses directory mtime as a cheap proxy for lastActivity (one stat
+   * on the dir itself instead of stat-ing every session file).
    */
-  private async getProjectPathFromSessions(
-    projectDirPath: string,
-  ): Promise<string | null> {
+  private async getProjectDirInfo(projectDirPath: string): Promise<{
+    projectPath: string;
+    sessionCount: number;
+    lastActivity: string | null;
+  } | null> {
     try {
       const files = await readdir(projectDirPath);
       const jsonlFiles = files.filter((f) => f.endsWith(".jsonl"));
 
-      if (jsonlFiles.length === 0) {
-        return null;
-      }
+      if (jsonlFiles.length === 0) return null;
 
-      // Try to read cwd from the first available session file
+      // Count non-agent sessions
+      const sessionCount = jsonlFiles.filter(
+        (f) => !f.startsWith("agent-"),
+      ).length;
+
+      // Use directory mtime as lastActivity (updated when files are added/removed)
+      const dirStat = await stat(projectDirPath);
+      const lastActivity = new Date(dirStat.mtimeMs).toISOString();
+
+      // Read cwd from first available session file
       for (const file of jsonlFiles) {
         const filePath = join(projectDirPath, file);
         const cwd = await readCwdFromSessionFile(filePath);
         if (cwd) {
-          return cwd;
+          return { projectPath: cwd, sessionCount, lastActivity };
         }
       }
 
       return null;
-    } catch {
-      return null;
-    }
-  }
-
-  private async countSessions(projectDirPath: string): Promise<number> {
-    try {
-      const files = await readdir(projectDirPath);
-      // Count .jsonl files, excluding agent-* (internal subagent warmup sessions)
-      return files.filter(
-        (f) => f.endsWith(".jsonl") && !f.startsWith("agent-"),
-      ).length;
-    } catch {
-      return 0;
-    }
-  }
-
-  private async getLastActivity(
-    projectDirPath: string,
-  ): Promise<string | null> {
-    try {
-      const files = await readdir(projectDirPath);
-      const jsonlFiles = files.filter(
-        (f) => f.endsWith(".jsonl") && !f.startsWith("agent-"),
-      );
-
-      if (jsonlFiles.length === 0) return null;
-
-      let latestMtime = 0;
-      for (const file of jsonlFiles) {
-        const stats = await stat(join(projectDirPath, file));
-        if (stats.mtimeMs > latestMtime) {
-          latestMtime = stats.mtimeMs;
-        }
-      }
-
-      return latestMtime > 0 ? new Date(latestMtime).toISOString() : null;
     } catch {
       return null;
     }

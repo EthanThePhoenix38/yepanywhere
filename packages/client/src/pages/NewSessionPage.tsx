@@ -13,25 +13,31 @@ export function NewSessionPage() {
     useNavigationLayout();
 
   // Get all projects to find default if no projectId specified
-  const { projects } = useProjects();
+  const { projects, loading: projectsLoading } = useProjects();
 
   // Use the provided projectId, or default to first project
   const effectiveProjectId = projectId || projects[0]?.id;
 
-  const { project, loading, error } = useProject(effectiveProjectId);
+  const {
+    project,
+    loading: projectLoading,
+    error,
+  } = useProject(effectiveProjectId);
+
+  // Update browser tab title (must be called unconditionally before any early returns)
+  useDocumentTitle(project?.name, "New Session");
 
   // Callback to update projectId in URL without navigation
   const handleProjectChange = (newProjectId: string) => {
     setSearchParams({ projectId: newProjectId }, { replace: true });
   };
 
+  const loading = projectLoading || projectsLoading;
+
   // Guard against missing projectId (no projects available)
-  if (!effectiveProjectId && !loading && projects.length === 0) {
+  if (!effectiveProjectId && !projectsLoading && projects.length === 0) {
     return <div className="error">No projects available</div>;
   }
-
-  // Update browser tab title
-  useDocumentTitle(project?.name, "New Session");
 
   // Render loading/error states
   if (loading || error) {

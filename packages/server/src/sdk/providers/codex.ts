@@ -625,7 +625,7 @@ export class CodexProvider implements AgentProvider {
       const appServerModels = await this.requestAppServerModelList();
       return this.normalizeModelList(appServerModels);
     } catch (error) {
-      log.warn(
+      log.debug(
         { error },
         "Failed to query Codex app-server model list, using fallback models",
       );

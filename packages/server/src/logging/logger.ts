@@ -89,7 +89,7 @@ export function initLogger(config: Partial<LogConfig> = {}): pino.Logger {
         options: {
           colorize: true,
           translateTime: "HH:MM:ss",
-          ignore: "pid,hostname",
+          ignore: "pid,hostname,console",
         },
       });
       streams.push({

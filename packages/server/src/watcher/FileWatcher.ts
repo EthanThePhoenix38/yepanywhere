@@ -1,5 +1,6 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
+import { getLogger } from "../logging/logger.js";
 import type {
   EventBus,
   FileChangeEvent,
@@ -24,18 +25,6 @@ export interface FileWatcherOptions {
 }
 
 export class FileWatcher {
-  /**
-   * Debug flag for raw fs.watch callbacks.
-   * Enable with FILE_WATCHER_LOG_RAW_EVENTS=true.
-   */
-  private static readonly LOG_RAW_EVENTS =
-    process.env.FILE_WATCHER_LOG_RAW_EVENTS === "true";
-  /**
-   * Debug flag for file-change events emitted to EventBus.
-   * Enable with FILE_WATCHER_LOG_EMIT_EVENTS=true.
-   */
-  private static readonly LOG_EMIT_EVENTS =
-    process.env.FILE_WATCHER_LOG_EMIT_EVENTS === "true";
   private watchDir: string;
   private provider: WatchProvider;
   private eventBus: EventBus;
@@ -74,11 +63,9 @@ export class FileWatcher {
         { recursive: true },
         (eventType, filename) => {
           if (!filename) {
-            if (FileWatcher.LOG_RAW_EVENTS) {
-              console.log(
-                `[FileWatcher] Raw event provider=${this.provider} type=${eventType} file=<null> path=${this.watchDir}`,
-              );
-            }
+            getLogger().debug(
+              `[FileWatcher] Raw event provider=${this.provider} type=${eventType} file=<null> path=${this.watchDir}`,
+            );
             this.scheduleRescan();
             return;
           }
@@ -90,13 +77,13 @@ export class FileWatcher {
         console.error("[FileWatcher] Error:", error);
       });
 
-      console.log(`[FileWatcher] Watching ${this.watchDir}`);
+      getLogger().info(`[FileWatcher] Watching ${this.watchDir}`);
 
       if (this.periodicRescanMs > 0) {
         this.periodicRescanTimer = setInterval(() => {
           this.rescanAndEmit();
         }, this.periodicRescanMs);
-        console.log(
+        getLogger().info(
           `[FileWatcher] Periodic rescan enabled (${this.periodicRescanMs}ms) for ${this.watchDir}`,
         );
       }
@@ -130,7 +117,7 @@ export class FileWatcher {
     this.knownFiles.clear();
     this.knownFileMtimes.clear();
 
-    console.log("[FileWatcher] Stopped");
+    getLogger().info("[FileWatcher] Stopped");
   }
 
   /**
@@ -171,11 +158,9 @@ export class FileWatcher {
   private handleFileEvent(eventType: string, filename: string): void {
     const fullPath = path.join(this.watchDir, filename);
 
-    if (FileWatcher.LOG_RAW_EVENTS) {
-      console.log(
-        `[FileWatcher] Raw event provider=${this.provider} type=${eventType} file=${filename} path=${fullPath}`,
-      );
-    }
+    getLogger().debug(
+      `[FileWatcher] Raw event provider=${this.provider} type=${eventType} file=${filename} path=${fullPath}`,
+    );
 
     // Debounce per-file
     const existingTimer = this.debounceTimers.get(fullPath);
@@ -240,11 +225,9 @@ export class FileWatcher {
       fileType: this.parseFileType(relativePath),
     };
 
-    if (FileWatcher.LOG_EMIT_EVENTS) {
-      console.log(
-        `[FileWatcher] Emitting file-change provider=${event.provider} changeType=${event.changeType} fileType=${event.fileType} relativePath=${event.relativePath}`,
-      );
-    }
+    getLogger().debug(
+      `[FileWatcher] Emitting file-change provider=${event.provider} changeType=${event.changeType} fileType=${event.fileType} relativePath=${event.relativePath}`,
+    );
 
     this.eventBus.emit(event);
   }
@@ -258,11 +241,9 @@ export class FileWatcher {
       clearTimeout(this.rescanTimer);
     }
 
-    if (FileWatcher.LOG_RAW_EVENTS) {
-      console.log(
-        `[FileWatcher] Scheduling fallback rescan provider=${this.provider}`,
-      );
-    }
+    getLogger().debug(
+      `[FileWatcher] Scheduling fallback rescan provider=${this.provider}`,
+    );
 
     this.rescanTimer = setTimeout(
       () => {
@@ -280,11 +261,9 @@ export class FileWatcher {
     this.rescanInProgress = true;
 
     try {
-      if (FileWatcher.LOG_RAW_EVENTS) {
-        console.log(
-          `[FileWatcher] Running fallback rescan provider=${this.provider}`,
-        );
-      }
+      getLogger().debug(
+        `[FileWatcher] Running fallback rescan provider=${this.provider}`,
+      );
       const current = new Map<string, number>();
       this.scanDir(this.watchDir, current);
 

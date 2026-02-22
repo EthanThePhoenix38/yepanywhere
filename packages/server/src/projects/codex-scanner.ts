@@ -7,7 +7,8 @@
  * Each session file has session_meta as the first line containing the cwd.
  * We scan all sessions and group them by cwd to create virtual "projects".
  *
- * No caching - we scan on every request. This is fine for reasonable session counts.
+ * Scan results are cached with a short TTL to avoid redundant filesystem work
+ * when multiple callers need session data in the same request cycle.
  */
 
 import { readFile, readdir, stat } from "node:fs/promises";
@@ -44,8 +45,13 @@ export interface CodexScannerOptions {
   sessionsDir?: string; // override for testing
 }
 
+/** How long to cache scan results (ms) */
+const SCAN_CACHE_TTL = 5_000;
+
 export class CodexSessionScanner {
   private sessionsDir: string;
+  private cachedScan: { result: CodexSessionInfo[]; timestamp: number } | null =
+    null;
 
   constructor(options: CodexScannerOptions = {}) {
     this.sessionsDir = options.sessionsDir ?? CODEX_SESSIONS_DIR;
@@ -121,14 +127,23 @@ export class CodexSessionScanner {
 
   /**
    * Scan all session files and extract metadata from the first line.
+   * Results are cached for SCAN_CACHE_TTL to avoid redundant filesystem work.
    */
   private async scanAllSessions(): Promise<CodexSessionInfo[]> {
+    if (
+      this.cachedScan &&
+      Date.now() - this.cachedScan.timestamp < SCAN_CACHE_TTL
+    ) {
+      return this.cachedScan.result;
+    }
+
     const sessions: CodexSessionInfo[] = [];
 
     try {
       await stat(this.sessionsDir);
     } catch {
       // Sessions directory doesn't exist
+      this.cachedScan = { result: [], timestamp: Date.now() };
       return [];
     }
 
@@ -149,6 +164,7 @@ export class CodexSessionScanner {
       }
     }
 
+    this.cachedScan = { result: sessions, timestamp: Date.now() };
     return sessions;
   }
 

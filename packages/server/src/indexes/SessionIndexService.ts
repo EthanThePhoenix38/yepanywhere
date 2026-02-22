@@ -6,6 +6,7 @@
  * Each project's session directory gets its own index file.
  */
 
+import type { Stats } from "node:fs";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import {
@@ -250,90 +251,96 @@ export class SessionIndexService implements ISessionIndexService {
         (f) => f.endsWith(".jsonl") && !f.startsWith("agent-"),
       );
 
-      for (const file of jsonlFiles) {
+      // Stat files in batches for cache invalidation
+      const STAT_BATCH = 100;
+      const allStats: (Stats | null)[] = new Array(jsonlFiles.length);
+      for (let b = 0; b < jsonlFiles.length; b += STAT_BATCH) {
+        const end = Math.min(b + STAT_BATCH, jsonlFiles.length);
+        const batch = await Promise.all(
+          jsonlFiles
+            .slice(b, end)
+            .map((f) => fs.stat(path.join(sessionDir, f)).catch(() => null)),
+        );
+        for (let j = 0; j < batch.length; j++) {
+          allStats[b + j] = batch[j] ?? null;
+        }
+      }
+
+      // Collect cache misses to parse sequentially (parsing is heavier)
+      const cacheMisses: {
+        sessionId: string;
+        mtime: number;
+        size: number;
+      }[] = [];
+
+      for (let i = 0; i < jsonlFiles.length; i++) {
+        const file = jsonlFiles[i];
+        if (!file) continue;
         const sessionId = file.replace(".jsonl", "");
         seenSessionIds.add(sessionId);
 
+        const stats = allStats[i];
+        if (!stats) continue;
+
         const cached = index.sessions[sessionId];
-        const filePath = path.join(sessionDir, file);
+        const mtime = stats.mtimeMs;
+        const size = stats.size;
 
-        try {
-          const stats = await fs.stat(filePath);
-          const mtime = stats.mtimeMs;
-          const size = stats.size;
+        if (
+          cached &&
+          cached.fileMtime === mtime &&
+          cached.indexedBytes === size
+        ) {
+          if (cached.isEmpty) continue;
 
-          // Check if cache is valid
-          if (
-            cached &&
-            cached.fileMtime === mtime &&
-            cached.indexedBytes === size
-          ) {
-            // Cache hit - skip if empty (no user/assistant messages)
-            if (cached.isEmpty) {
-              // Empty session - already cached, skip silently
-              continue;
-            }
-            // Cache hit - reconstruct SessionSummary from cache
-            /*
-            logger.debug(
-              `[SessionIndexService] Cache HIT for ${sessionId} (mtime=${mtime}, size=${size})`,
-            );
-            */
-            summaries.push({
-              id: sessionId,
-              projectId,
-              title: cached.title,
-              fullTitle: cached.fullTitle,
-              createdAt: cached.createdAt,
-              updatedAt: cached.updatedAt,
-              messageCount: cached.messageCount,
-              ownership: { owner: "none" },
-              contextUsage: cached.contextUsage,
-              provider: cached.provider ?? DEFAULT_PROVIDER,
-            });
-          } else {
-            // Cache miss - parse the file
-            logger.debug(
-              `[SessionIndexService] Cache MISS for ${sessionId}: cached=${!!cached}, mtime match=${cached?.fileMtime === mtime}, size match=${cached?.indexedBytes === size}`,
-            );
-            const summary = await reader.getSessionSummary(
-              sessionId,
-              projectId,
-            );
-            if (summary) {
-              summaries.push(summary);
+          summaries.push({
+            id: sessionId,
+            projectId,
+            title: cached.title,
+            fullTitle: cached.fullTitle,
+            createdAt: cached.createdAt,
+            updatedAt: cached.updatedAt,
+            messageCount: cached.messageCount,
+            ownership: { owner: "none" },
+            contextUsage: cached.contextUsage,
+            provider: cached.provider ?? DEFAULT_PROVIDER,
+          });
+        } else {
+          cacheMisses.push({ sessionId, mtime, size });
+        }
+      }
 
-              // Update cache
-              index.sessions[sessionId] = {
-                title: summary.title,
-                fullTitle: summary.fullTitle,
-                createdAt: summary.createdAt,
-                updatedAt: summary.updatedAt,
-                messageCount: summary.messageCount,
-                contextUsage: summary.contextUsage,
-                indexedBytes: size,
-                fileMtime: mtime,
-                provider: summary.provider,
-              };
-              indexChanged = true;
-            } else {
-              // Empty session (no user/assistant messages) - cache it to avoid re-parsing
-              index.sessions[sessionId] = {
-                title: null,
-                fullTitle: null,
-                createdAt: new Date().toISOString(),
-                updatedAt: new Date().toISOString(),
-                messageCount: 0,
-                indexedBytes: size,
-                fileMtime: mtime,
-                isEmpty: true,
-                provider: DEFAULT_PROVIDER,
-              };
-              indexChanged = true;
-            }
-          }
-        } catch {
-          // File error - skip this session
+      // Parse cache misses sequentially (file I/O heavy)
+      for (const { sessionId, mtime, size } of cacheMisses) {
+        logger.debug(`[SessionIndexService] Cache MISS for ${sessionId}`);
+        const summary = await reader.getSessionSummary(sessionId, projectId);
+        if (summary) {
+          summaries.push(summary);
+          index.sessions[sessionId] = {
+            title: summary.title,
+            fullTitle: summary.fullTitle,
+            createdAt: summary.createdAt,
+            updatedAt: summary.updatedAt,
+            messageCount: summary.messageCount,
+            contextUsage: summary.contextUsage,
+            indexedBytes: size,
+            fileMtime: mtime,
+            provider: summary.provider,
+          };
+          indexChanged = true;
+        } else {
+          index.sessions[sessionId] = {
+            title: null,
+            fullTitle: null,
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+            messageCount: 0,
+            indexedBytes: size,
+            fileMtime: mtime,
+            isEmpty: true,
+            provider: DEFAULT_PROVIDER,
+          };
+          indexChanged = true;
         }
       }
 

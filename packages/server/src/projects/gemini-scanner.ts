@@ -38,8 +38,15 @@ export interface GeminiScannerOptions {
   sessionsDir?: string; // override for testing (~/.gemini/tmp)
 }
 
+/** How long to cache scan results (ms) */
+const SCAN_CACHE_TTL = 5_000;
+
 export class GeminiSessionScanner {
   private sessionsDir: string;
+  private cachedScan: {
+    result: GeminiSessionInfo[];
+    timestamp: number;
+  } | null = null;
 
   constructor(options: GeminiScannerOptions = {}) {
     this.sessionsDir = options.sessionsDir ?? GEMINI_TMP_DIR;
@@ -165,13 +172,22 @@ export class GeminiSessionScanner {
 
   /**
    * Scan all session files and extract metadata.
+   * Results are cached for SCAN_CACHE_TTL to avoid redundant filesystem work.
    */
   private async scanAllSessions(): Promise<GeminiSessionInfo[]> {
+    if (
+      this.cachedScan &&
+      Date.now() - this.cachedScan.timestamp < SCAN_CACHE_TTL
+    ) {
+      return this.cachedScan.result;
+    }
+
     const sessions: GeminiSessionInfo[] = [];
 
     try {
       await stat(this.sessionsDir);
     } catch {
+      this.cachedScan = { result: [], timestamp: Date.now() };
       return [];
     }
 
@@ -183,6 +199,7 @@ export class GeminiSessionScanner {
         .filter((e) => e.isDirectory())
         .map((e) => e.name);
     } catch {
+      this.cachedScan = { result: [], timestamp: Date.now() };
       return [];
     }
 
@@ -198,6 +215,7 @@ export class GeminiSessionScanner {
       }
     }
 
+    this.cachedScan = { result: sessions, timestamp: Date.now() };
     return sessions;
   }
 

@@ -15,6 +15,7 @@ import {
   isStreamingComplete,
   markSubagent,
 } from "./augments/index.js";
+import { getLogger } from "./logging/logger.js";
 import type { Process } from "./supervisor/Process.js";
 import type { ProcessEvent } from "./supervisor/types.js";
 import type { BusEvent, EventBus } from "./watcher/index.js";
@@ -222,7 +223,6 @@ export function createActivitySubscription(
   options?: SubscriptionOptions,
 ): { cleanup: () => void } {
   let closed = false;
-  const logEvents = process.env.ACTIVITY_STREAM_LOG_EVENTS === "true";
 
   emit("connected", { timestamp: new Date().toISOString() });
 
@@ -239,12 +239,10 @@ export function createActivitySubscription(
   const unsubscribe = eventBus.subscribe((event: BusEvent) => {
     if (closed) return;
     try {
-      if (logEvents) {
-        const label = options?.logLabel ? ` sub=${options.logLabel}` : "";
-        console.log(
-          `[ActivitySubscription] Forwarding event type=${event.type}${label}`,
-        );
-      }
+      const label = options?.logLabel ? ` sub=${options.logLabel}` : "";
+      getLogger().debug(
+        `[ActivitySubscription] Forwarding event type=${event.type}${label}`,
+      );
       emit(event.type, event);
     } catch (err) {
       options?.onError?.(err);

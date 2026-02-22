@@ -40,6 +40,7 @@ import {
   encryptToBinaryEnvelopeWithCompression,
 } from "../crypto/index.js";
 import type { SrpServerSession } from "../crypto/index.js";
+import { getLogger } from "../logging/logger.js";
 import { WS_INTERNAL_AUTHENTICATED } from "../middleware/internal-auth.js";
 import type {
   RemoteAccessService,
@@ -507,7 +508,7 @@ export function handleActivitySubscribe(
     }
   });
 
-  console.log(`[WS Relay] Subscribed to activity (${subscriptionId})`);
+  getLogger().debug(`[WS Relay] Subscribed to activity (${subscriptionId})`);
 }
 
 /**
@@ -577,7 +578,7 @@ export function handleSessionWatchSubscribe(
     cleanupFocusedWatch();
   });
 
-  console.log(
+  getLogger().debug(
     `[WS Relay] Subscribed to session-watch ${sessionId} (${subscriptionId})`,
   );
 }
@@ -654,7 +655,7 @@ export function handleUnsubscribe(
   if (cleanup) {
     cleanup();
     subscriptions.delete(subscriptionId);
-    console.log(`[WS Relay] Unsubscribed (${subscriptionId})`);
+    getLogger().debug(`[WS Relay] Unsubscribed (${subscriptionId})`);
   }
 }
 
@@ -878,7 +879,9 @@ export async function handleUploadEnd(
     const file = await uploadManager.completeUpload(state.serverUploadId);
     uploads.delete(uploadId);
     send({ type: "upload_complete", uploadId, file });
-    console.log(`[WS Relay] Upload complete: ${uploadId} (${file.size} bytes)`);
+    getLogger().debug(
+      `[WS Relay] Upload complete: ${uploadId} (${file.size} bytes)`,
+    );
   } catch (err) {
     const message =
       err instanceof Error ? err.message : "Failed to complete upload";
@@ -971,7 +974,7 @@ export async function handleMessage(
             .map((b) => b.toString(16).padStart(2, "0"))
             .join(" ")}...]`
         : String(data).slice(0, 100);
-  console.log(
+  getLogger().debug(
     `[WS Relay] handleMessage: type=${dataType}, isBinary=${options.isBinary}, preview=${preview}`,
   );
 

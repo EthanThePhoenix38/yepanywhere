@@ -261,7 +261,7 @@ export class CodexOSSProvider implements AgentProvider {
 
       return models;
     } catch (error) {
-      log.warn({ error }, "Failed to get Ollama models");
+      log.debug({ error }, "Failed to get Ollama models");
       return [];
     }
   }

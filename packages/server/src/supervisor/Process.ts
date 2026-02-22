@@ -1563,7 +1563,7 @@ export class Process {
 
   private emit(event: ProcessEvent): void {
     if (event.type === "state-change") {
-      getLogger().info(
+      getLogger().debug(
         {
           component: "process",
           sessionId: this._sessionId,

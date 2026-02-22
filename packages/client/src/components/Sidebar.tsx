@@ -320,15 +320,17 @@ export function Sidebar({
 
         <div className="sidebar-actions">
           {/* New Session: link to most recent project's new session page */}
-          {newSessionProject && (
-            <SidebarNavItem
-              to={`/new-session?projectId=${encodeURIComponent(newSessionProject.id)}`}
-              icon={SidebarIcons.newSession}
-              label="New Session"
-              onClick={onNavigate}
-              basePath={basePath}
-            />
-          )}
+          <SidebarNavItem
+            to={
+              newSessionProject
+                ? `/new-session?projectId=${encodeURIComponent(newSessionProject.id)}`
+                : "/new-session"
+            }
+            icon={SidebarIcons.newSession}
+            label="New Session"
+            onClick={onNavigate}
+            basePath={basePath}
+          />
         </div>
 
         <div className="sidebar-sessions">
