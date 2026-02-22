@@ -12,6 +12,7 @@ describe("WebSocket Auth Policy", () => {
       remoteAccessEnabled: false,
       hasSessionCookieAuth: true,
       isRelayConnection: true,
+      isLoopbackConnection: true,
     });
 
     expect(policy).toBe("srp_required");
@@ -22,6 +23,7 @@ describe("WebSocket Auth Policy", () => {
       remoteAccessEnabled: false,
       hasSessionCookieAuth: false,
       isRelayConnection: false,
+      isLoopbackConnection: false,
     });
 
     expect(policy).toBe("local_unrestricted");
@@ -32,6 +34,7 @@ describe("WebSocket Auth Policy", () => {
       remoteAccessEnabled: true,
       hasSessionCookieAuth: true,
       isRelayConnection: false,
+      isLoopbackConnection: false,
     });
 
     expect(policy).toBe("local_cookie_trusted");
@@ -42,9 +45,21 @@ describe("WebSocket Auth Policy", () => {
       remoteAccessEnabled: true,
       hasSessionCookieAuth: false,
       isRelayConnection: false,
+      isLoopbackConnection: false,
     });
 
     expect(policy).toBe("srp_required");
+  });
+
+  it("returns local_unrestricted for loopback connections without cookie auth", () => {
+    const policy = deriveWsConnectionPolicy({
+      remoteAccessEnabled: true,
+      hasSessionCookieAuth: false,
+      isRelayConnection: false,
+      isLoopbackConnection: true,
+    });
+
+    expect(policy).toBe("local_unrestricted");
   });
 
   it("marks only local policies as trusted without SRP", () => {

@@ -14,6 +14,7 @@ export interface WsConnectionPolicyInput {
   remoteAccessEnabled: boolean;
   hasSessionCookieAuth: boolean;
   isRelayConnection: boolean;
+  isLoopbackConnection: boolean;
 }
 
 /**
@@ -36,6 +37,10 @@ export function deriveWsConnectionPolicy(
 
   if (input.hasSessionCookieAuth) {
     return "local_cookie_trusted";
+  }
+
+  if (input.isLoopbackConnection) {
+    return "local_unrestricted";
   }
 
   return "srp_required";

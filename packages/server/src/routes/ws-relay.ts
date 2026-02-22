@@ -109,6 +109,31 @@ function createWSAdapter(ws: RawWebSocket): WSAdapter {
   };
 }
 
+function isLoopbackHostname(hostname: string): boolean {
+  const normalized = hostname.toLowerCase();
+  return (
+    normalized === "localhost" ||
+    normalized === "127.0.0.1" ||
+    normalized === "::1" ||
+    normalized === "[::1]"
+  );
+}
+
+function getRequestHostname(c: Context): string | null {
+  try {
+    return new URL(c.req.url).hostname;
+  } catch {
+    const hostHeader = c.req.header("host");
+    if (!hostHeader) return null;
+    if (hostHeader.startsWith("[")) {
+      const closeBracket = hostHeader.indexOf("]");
+      if (closeBracket === -1) return null;
+      return hostHeader.slice(1, closeBracket);
+    }
+    return hostHeader.replace(/:\d+$/, "");
+  }
+}
+
 /**
  * Create WebSocket relay routes for Phase 2b/2c.
  *
@@ -202,10 +227,13 @@ export function createWsRelayRoutes(
         // Create the send function that captures this connection's state
         send = createSendFn(wsAdapter, connState);
         const hasSessionCookieAuth = c.get("authenticatedViaSession") === true;
+        const requestHostname = getRequestHostname(c);
         const connectionPolicy = deriveWsConnectionPolicy({
           remoteAccessEnabled: remoteAccessService?.isEnabled() ?? false,
           hasSessionCookieAuth,
           isRelayConnection: false,
+          isLoopbackConnection:
+            requestHostname !== null && isLoopbackHostname(requestHostname),
         });
         connState.connectionPolicy = connectionPolicy;
         // Auto-authenticate for:
