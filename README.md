@@ -14,20 +14,18 @@
   <a href="https://yepanywhere.com">yepanywhere.com</a>
 </p>
 
-Mobile-first, end-to-end encrypted interface for Claude Code and Codex. Open source, self-hosted, no cloud accounts. Supervise your agents from your phone while they run on your dev machine.
+A better remote interface for Claude Code and Codex. Self-hosted, no cloud accounts. Supervise your agents from your phone while they run on your dev machines.
 
 ## Features
 
+- **Interop** — View and resume sessions started in CLI, VS Code, or other tools. No new database — piggybacks on CLI persistence
 - **File uploads** — Share screenshots, photos, PDFs, and code files directly from your phone's camera roll
 - **Push notifications** — Get alerted when approval is needed, respond from your lock screen
 - **E2E encrypted remote access** — Connect from anywhere via our free relay. We can't see your data (SRP-6a + TweetNaCl)
 - **Fork/clone conversations** — Branch from any message point to explore alternatives
 - **Tiered inbox** — Needs Attention → Active → Recent → Unread. Stop cycling through terminal tabs
 - **Global activity stream** — See what all your agents are doing across sessions
-- **Context usage tracking** — Know when a session is running out of context
-- **Bulk operations** — Multi-select to archive, star, or delete sessions
 - **Server-owned processes** — Client disconnects don't interrupt work
-- **Interop** — View and resume sessions started in CLI, VS Code, or other tools. No new database — piggybacks on CLI persistence
 - **Voice input** — Talk to your agents via browser speech API
 - **Fast on mobile** — Syntax highlighting and markdown rendering happen server-side
 
@@ -90,8 +88,6 @@ yepanywhere --setup-remote-access --username myserver --password "secretpass123"
 Then connect from anywhere at [yepanywhere.com/remote](https://yepanywhere.com/remote).
 
 All traffic is end-to-end encrypted and we can't see your data. No accounts required.
-
-> **Note:** If you run `--setup-remote-access` while the server is running, restart it to pick up the new config.
 
 **Self-hosted:** Prefer to run your own infrastructure? Use Tailscale, Caddy, or any reverse proxy with SSL termination. See the [remote access docs](docs/project/remote-access.md) for details.
 
