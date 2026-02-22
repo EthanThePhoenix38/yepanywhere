@@ -51,11 +51,55 @@ const StatusSystemEntrySchema = BaseEntrySchema.extend({
   status: z.enum(["compacting"]).nullable(),
 });
 
+// Microcompact boundary system entry
+const MicrocompactBoundarySystemEntrySchema = BaseEntrySchema.extend({
+  type: z.literal("system"),
+  subtype: z.literal("microcompact_boundary"),
+  content: z.string(),
+  level: z.string(),
+  slug: z.string().optional(),
+  microcompactMetadata: z
+    .object({
+      trigger: z.string(),
+      preTokens: z.number(),
+    })
+    .passthrough()
+    .optional(),
+});
+
+// API error system entry
+const ApiErrorSystemEntrySchema = BaseEntrySchema.extend({
+  type: z.literal("system"),
+  subtype: z.literal("api_error"),
+  level: z.string(),
+  error: z.unknown().optional(),
+  cause: z.unknown().optional(),
+  retryInMs: z.number().optional(),
+  retryAttempt: z.number().optional(),
+  maxRetries: z.number().optional(),
+});
+
+// Stop hook summary system entry
+const StopHookSummarySystemEntrySchema = BaseEntrySchema.extend({
+  type: z.literal("system"),
+  subtype: z.literal("stop_hook_summary"),
+  level: z.string(),
+  hookCount: z.number(),
+  hookInfos: z.array(z.unknown()),
+  hookErrors: z.array(z.unknown()),
+  preventedContinuation: z.boolean(),
+  stopReason: z.string(),
+  hasOutput: z.boolean(),
+});
+
 export const SystemEntrySchema = z.union([
   RegularSystemEntrySchema,
   CompactBoundarySystemEntrySchema,
+  MicrocompactBoundarySystemEntrySchema,
   InitSystemEntrySchema,
   StatusSystemEntrySchema,
+  ApiErrorSystemEntrySchema,
+  StopHookSummarySystemEntrySchema,
 ]);
 
 export type SystemEntry = z.infer<typeof SystemEntrySchema>;
