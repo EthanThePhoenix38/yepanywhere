@@ -99,6 +99,10 @@ All traffic is end-to-end encrypted and we can't see your data. No accounts requ
 
 You *can* use the terminal on your phone — but monospace text is painful on a small screen, there's no file upload, no push notifications, and no way to see all your sessions at once. This gives you a proper UI while keeping everything self-hosted and running your code locally.
 
+## Comparison to Other Tools
+
+There are a lot of projects in this space. We track them all: **[docs/competitive/all-projects.md](docs/competitive/all-projects.md)**
+
 ## Development
 
 See [DEVELOPMENT.md](DEVELOPMENT.md) for build instructions, configuration options, and more.
