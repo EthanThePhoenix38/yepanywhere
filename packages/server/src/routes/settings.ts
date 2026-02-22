@@ -8,6 +8,10 @@ import type {
   ServerSettings,
   ServerSettingsService,
 } from "../services/ServerSettingsService.js";
+import {
+  isValidSshHostAlias,
+  normalizeSshHostAlias,
+} from "../utils/sshHostAlias.js";
 
 export interface SettingsRoutesDeps {
   serverSettingsService: ServerSettingsService;
@@ -17,6 +21,27 @@ export interface SettingsRoutesDeps {
   onRemoteSessionPersistenceChanged?: (
     enabled: boolean,
   ) => Promise<void> | void;
+}
+
+function parseExecutorList(rawExecutors: unknown[]): {
+  executors: string[];
+  invalidExecutor?: string;
+} {
+  const executors: string[] = [];
+
+  for (const rawExecutor of rawExecutors) {
+    if (typeof rawExecutor !== "string") continue;
+
+    const executor = normalizeSshHostAlias(rawExecutor);
+    if (!executor) continue;
+    if (!isValidSshHostAlias(executor)) {
+      return { executors: [], invalidExecutor: executor };
+    }
+
+    executors.push(executor);
+  }
+
+  return { executors };
 }
 
 export function createSettingsRoutes(deps: SettingsRoutesDeps): Hono {
@@ -55,11 +80,16 @@ export function createSettingsRoutes(deps: SettingsRoutesDeps): Hono {
 
     // Handle remoteExecutors array
     if (Array.isArray(body.remoteExecutors)) {
-      // Validate each entry is a non-empty string
-      const validExecutors = body.remoteExecutors.filter(
-        (e): e is string => typeof e === "string" && e.trim().length > 0,
+      const { executors, invalidExecutor } = parseExecutorList(
+        body.remoteExecutors,
       );
-      updates.remoteExecutors = validExecutors;
+      if (invalidExecutor) {
+        return c.json(
+          { error: `Invalid remote executor host alias: ${invalidExecutor}` },
+          400,
+        );
+      }
+      updates.remoteExecutors = executors;
     }
 
     // Handle allowedHosts string ("*", comma-separated hostnames, or undefined to clear)
@@ -130,10 +160,15 @@ export function createSettingsRoutes(deps: SettingsRoutesDeps): Hono {
       return c.json({ error: "executors must be an array" }, 400);
     }
 
-    // Validate each entry is a non-empty string
-    const validExecutors = body.executors.filter(
-      (e): e is string => typeof e === "string" && e.trim().length > 0,
+    const { executors: validExecutors, invalidExecutor } = parseExecutorList(
+      body.executors,
     );
+    if (invalidExecutor) {
+      return c.json(
+        { error: `Invalid remote executor host alias: ${invalidExecutor}` },
+        400,
+      );
+    }
 
     await serverSettingsService.updateSettings({
       remoteExecutors: validExecutors,
@@ -147,10 +182,13 @@ export function createSettingsRoutes(deps: SettingsRoutesDeps): Hono {
    * Test SSH connection to a remote executor
    */
   app.post("/remote-executors/:host/test", async (c) => {
-    const host = c.req.param("host");
+    const host = normalizeSshHostAlias(c.req.param("host"));
 
-    if (!host || host.trim().length === 0) {
+    if (!host) {
       return c.json({ error: "host is required" }, 400);
+    }
+    if (!isValidSshHostAlias(host)) {
+      return c.json({ error: "host must be a valid SSH host alias" }, 400);
     }
 
     const result = await testSSHConnection(host);

@@ -253,6 +253,7 @@ async function runSSHCommand(
         `ConnectTimeout=${Math.ceil(timeoutMs / 1000)}`,
         "-o",
         "BatchMode=yes", // Don't prompt for password
+        "--", // End option parsing before host
         host,
         command,
       ],
@@ -421,6 +422,7 @@ export function createRemoteSpawn(
         "-t", // PTY allocation for signal propagation
         "-o",
         "BatchMode=yes", // Don't prompt for password
+        "--", // End option parsing before host
         host,
         remoteCmd,
       ],

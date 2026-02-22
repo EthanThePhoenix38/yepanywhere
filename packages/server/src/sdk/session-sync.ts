@@ -72,7 +72,13 @@ async function ensureRemoteDir(
   return new Promise((resolve, reject) => {
     const sshProcess = spawn(
       "ssh",
-      ["-o", "BatchMode=yes", host, `mkdir -p '${remotePath}'`],
+      [
+        "-o",
+        "BatchMode=yes",
+        "--", // End option parsing before host
+        host,
+        `mkdir -p '${remotePath}'`,
+      ],
       { stdio: ["ignore", "pipe", "pipe"] },
     );
 
@@ -169,7 +175,7 @@ export async function syncSessions(options: SyncOptions): Promise<SyncResult> {
   return new Promise((resolve) => {
     const rsyncProcess = spawn(
       "rsync",
-      ["-az", "-e", "ssh -o BatchMode=yes", source, dest],
+      ["-az", "-e", "ssh -o BatchMode=yes", "--", source, dest],
       { stdio: ["ignore", "pipe", "pipe"] },
     );
 
@@ -309,7 +315,7 @@ export async function syncSessionFile(
   return new Promise((resolve) => {
     const rsyncProcess = spawn(
       "rsync",
-      ["-az", "-e", "ssh -o BatchMode=yes", source, dest],
+      ["-az", "-e", "ssh -o BatchMode=yes", "--", source, dest],
       { stdio: ["ignore", "pipe", "pipe"] },
     );
 

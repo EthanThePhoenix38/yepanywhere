@@ -88,6 +88,26 @@ describe("Sessions API", () => {
       expect(json.error).toMatch(/Project not found/);
     });
 
+    it("returns 400 for invalid executor alias", async () => {
+      const { app } = createApp({ sdk: mockSdk, projectsDir: testDir });
+
+      const res = await app.request(`/api/projects/${projectId}/sessions`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-Yep-Anywhere": "true",
+        },
+        body: JSON.stringify({
+          message: "hello",
+          executor: "-oProxyCommand=touch_/tmp/pwned",
+        }),
+      });
+
+      expect(res.status).toBe(400);
+      const json = await res.json();
+      expect(json.error).toBe("executor must be a valid SSH host alias");
+    });
+
     it("starts a session and returns processId", async () => {
       mockSdk.addScenario(createMockScenario("new-session", "Hello!"));
       const { app } = createApp({ sdk: mockSdk, projectsDir: testDir });
@@ -202,6 +222,29 @@ describe("Sessions API", () => {
       );
 
       expect(res.status).toBe(404);
+    });
+
+    it("returns 400 for invalid executor alias", async () => {
+      const { app } = createApp({ sdk: mockSdk, projectsDir: testDir });
+
+      const res = await app.request(
+        `/api/projects/${projectId}/sessions/sess-123/resume`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "X-Yep-Anywhere": "true",
+          },
+          body: JSON.stringify({
+            message: "continue",
+            executor: "-oProxyCommand=touch_/tmp/pwned",
+          }),
+        },
+      );
+
+      expect(res.status).toBe(400);
+      const json = await res.json();
+      expect(json.error).toBe("executor must be a valid SSH host alias");
     });
 
     it("resumes a session and returns processId", async () => {

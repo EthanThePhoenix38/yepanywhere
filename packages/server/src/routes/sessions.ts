@@ -50,6 +50,10 @@ import type {
 } from "../supervisor/Supervisor.js";
 import type { QueuedResponse } from "../supervisor/WorkerQueue.js";
 import type { ContentBlock, Message, Project } from "../supervisor/types.js";
+import {
+  isValidSshHostAlias,
+  normalizeSshHostAlias,
+} from "../utils/sshHostAlias.js";
 import type { EventBus } from "../watcher/index.js";
 
 /**
@@ -68,6 +72,31 @@ function isQueueFullResponse(
   result: Process | QueuedResponse | QueueFullResponse,
 ): result is QueueFullResponse {
   return "error" in result && result.error === "queue_full";
+}
+
+function parseOptionalExecutor(rawExecutor: unknown): {
+  executor: string | undefined;
+  error?: string;
+} {
+  if (rawExecutor === undefined || rawExecutor === null) {
+    return { executor: undefined };
+  }
+  if (typeof rawExecutor !== "string") {
+    return { executor: undefined, error: "executor must be a string" };
+  }
+
+  const executor = normalizeSshHostAlias(rawExecutor);
+  if (!executor) {
+    return { executor: undefined };
+  }
+  if (!isValidSshHostAlias(executor)) {
+    return {
+      executor: undefined,
+      error: "executor must be a valid SSH host alias",
+    };
+  }
+
+  return { executor };
 }
 
 export interface SessionsDeps {
@@ -893,6 +922,12 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
     if (!body.message) {
       return c.json({ error: "Message is required" }, 400);
     }
+    const { executor, error: executorError } = parseOptionalExecutor(
+      body.executor,
+    );
+    if (executorError) {
+      return c.json({ error: executorError }, 400);
+    }
 
     const userMessage: UserMessage = {
       text: body.message,
@@ -916,7 +951,7 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
     // Debug: log what we received
     console.log("[startSession] Request body:", {
       provider: body.provider,
-      executor: body.executor,
+      executor,
       model: body.model,
     });
 
@@ -931,7 +966,7 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
         model,
         maxThinkingTokens,
         providerName: body.provider,
-        executor: body.executor,
+        executor,
         globalInstructions,
         permissions: body.permissions,
       },
@@ -951,11 +986,8 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
     }
 
     // Save executor to session metadata for resume
-    if (body.executor && deps.sessionMetadataService) {
-      await deps.sessionMetadataService.setExecutor(
-        result.sessionId,
-        body.executor,
-      );
+    if (executor && deps.sessionMetadataService) {
+      await deps.sessionMetadataService.setExecutor(result.sessionId, executor);
     }
 
     return c.json({
@@ -989,6 +1021,13 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
       // Body is optional for this endpoint
     }
 
+    const { executor, error: executorError } = parseOptionalExecutor(
+      body.executor,
+    );
+    if (executorError) {
+      return c.json({ error: executorError }, 400);
+    }
+
     // Convert thinking option to token budget
     const maxThinkingTokens =
       body.thinking && body.thinking !== "off"
@@ -1009,7 +1048,7 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
         model,
         maxThinkingTokens,
         providerName: body.provider,
-        executor: body.executor,
+        executor,
         globalInstructions,
         permissions: body.permissions,
       },
@@ -1029,11 +1068,8 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
     }
 
     // Save executor to session metadata for resume
-    if (body.executor && deps.sessionMetadataService) {
-      await deps.sessionMetadataService.setExecutor(
-        result.sessionId,
-        body.executor,
-      );
+    if (executor && deps.sessionMetadataService) {
+      await deps.sessionMetadataService.setExecutor(result.sessionId, executor);
     }
 
     return c.json({
@@ -1070,6 +1106,10 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
     if (!body.message) {
       return c.json({ error: "Message is required" }, 400);
     }
+    const parsedBodyExecutor = parseOptionalExecutor(body.executor);
+    if (parsedBodyExecutor.error) {
+      return c.json({ error: parsedBodyExecutor.error }, 400);
+    }
 
     const userMessage: UserMessage = {
       text: body.message,
@@ -1090,9 +1130,17 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
     const model =
       body.model && body.model !== "default" ? body.model : undefined;
 
-    // Use client-provided executor, falling back to saved executor from metadata
-    const executor =
-      body.executor ?? deps.sessionMetadataService?.getExecutor(sessionId);
+    // Use client-provided executor, falling back to saved executor from metadata.
+    let executor = parsedBodyExecutor.executor;
+    if (!executor) {
+      const parsedSavedExecutor = parseOptionalExecutor(
+        deps.sessionMetadataService?.getExecutor(sessionId),
+      );
+      if (parsedSavedExecutor.error) {
+        return c.json({ error: parsedSavedExecutor.error }, 400);
+      }
+      executor = parsedSavedExecutor.executor;
+    }
 
     // For remote sessions, sync local files TO remote before resuming
     // This ensures the remote has the latest session state
