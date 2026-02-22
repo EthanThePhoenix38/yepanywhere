@@ -112,6 +112,10 @@ ENVIRONMENT VARIABLES:
                                 Codex watcher fallback rescan interval in ms (default: 5000 on macOS, 0 elsewhere)
   SESSION_INDEX_FULL_VALIDATION_MS
                                 Session index full validation interval in ms (default: 30000, 0 = validate every request)
+  SESSION_INDEX_WRITE_LOCK_TIMEOUT_MS
+                                Session index write lock timeout in ms (default: 2000)
+  SESSION_INDEX_WRITE_LOCK_STALE_MS
+                                Session index stale lock threshold in ms (default: 10000)
   PROJECT_SCAN_CACHE_TTL_MS
                                 Project scan cache TTL in ms (default: 5000, 0 = rescan every request)
 

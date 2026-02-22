@@ -48,6 +48,10 @@ export interface Config {
    * 0 = validate every request (legacy behavior).
    */
   sessionIndexFullValidationMs: number;
+  /** Session index write lock timeout (ms) for cross-process coordination. */
+  sessionIndexWriteLockTimeoutMs: number;
+  /** Session index lock staleness threshold (ms). */
+  sessionIndexWriteLockStaleMs: number;
   /** Project scanner cache TTL (ms). 0 = rescan every request. */
   projectScanCacheTtlMs: number;
   /** Idle timeout in milliseconds before process cleanup */
@@ -142,6 +146,14 @@ export function loadConfig(): Config {
     0,
     parseIntOrDefault(process.env.SESSION_INDEX_FULL_VALIDATION_MS, 30000),
   );
+  const sessionIndexWriteLockTimeoutMs = Math.max(
+    0,
+    parseIntOrDefault(process.env.SESSION_INDEX_WRITE_LOCK_TIMEOUT_MS, 2000),
+  );
+  const sessionIndexWriteLockStaleMs = Math.max(
+    1000,
+    parseIntOrDefault(process.env.SESSION_INDEX_WRITE_LOCK_STALE_MS, 10000),
+  );
   const projectScanCacheTtlMs = Math.max(
     0,
     parseIntOrDefault(process.env.PROJECT_SCAN_CACHE_TTL_MS, 5000),
@@ -155,6 +167,8 @@ export function loadConfig(): Config {
     codexSessionsDir,
     codexWatchPeriodicRescanMs,
     sessionIndexFullValidationMs,
+    sessionIndexWriteLockTimeoutMs,
+    sessionIndexWriteLockStaleMs,
     projectScanCacheTtlMs,
     idleTimeoutMs: parseIntOrDefault(process.env.IDLE_TIMEOUT, 5 * 60) * 1000,
     defaultPermissionMode: parsePermissionMode(process.env.PERMISSION_MODE),

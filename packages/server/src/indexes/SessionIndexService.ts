@@ -62,6 +62,10 @@ export interface SessionIndexServiceOptions {
   fullValidationIntervalMs?: number;
   /** Optional event bus for watcher-driven invalidation. */
   eventBus?: EventBus;
+  /** Max time to wait for cross-process write lock (ms). */
+  writeLockTimeoutMs?: number;
+  /** Age at which lock directories are treated as stale and removed (ms). */
+  writeLockStaleMs?: number;
 }
 
 /**
@@ -79,6 +83,8 @@ export class SessionIndexService implements ISessionIndexService {
   private pendingSaves: Set<string> = new Set();
   private maxCacheSize: number;
   private fullValidationIntervalMs: number;
+  private writeLockTimeoutMs: number;
+  private writeLockStaleMs: number;
   private lastFullValidationAt: Map<string, number> = new Map();
   private dirtyDirs: Set<string> = new Set();
   private dirtySessionsByDir: Map<string, Set<string>> = new Map();
@@ -107,6 +113,8 @@ export class SessionIndexService implements ISessionIndexService {
       0,
       options.fullValidationIntervalMs ?? 0,
     );
+    this.writeLockTimeoutMs = Math.max(0, options.writeLockTimeoutMs ?? 2000);
+    this.writeLockStaleMs = Math.max(1000, options.writeLockStaleMs ?? 10000);
 
     if (options.eventBus) {
       this.unsubscribeEventBus = options.eventBus.subscribe((event) => {
@@ -252,6 +260,7 @@ export class SessionIndexService implements ISessionIndexService {
     if (!index) return;
 
     const indexPath = this.getIndexPath(sessionDir);
+    const lockPath = `${indexPath}.lock`;
     const tempPath = `${indexPath}.tmp-${process.pid}-${Date.now()}-${Math.random()
       .toString(16)
       .slice(2)}`;
@@ -259,9 +268,11 @@ export class SessionIndexService implements ISessionIndexService {
     try {
       // Ensure directory exists
       await fs.mkdir(path.dirname(indexPath), { recursive: true });
-      const content = JSON.stringify(index, null, 2);
-      await fs.writeFile(tempPath, content, "utf-8");
-      await fs.rename(tempPath, indexPath);
+      await this.withWriteLock(lockPath, async () => {
+        const content = JSON.stringify(index, null, 2);
+        await fs.writeFile(tempPath, content, "utf-8");
+        await fs.rename(tempPath, indexPath);
+      });
     } catch (error) {
       await fs.unlink(tempPath).catch(() => {
         // Best-effort cleanup for failed atomic writes.
@@ -272,6 +283,68 @@ export class SessionIndexService implements ISessionIndexService {
       );
       throw error;
     }
+  }
+
+  private async withWriteLock<T>(
+    lockPath: string,
+    callback: () => Promise<T>,
+  ): Promise<T> {
+    await this.acquireWriteLock(lockPath);
+    try {
+      return await callback();
+    } finally {
+      await fs.rm(lockPath, { recursive: true, force: true }).catch(() => {
+        // Best-effort lock cleanup.
+      });
+    }
+  }
+
+  private async acquireWriteLock(lockPath: string): Promise<void> {
+    const start = Date.now();
+    while (true) {
+      try {
+        await fs.mkdir(lockPath);
+        return;
+      } catch (error) {
+        const code = (error as NodeJS.ErrnoException).code;
+        if (code !== "EEXIST") {
+          throw error;
+        }
+
+        const stale = await this.isLockStale(lockPath);
+        if (stale) {
+          await fs.rm(lockPath, { recursive: true, force: true }).catch(() => {
+            // Best-effort stale lock cleanup.
+          });
+          continue;
+        }
+
+        if (Date.now() - start >= this.writeLockTimeoutMs) {
+          throw new Error(
+            `Timed out acquiring session index write lock: ${lockPath}`,
+          );
+        }
+
+        await this.sleep(25);
+      }
+    }
+  }
+
+  private async isLockStale(lockPath: string): Promise<boolean> {
+    try {
+      const stats = await fs.stat(lockPath);
+      return Date.now() - stats.mtimeMs > this.writeLockStaleMs;
+    } catch (error) {
+      const code = (error as NodeJS.ErrnoException).code;
+      if (code === "ENOENT") {
+        return false;
+      }
+      throw error;
+    }
+  }
+
+  private async sleep(ms: number): Promise<void> {
+    await new Promise((resolve) => setTimeout(resolve, ms));
   }
 
   private getLoadKey(sessionDir: string, projectId: UrlProjectId): string {

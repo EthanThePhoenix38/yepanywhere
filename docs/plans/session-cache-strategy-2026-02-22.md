@@ -71,9 +71,16 @@ This leaves list endpoints (`/api/sessions`, `/api/projects/:id/sessions`, `/api
   - recent sessions dropdown
 - Global sessions page now fetches stats separately via `/api/sessions/stats`.
 - `SessionIndexService` index persistence now uses atomic write+rename to avoid partially-written cache files.
+- Added cross-process session index write coordination:
+  - lock directory per index file (`.lock`)
+  - configurable lock timeout and stale-lock cleanup
+  - env knobs:
+    - `SESSION_INDEX_WRITE_LOCK_TIMEOUT_MS`
+    - `SESSION_INDEX_WRITE_LOCK_STALE_MS`
 - Added tests for:
   - `includeStats` behavior in global sessions route
   - no temporary index files left after atomic writes
+  - stale lock cleanup during index writes
 
 ## Phase 1 Implementation Notes
 

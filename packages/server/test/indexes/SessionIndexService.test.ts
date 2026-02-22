@@ -5,10 +5,11 @@ import {
   readdir,
   rm,
   stat,
+  utimes,
   writeFile,
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { toUrlProjectId } from "@yep-anywhere/shared";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { SessionIndexService } from "../../src/indexes/SessionIndexService.js";
@@ -463,6 +464,33 @@ describe("SessionIndexService", () => {
       const files = await readdir(dataDir);
       const tempFiles = files.filter((file) => file.includes(".tmp-"));
       expect(tempFiles).toHaveLength(0);
+    });
+
+    it("cleans stale lock directories before writing", async () => {
+      const lockService = new SessionIndexService({
+        dataDir,
+        projectsDir,
+        writeLockTimeoutMs: 500,
+        writeLockStaleMs: 50,
+      });
+      await lockService.initialize();
+      await createSession("session-1", "Lock session");
+
+      const indexPath = lockService.getIndexPath(sessionDir);
+      const lockPath = `${indexPath}.lock`;
+      await mkdir(dirname(indexPath), { recursive: true });
+      await mkdir(lockPath, { recursive: true });
+      const staleTime = new Date(Date.now() - 1000);
+      await utimes(lockPath, staleTime, staleTime);
+
+      const sessions = await lockService.getSessionsWithCache(
+        sessionDir,
+        projectId,
+        reader,
+      );
+      expect(sessions).toHaveLength(1);
+
+      await expect(stat(lockPath)).rejects.toMatchObject({ code: "ENOENT" });
     });
   });
 });
