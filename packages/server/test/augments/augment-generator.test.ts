@@ -7,6 +7,13 @@ import {
 } from "../../src/augments/augment-generator.js";
 import type { CompletedBlock } from "../../src/augments/block-detector.js";
 
+function normalizeHtmlForComparison(html: string): string {
+  return html
+    .replace(/<hr\s*\/?>/g, "<hr>")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
 describe("AugmentGenerator", () => {
   let generator: AugmentGenerator;
 
@@ -220,6 +227,35 @@ describe("AugmentGenerator", () => {
       expect(augment.html).toContain("<strong>bold</strong>");
       expect(augment.html).toContain("<em>italic</em>");
     });
+
+    it("escapes raw HTML from markdown input", async () => {
+      const block: CompletedBlock = {
+        type: "paragraph",
+        content: "Hello <script>alert('xss')</script> world",
+        startOffset: 0,
+        endOffset: 40,
+      };
+
+      const augment = await generator.processBlock(block, 0);
+
+      expect(augment.html).not.toContain("<script>");
+      expect(augment.html).toContain("&lt;script&gt;");
+    });
+
+    it("removes markdown links with unsafe protocols", async () => {
+      const block: CompletedBlock = {
+        type: "paragraph",
+        content: "Do not click [this](javascript:alert(1))",
+        startOffset: 0,
+        endOffset: 40,
+      };
+
+      const augment = await generator.processBlock(block, 0);
+
+      expect(augment.html).not.toContain("href=");
+      expect(augment.html).toContain("this");
+      expect(augment.html).not.toContain("javascript:");
+    });
   });
 
   describe("renderPending", () => {
@@ -247,6 +283,24 @@ describe("AugmentGenerator", () => {
       );
 
       expect(result).toBe('Check <a href="https://example.com">the docs</a>');
+    });
+
+    it("renders mailto links", () => {
+      const result = generator.renderPending(
+        "Contact [support](mailto:support@example.com)",
+      );
+
+      expect(result).toBe(
+        'Contact <a href="mailto:support@example.com">support</a>',
+      );
+    });
+
+    it("does not render unsafe links", () => {
+      const result = generator.renderPending(
+        "Check [this](javascript:alert(1))",
+      );
+
+      expect(result).toBe("Check [this](javascript:alert(1))");
     });
 
     it("renders mixed formatting", () => {
@@ -376,8 +430,8 @@ describe("AugmentGenerator", () => {
           } else {
             // For non-code blocks, we can compare more strictly
             // Normalize whitespace for comparison
-            const normalizedExpected = expectedHtml.replace(/\s+/g, " ").trim();
-            const normalizedActual = augment.html.replace(/\s+/g, " ").trim();
+            const normalizedExpected = normalizeHtmlForComparison(expectedHtml);
+            const normalizedActual = normalizeHtmlForComparison(augment.html);
             expect(normalizedActual).toBe(normalizedExpected);
           }
         });
@@ -412,8 +466,8 @@ describe("AugmentGenerator", () => {
           const augment = await generator.processBlock(block, 0);
 
           // Normalize whitespace
-          const normalizedExpected = expectedHtml.replace(/\s+/g, " ").trim();
-          const normalizedActual = augment.html.replace(/\s+/g, " ").trim();
+          const normalizedExpected = normalizeHtmlForComparison(expectedHtml);
+          const normalizedActual = normalizeHtmlForComparison(augment.html);
           expect(normalizedActual).toBe(normalizedExpected);
         });
       }

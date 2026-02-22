@@ -11,8 +11,8 @@
  * starts mid-context (e.g., inside a multi-line comment or string).
  */
 
-import { marked } from "marked";
 import { highlightFile } from "../highlighting/index.js";
+import { renderSafeMarkdown } from "./safe-markdown.js";
 
 /**
  * Input for computing a read augment.
@@ -48,7 +48,7 @@ function isMarkdownFile(filePath: string): boolean {
 }
 
 /**
- * Render markdown content to HTML using marked.
+ * Render markdown content to safe HTML.
  */
 async function renderMarkdown(content: string): Promise<string> {
   // Strip line numbers from content (format: "   123\t" prefix)
@@ -61,7 +61,7 @@ async function renderMarkdown(content: string): Promise<string> {
     })
     .join("\n");
 
-  return marked.parse(contentWithoutLineNumbers, { async: true });
+  return renderSafeMarkdown(contentWithoutLineNumbers);
 }
 
 /**

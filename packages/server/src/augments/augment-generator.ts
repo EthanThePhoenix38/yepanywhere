@@ -6,7 +6,6 @@
  * formatting for pending/incomplete text during streaming.
  */
 
-import { marked } from "marked";
 import {
   type BundledLanguage,
   type Highlighter,
@@ -19,6 +18,7 @@ import type {
   StreamingCodeBlock,
   StreamingList,
 } from "./block-detector.js";
+import { renderSafeMarkdown, sanitizeUrl } from "./safe-markdown.js";
 
 /** CSS variables theme - outputs `style="color: var(--shiki-...)"` */
 const cssVarsTheme = createCssVariablesTheme({
@@ -208,12 +208,10 @@ function renderPlainCodeBlock(code: string, lang: string): string {
 }
 
 /**
- * Render a non-code markdown block using marked.
+ * Render a non-code markdown block with raw HTML disabled and sanitization.
  */
 function renderMarkdownBlock(block: CompletedBlock): string {
-  // Use marked to render the markdown
-  const html = marked.parse(block.content, { async: false }) as string;
-  return html.trim();
+  return renderSafeMarkdown(block.content);
 }
 
 /**
@@ -235,7 +233,14 @@ function renderInlineFormatting(text: string): string {
   result = result.replace(/`([^`]+)`/g, "<code>$1</code>");
 
   // Links: [text](url)
-  result = result.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2">$1</a>');
+  result = result.replace(/\[([^\]]+)\]\(([^)]+)\)/g, (_match, label, href) => {
+    const safeHref = sanitizeUrl(href);
+    if (!safeHref) {
+      return `[${label}](${href})`;
+    }
+
+    return `<a href="${escapeHtml(safeHref)}">${label}</a>`;
+  });
 
   return result;
 }
