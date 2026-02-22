@@ -31,7 +31,6 @@ export function LocalAccessSettings() {
 
   // Auth form state (merged into same form)
   const [requirePassword, setRequirePassword] = useState(false);
-  const [currentPassword, setCurrentPassword] = useState("");
   const [authPassword, setAuthPassword] = useState("");
   const [authPasswordConfirm, setAuthPasswordConfirm] = useState("");
 
@@ -170,8 +169,7 @@ export function LocalAccessSettings() {
 
       // Apply auth changes
       if (enablingAuth) {
-        await auth.enableAuth(authPassword, currentPassword || undefined);
-        setCurrentPassword("");
+        await auth.enableAuth(authPassword);
         setAuthPassword("");
         setAuthPasswordConfirm("");
       } else if (changingPassword) {
@@ -490,22 +488,6 @@ export function LocalAccessSettings() {
                 }}
                 tabIndex={-1}
               />
-              {!auth.authEnabled && (
-                <div className="settings-item">
-                  <div className="settings-item-info">
-                    <strong>Current Password (if re-enabling)</strong>
-                    <p>Required only if this server already had a password</p>
-                  </div>
-                  <input
-                    type="password"
-                    className="settings-input"
-                    value={currentPassword}
-                    onChange={(e) => setCurrentPassword(e.target.value)}
-                    autoComplete="current-password"
-                    placeholder="Current password"
-                  />
-                </div>
-              )}
               <div className="settings-item">
                 <div className="settings-item-info">
                   <strong>Password</strong>

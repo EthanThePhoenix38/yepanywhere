@@ -142,6 +142,13 @@ export class AuthService {
   /**
    * Enable auth with a password. Creates account if needed.
    * This is the main way to enable auth from the settings UI.
+   *
+   * Security model note:
+   * - This project is localhost-first and starts with auth off.
+   * - Enabling auth while currently open is treated as adding protection,
+   *   not as recovering an ownership-locked account.
+   * - If someone enables auth unexpectedly, the operator can restart with
+   *   --auth-disable or run --setup-auth to recover.
    */
   async enableAuth(password: string): Promise<boolean> {
     const passwordHash = await bcrypt.hash(password, BCRYPT_ROUNDS);
@@ -155,10 +162,15 @@ export class AuthService {
   }
 
   /**
-   * Disable auth (clears enabled flag but keeps account for re-enabling).
+   * Disable auth and clear credentials.
+   *
+   * This is intentionally destructive: when auth is turned off, the server
+   * returns to the default localhost/no-auth baseline. Re-enabling auth later
+   * should behave like fresh setup with a new password.
    */
   async disableAuth(): Promise<void> {
     this.state.enabled = false;
+    this.state.account = undefined;
     this.state.sessions = {}; // Clear all sessions
     await this.save();
   }

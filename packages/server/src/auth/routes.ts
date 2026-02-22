@@ -16,7 +16,6 @@ export interface AuthRoutesDeps {
 
 interface SetupBody {
   password: string;
-  currentPassword?: string;
 }
 
 interface LoginBody {
@@ -128,8 +127,13 @@ export function createAuthRoutes(deps: AuthRoutesDeps): Hono {
   /**
    * POST /api/auth/enable
    * Enable auth with a password.
-   * - First-time setup (no account): unauthenticated.
-   * - Existing account: requires authenticated session + current password.
+   * - Allowed only when auth is currently disabled.
+   * - Treated as "add protection now" instead of account-ownership recovery.
+   *
+   * Security model note:
+   * This server defaults to localhost with auth off. In that baseline model,
+   * enabling auth is opportunistic hardening. If auth is enabled unexpectedly,
+   * the operator can still recover with --auth-disable or --setup-auth.
    */
   app.post("/enable", async (c) => {
     const body = await c.req.json<SetupBody>();
@@ -142,25 +146,11 @@ export function createAuthRoutes(deps: AuthRoutesDeps): Hono {
       return c.json({ error: "Password must be at least 6 characters" }, 400);
     }
 
-    if (authService.hasAccount()) {
-      const sessionId = getCookie(c, SESSION_COOKIE_NAME);
-      if (!sessionId || !(await authService.validateSession(sessionId))) {
-        return c.json({ error: "Not authenticated" }, 401);
-      }
-
-      if (!body.currentPassword || typeof body.currentPassword !== "string") {
-        return c.json(
-          { error: "Current password is required for existing accounts" },
-          400,
-        );
-      }
-
-      const currentPasswordValid = await authService.verifyPassword(
-        body.currentPassword,
+    if (authService.isEnabled()) {
+      return c.json(
+        { error: "Authentication is already enabled. Use change-password." },
+        409,
       );
-      if (!currentPasswordValid) {
-        return c.json({ error: "Current password is incorrect" }, 401);
-      }
     }
 
     const success = await authService.enableAuth(body.password);
@@ -174,7 +164,8 @@ export function createAuthRoutes(deps: AuthRoutesDeps): Hono {
 
   /**
    * POST /api/auth/disable
-   * Disable auth (requires authenticated session)
+   * Disable auth (requires authenticated session).
+   * Also clears the stored account so future enable is a fresh setup.
    */
   app.post("/disable", async (c) => {
     // Require authenticated session to disable

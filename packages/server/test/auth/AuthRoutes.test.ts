@@ -28,7 +28,7 @@ describe("Auth routes - POST /enable", () => {
   });
 
   async function postEnable(
-    body: { password: string; currentPassword?: string },
+    body: { password: string },
     cookie?: string,
   ): Promise<Response> {
     const headers: Record<string, string> = {
@@ -45,6 +45,16 @@ describe("Auth routes - POST /enable", () => {
     });
   }
 
+  async function postLogin(password: string): Promise<Response> {
+    return routes.request("/login", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ password }),
+    });
+  }
+
   it("allows unauthenticated first-time setup", async () => {
     const res = await postEnable({ password: "initial-password" });
     expect(res.status).toBe(200);
@@ -55,56 +65,35 @@ describe("Auth routes - POST /enable", () => {
     );
   });
 
-  it("rejects existing-account enable without session", async () => {
+  it("rejects enable when auth is already enabled", async () => {
     await authService.enableAuth("current-password");
 
-    const res = await postEnable({
-      password: "next-password",
-      currentPassword: "current-password",
-    });
+    const res = await postEnable({ password: "next-password" });
 
-    expect(res.status).toBe(401);
-    expect(await res.json()).toEqual({ error: "Not authenticated" });
-  });
-
-  it("rejects existing-account enable without current password", async () => {
-    await authService.enableAuth("current-password");
-    const sessionId = await authService.createSession("test-user-agent");
-
-    const res = await postEnable(
-      { password: "next-password" },
-      `${SESSION_COOKIE_NAME}=${sessionId}`,
-    );
-
-    expect(res.status).toBe(400);
+    expect(res.status).toBe(409);
     expect(await res.json()).toEqual({
-      error: "Current password is required for existing accounts",
+      error: "Authentication is already enabled. Use change-password.",
     });
   });
 
-  it("rejects existing-account enable with wrong current password", async () => {
+  it("allows fresh setup after disabling auth without requiring prior password", async () => {
     await authService.enableAuth("current-password");
-    const sessionId = await authService.createSession("test-user-agent");
+    const loginRes = await postLogin("current-password");
+    const cookie = loginRes.headers.get("set-cookie");
+    expect(loginRes.status).toBe(200);
+    expect(cookie).toBeTruthy();
 
-    const res = await postEnable(
-      { password: "next-password", currentPassword: "wrong-password" },
-      `${SESSION_COOKIE_NAME}=${sessionId}`,
-    );
-
-    expect(res.status).toBe(401);
-    expect(await res.json()).toEqual({
-      error: "Current password is incorrect",
+    const disableRes = await routes.request("/disable", {
+      method: "POST",
+      headers: {
+        Cookie: cookie ?? "",
+      },
     });
-  });
+    expect(disableRes.status).toBe(200);
+    expect(authService.isEnabled()).toBe(false);
+    expect(authService.hasAccount()).toBe(false);
 
-  it("allows existing-account enable with session and current password", async () => {
-    await authService.enableAuth("current-password");
-    const sessionId = await authService.createSession("test-user-agent");
-
-    const res = await postEnable(
-      { password: "next-password", currentPassword: "current-password" },
-      `${SESSION_COOKIE_NAME}=${sessionId}`,
-    );
+    const res = await postEnable({ password: "next-password" });
 
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({ success: true });
