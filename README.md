@@ -72,6 +72,7 @@ Or, from source:
 git clone https://github.com/kzahel/yepanywhere.git
 cd yepanywhere
 pnpm install
+pnpm build
 pnpm start
 ```
 
