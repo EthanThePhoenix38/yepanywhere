@@ -7,6 +7,41 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-02-22
+
+### Security
+- Harden markdown rendering against XSS
+- Harden SSH host handling for remote executors
+- Harden auth enable flow and add secure recovery path
+- Patch vulnerable dependencies (bn.js)
+- Enforce 0600 permissions on sensitive data files
+- Add SRP handshake rate limiting and timeout guards
+- Harden session resume replay defenses for untrusted relays
+- Harden relay replay protection for SRP sessions
+
+### Added
+- Tauri 2 desktop app scaffold with setup wizard
+- Tauri 2 mobile app scaffold with Android support
+- Global agent instructions setting for cross-project context
+- Permission rules for session bash command filtering
+- Legacy relay protocol compatibility for old servers
+
+### Fixed
+- Guard SecureConnection send when WebSocket global is unavailable
+- Stop reconnect loop on intentional remote disconnect
+- Fix stale reconnect race and reduce reconnect noise
+- Fix localhost cookie-auth websocket regression
+- Fix WebSocket SRP auth-state coupling and regressions
+- Fix server crash when spawning sessions with foreign project paths
+- Fix streamed Codex Edit patch augmentation parity
+- Fix Linux AppImage builds (patchelf corruption, native deps, signing)
+
+### Changed
+- Default remote sessions to memory with dev persistence toggle
+- Refactor websocket transport into auth, routing, and handler modules
+- Improve server update modal copy and layout
+- Remove browser control module
+
 ## [0.3.2] - 2025-02-18
 
 ### Changed
