@@ -71,9 +71,17 @@ jobs:
           cd dist/npm-package
           npm publish --provenance --access public
 
+      - name: Extract changelog for release notes
+        run: |
+          VERSION="${{ steps.version.outputs.VERSION }}"
+          awk "/^## \\[$VERSION\\]/{found=1; next} /^## \\[/{found=0} found" CHANGELOG.md > /tmp/release-notes.md
+          echo "Release notes for $VERSION:"
+          cat /tmp/release-notes.md
+
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          generate_release_notes: true
+          name: v${{ steps.version.outputs.VERSION }}
+          body_path: /tmp/release-notes.md
           draft: false
           prerelease: false
