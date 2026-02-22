@@ -1,4 +1,9 @@
 import { randomUUID } from "node:crypto";
+import type {
+  LookupAddress,
+  LookupAllOptions,
+  LookupOneOptions,
+} from "node:dns";
 import { mkdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -79,10 +84,29 @@ import { EventBus } from "../../src/watcher/index.js";
 // Test credentials
 const TEST_USERNAME = "testuser";
 const TEST_PASSWORD = "testpassword123";
+// Use a non-loopback hostname allowed by host policy (*.ts.net) while routing
+// DNS to loopback so tests hit the local server.
+const SRP_REQUIRED_TEST_HOST = "ws-secure-test.ts.net";
 
 // SRP parameters (same as production)
 const SRP_PARAMS = new SRPParameters();
 const SRP_ROUTINES = new SRPRoutines(SRP_PARAMS);
+
+function lookupLoopback(
+  _hostname: string,
+  options: LookupOneOptions | LookupAllOptions,
+  callback: (
+    err: NodeJS.ErrnoException | null,
+    address: string | LookupAddress[],
+    family?: number,
+  ) => void,
+): void {
+  if ("all" in options && options.all) {
+    callback(null, [{ address: "127.0.0.1", family: 4 }]);
+    return;
+  }
+  callback(null, "127.0.0.1", 4);
+}
 
 describe("Secure WebSocket Transport E2E", () => {
   let testDir: string;
@@ -192,7 +216,12 @@ describe("Secure WebSocket Transport E2E", () => {
    */
   function connectWebSocket(): Promise<WebSocket> {
     return new Promise((resolve, reject) => {
-      const ws = new WebSocket(`ws://localhost:${serverPort}/api/ws`);
+      const ws = new WebSocket(
+        `ws://${SRP_REQUIRED_TEST_HOST}:${serverPort}/api/ws`,
+        {
+          lookup: lookupLoopback,
+        },
+      );
       ws.on("open", () => resolve(ws));
       ws.on("error", reject);
       setTimeout(() => reject(new Error("WebSocket connection timeout")), 5000);

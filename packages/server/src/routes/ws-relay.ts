@@ -120,17 +120,20 @@ function isLoopbackHostname(hostname: string): boolean {
 }
 
 function getRequestHostname(c: Context): string | null {
-  try {
-    return new URL(c.req.url).hostname;
-  } catch {
-    const hostHeader = c.req.header("host");
-    if (!hostHeader) return null;
+  const hostHeader = c.req.header("host");
+  if (hostHeader) {
     if (hostHeader.startsWith("[")) {
       const closeBracket = hostHeader.indexOf("]");
       if (closeBracket === -1) return null;
       return hostHeader.slice(1, closeBracket);
     }
     return hostHeader.replace(/:\d+$/, "");
+  }
+
+  try {
+    return new URL(c.req.url).hostname;
+  } catch {
+    return null;
   }
 }
 
