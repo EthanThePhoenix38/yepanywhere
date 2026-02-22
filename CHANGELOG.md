@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.2] - 2026-02-22
+
+### Added
+- HTTPS self-signed cert support (`--https-self-signed` flag and `HTTPS_SELF_SIGNED` env var)
+- Codex shell tool rendering for grep/read workflows
+
+### Fixed
+- Fix HTTP LAN access: randomUUID fallback for insecure contexts and non-secure cookie handling
+- Lazy-load tssrp6a to fix crash on HTTP LAN access (insecure context)
+- Auth disable now clears credentials and simplifies enable flow
+
+### Changed
+- File logging and SDK message logging default to off (opt-in)
+- Replace `LOG_TO_CONSOLE` with `LOG_PRETTY` for clearer semantics
+
 ## [0.4.1] - 2026-02-22
 
 ### Added

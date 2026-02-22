@@ -6,6 +6,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [site-v1.5.2] - 2026-02-22
+
+### Added
+- Codex shell tool rendering for grep/read workflows
+
+### Fixed
+- Fix HTTP LAN access: randomUUID fallback for insecure contexts and non-secure cookie handling
+- Lazy-load tssrp6a to fix crash on HTTP LAN access (insecure context)
+- Auth disable now clears credentials and simplifies enable flow
+
 ## [site-v1.5.1] - 2026-02-22
 
 ### Fixed
