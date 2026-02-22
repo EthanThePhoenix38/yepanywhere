@@ -58,9 +58,9 @@ const MODE_LABELS: Record<PermissionMode, string> = {
 };
 
 const MODE_DESCRIPTIONS: Record<PermissionMode, string> = {
-  default: "Claude will ask for approval before making changes",
-  acceptEdits: "Claude can edit files without asking",
-  plan: "Claude will create a plan before implementing",
+  default: "Ask for approval before making changes",
+  acceptEdits: "Edit files without asking",
+  plan: "Create a plan before implementing",
   bypassPermissions: "Skip all permission checks (use with caution)",
 };
 
