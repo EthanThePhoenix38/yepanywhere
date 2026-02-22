@@ -347,7 +347,7 @@ async function main() {
 
   if (!fs.existsSync(filePath)) {
     console.error(`Error: File not found: ${filePath}`);
-    console.log("\nMake sure LOG_SDK_MESSAGES is enabled (default: true)");
+    console.log("\nMake sure LOG_SDK_MESSAGES=true is set in your .env");
     process.exit(1);
   }
 

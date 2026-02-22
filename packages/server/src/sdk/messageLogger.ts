@@ -7,7 +7,7 @@ import { loadConfig } from "../config.js";
  * Simple JSONL logger for raw SDK messages.
  * Captures exact message shapes for analysis.
  *
- * Enabled by default. Disable via LOG_SDK_MESSAGES=false
+ * Disabled by default. Enable via LOG_SDK_MESSAGES=true
  * Output: {logDir}/sdk-raw.jsonl
  */
 
@@ -19,7 +19,7 @@ let enabled = false;
  * Call once at server startup.
  */
 export function initMessageLogger(): void {
-  enabled = process.env.LOG_SDK_MESSAGES !== "false";
+  enabled = process.env.LOG_SDK_MESSAGES === "true";
   if (!enabled) return;
 
   const config = loadConfig();

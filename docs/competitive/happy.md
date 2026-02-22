@@ -13,7 +13,7 @@ Mobile-first Claude Code client with end-to-end encryption and voice commands. F
 
 | Feature | Details |
 |---------|---------|
-| **Agent support** | Claude Code only |
+| **Agent support** | Claude Code, Codex |
 | **E2E encryption** | Server can't read messages or code |
 | **Voice commands** | Voice-to-action, not just transcription |
 | **Multi-session** | Run multiple Claude instances in parallel |
@@ -37,7 +37,7 @@ Privacy-focused: relay server is a dumb pipe.
 - Native mobile apps (iOS/Android)
 
 ### We have that Happy doesn't
-- Multi-provider support (Codex, Gemini)
+- Broader multi-provider support (Codex OSS, Gemini)
 - Server-owned processes (theirs requires CLI running)
 - Tiered inbox
 - Fork/clone conversations

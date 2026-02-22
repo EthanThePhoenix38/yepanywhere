@@ -83,6 +83,8 @@ OPTIONS:
   --port <number>       Server port (default: 3400)
   --host <address>      Host/interface to bind to (default: localhost)
                         Use 0.0.0.0 to bind all interfaces
+  --https-self-signed   Enable HTTPS using a self-signed certificate
+                        stored in the app data directory
   --open                Open the dashboard in your default browser on startup
   --auth-disable        Disable authentication (bypass auth even if enabled in settings)
                         Emergency recovery mode; re-enable auth after fixing config
@@ -106,7 +108,9 @@ ENVIRONMENT VARIABLES:
   YEP_ANYWHERE_DATA_DIR         Data directory override
   YEP_ANYWHERE_PROFILE          Profile name (creates ~/.yep-anywhere-{profile}/)
   AUTH_DISABLED                 Disable auth (bypass even if enabled in settings)
+  HTTPS_SELF_SIGNED             Enable HTTPS with a self-signed certificate
   LOG_LEVEL                     Log level: fatal, error, warn, info, debug, trace
+  LOG_PRETTY                    Pretty-print console logs (default: true)
   MAINTENANCE_PORT              Maintenance server port (default: disabled)
   CODEX_WATCH_PERIODIC_RESCAN_MS
                                 Codex watcher fallback rescan interval in ms (default: 5000 on macOS, 0 elsewhere)
@@ -128,6 +132,9 @@ EXAMPLES:
 
   # Bind to all interfaces (accessible from network)
   yepanywhere --host 0.0.0.0
+
+  # HTTPS on localhost/LAN with auto-generated self-signed cert
+  yepanywhere --host 0.0.0.0 --https-self-signed
 
   # Custom port and host
   yepanywhere --port 8000 --host 0.0.0.0
@@ -228,6 +235,13 @@ const openIndex = args.indexOf("--open");
 if (openIndex !== -1) {
   process.env.OPEN_BROWSER = "true";
   args.splice(openIndex, 1);
+}
+
+// Parse --https-self-signed flag
+const httpsSelfSignedIndex = args.indexOf("--https-self-signed");
+if (httpsSelfSignedIndex !== -1) {
+  process.env.HTTPS_SELF_SIGNED = "true";
+  args.splice(httpsSelfSignedIndex, 1);
 }
 
 // Parse --auth-disable flag

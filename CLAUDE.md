@@ -155,8 +155,8 @@ Environment variables:
 - `LOG_FILE` - Custom log filename (default: server.log)
 - `LOG_LEVEL` - Minimum level: fatal, error, warn, info, debug, trace (default: info)
 - `LOG_FILE_LEVEL` - Separate level for file logging (default: same as LOG_LEVEL)
-- `LOG_TO_FILE` - Set to "false" to disable file logging
-- `LOG_TO_CONSOLE` - Set to "false" to disable console logging
+- `LOG_TO_FILE` - Set to "true" to enable file logging (default: off)
+- `LOG_PRETTY` - Set to "false" to disable pretty console logs (default: on)
 
 ## Client Console Logs
 
@@ -251,7 +251,7 @@ npx tsx scripts/validate-tool-results.ts --summary
 npx tsx scripts/validate-tool-results.ts --tool=Edit
 ```
 
-The SDK provides structured `tool_use_result` objects alongside tool results. These are logged to `~/.yep-anywhere/logs/sdk-raw.jsonl` when `LOG_SDK_MESSAGES=true` (default). Run this script after adding new tool schemas or when debugging tool result parsing.
+The SDK provides structured `tool_use_result` objects alongside tool results. These are logged to `~/.yep-anywhere/logs/sdk-raw.jsonl` when `LOG_SDK_MESSAGES=true` is set. Run this script after adding new tool schemas or when debugging tool result parsing.
 
 ## Type System
 

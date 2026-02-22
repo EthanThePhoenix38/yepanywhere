@@ -1,5 +1,6 @@
 import { execFile } from "node:child_process";
 import * as fs from "node:fs";
+import { createServer as createHttpsServer } from "node:https";
 import * as os from "node:os";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -14,6 +15,7 @@ import {
   createFrontendProxy,
   createStaticRoutes,
 } from "./frontend/index.js";
+import { ensureSelfSignedCertificate } from "./https/self-signed.js";
 import { SessionIndexService } from "./indexes/index.js";
 import {
   getLogFilePath,
@@ -152,8 +154,7 @@ initLogger({
   consoleLevel: config.logLevel,
   fileLevel: config.logFileLevel,
   logToFile: config.logToFile,
-  logToConsole: config.logToConsole,
-  prettyPrint: process.env.NODE_ENV !== "production",
+  prettyPrint: config.logPretty,
 });
 interceptConsole();
 
@@ -341,6 +342,22 @@ const serverSettingsService = new ServerSettingsService({
 });
 
 async function startServer() {
+  let tlsOptions: { key: Buffer; cert: Buffer } | undefined;
+  if (config.httpsSelfSigned) {
+    const certResult = ensureSelfSignedCertificate({
+      dataDir: config.dataDir,
+      host: config.host,
+    });
+    tlsOptions = {
+      key: certResult.key,
+      cert: certResult.cert,
+    };
+    console.log(
+      `[HTTPS] ${certResult.generated ? "Generated" : "Using existing"} self-signed certificate at ${certResult.certPath}`,
+    );
+  }
+  const serverProtocol = tlsOptions ? "https" : "http";
+
   // Initialize services (loads state from disk)
   // InstallService first since it generates the installation ID used by other services
   await installService.initialize();
@@ -407,6 +424,8 @@ async function startServer() {
 
   // Determine effective port for server-info (CLI override or saved setting)
   const effectiveServerPort = networkBindingService.getLocalhostPort();
+  const effectiveLocalhostUrl = `${serverProtocol}://127.0.0.1:${effectiveServerPort}`;
+  console.log(`Server URL: ${effectiveLocalhostUrl}`);
 
   // Create the app first (without WebSocket support initially)
   // We'll add WebSocket routes after setting up WebSocket support
@@ -489,7 +508,7 @@ async function startServer() {
 
   // Add WebSocket relay route for Phase 2b/2c/2d
   // This allows clients to make HTTP-like requests, subscriptions, and uploads over WebSocket
-  const baseUrl = `http://${config.host}:${config.port}`;
+  const baseUrl = `${serverProtocol}://${config.host}:${config.port}`;
   const wsRelayUploadManager = new UploadManager({
     maxUploadSizeBytes: config.maxUploadSizeBytes,
   });
@@ -600,8 +619,38 @@ async function startServer() {
     port: number,
     hostname: string,
     onReady?: (info: { port: number }) => void,
+    options?: { fatalOnError?: boolean },
   ): ReturnType<typeof serve> {
-    const server = serve({ fetch: app.fetch, port, hostname }, onReady);
+    const { fatalOnError = false } = options ?? {};
+    const server = tlsOptions
+      ? serve(
+          {
+            fetch: app.fetch,
+            port,
+            hostname,
+            createServer: createHttpsServer,
+            serverOptions: tlsOptions,
+          },
+          onReady,
+        )
+      : serve({ fetch: app.fetch, port, hostname }, onReady);
+
+    server.on("error", (error: unknown) => {
+      const err = error as NodeJS.ErrnoException;
+      const listenUrl = `${serverProtocol}://${hostname}:${port}`;
+      console.error(
+        `[Server] Failed to bind ${listenUrl}: ${err.message ?? "Unknown error"}`,
+      );
+      if (err.code === "EADDRINUSE") {
+        console.error(
+          `[Server] Port ${port} is already in use. Stop the existing process or run with a different PORT.`,
+        );
+      }
+      if (fatalOnError) {
+        process.exit(1);
+      }
+    });
+
     attachUnifiedUpgradeHandler(server, {
       frontendProxy,
       isApiPath: (urlPath) => urlPath.startsWith("/api"),
@@ -624,10 +673,21 @@ async function startServer() {
 
     try {
       // Test-first: try to bind new port before closing old one
-      const testServer = serve(
-        { fetch: app.fetch, port: newPort, hostname: "127.0.0.1" },
-        () => {},
-      );
+      const testServer = tlsOptions
+        ? serve(
+            {
+              fetch: app.fetch,
+              port: newPort,
+              hostname: "127.0.0.1",
+              createServer: createHttpsServer,
+              serverOptions: tlsOptions,
+            },
+            () => {},
+          )
+        : serve(
+            { fetch: app.fetch, port: newPort, hostname: "127.0.0.1" },
+            () => {},
+          );
 
       // If we got here, the port is available
       // Close the test server and the old server
@@ -637,16 +697,21 @@ async function startServer() {
       localhostServer.close();
 
       // Create new localhost server
-      localhostServer = createServer(newPort, "127.0.0.1", (info) => {
-        console.log(
-          `[NetworkBinding] Localhost server restarted on port ${info.port}`,
-        );
-      });
+      localhostServer = createServer(
+        newPort,
+        "127.0.0.1",
+        (info) => {
+          console.log(
+            `[NetworkBinding] Localhost server restarted on port ${info.port}`,
+          );
+        },
+        { fatalOnError: true },
+      );
 
       return {
         success: true,
         // Only include redirectUrl if port actually changed
-        redirectUrl: `http://127.0.0.1:${newPort}`,
+        redirectUrl: `${serverProtocol}://127.0.0.1:${newPort}`,
       };
     } catch (error) {
       const message =
@@ -682,11 +747,16 @@ async function startServer() {
 
       // If we were bound to 0.0.0.0 and now we're not, rebind localhost
       if (boundToAllInterfaces && !isBindingToAllInterfaces) {
-        localhostServer = createServer(localhostPort, "127.0.0.1", (info) => {
-          console.log(
-            `[NetworkBinding] Localhost server rebound on port ${info.port}`,
-          );
-        });
+        localhostServer = createServer(
+          localhostPort,
+          "127.0.0.1",
+          (info) => {
+            console.log(
+              `[NetworkBinding] Localhost server rebound on port ${info.port}`,
+            );
+          },
+          { fatalOnError: true },
+        );
         boundToAllInterfaces = false;
       }
 
@@ -706,6 +776,8 @@ async function startServer() {
             bindConfig.port,
             bindConfig.host,
             (info) => {
+              const networkUrl = `${serverProtocol}://${bindConfig.host}:${info.port}`;
+              console.log(`Server URL: ${networkUrl}`);
               console.log(
                 `[NetworkBinding] Network socket listening on ${bindConfig.host}:${info.port}`,
               );
@@ -729,6 +801,7 @@ async function startServer() {
                   `[NetworkBinding] Localhost server recovered on port ${info.port}`,
                 );
               },
+              { fatalOnError: true },
             );
           }
           throw bindError;
@@ -751,58 +824,66 @@ async function startServer() {
   networkBindingCallbackHolder.onNetworkBindingChange = onNetworkBindingChange;
 
   // Create the main localhost server
-  localhostServer = createServer(effectivePort, "127.0.0.1", (info) => {
-    // Write port to file if requested (for test harnesses)
-    if (config.portFile) {
-      fs.writeFileSync(config.portFile, String(info.port));
-    }
+  const expectedServerUrl = `${serverProtocol}://127.0.0.1:${effectivePort}`;
+  console.log(`[Server] Starting on ${expectedServerUrl}`);
+  localhostServer = createServer(
+    effectivePort,
+    "127.0.0.1",
+    (info) => {
+      // Write port to file if requested (for test harnesses)
+      if (config.portFile) {
+        fs.writeFileSync(config.portFile, String(info.port));
+      }
 
-    const serverUrl = `http://127.0.0.1:${info.port}`;
-    console.log(`Server running at ${serverUrl}`);
-    console.log(`Projects dir: ${config.claudeProjectsDir}`);
-    console.log(`Permission mode: ${config.defaultPermissionMode}`);
+      const serverUrl = `${serverProtocol}://127.0.0.1:${info.port}`;
+      console.log(`Server URL: ${serverUrl}`);
+      console.log(`Server running at ${serverUrl}`);
+      console.log(`Projects dir: ${config.claudeProjectsDir}`);
+      console.log(`Permission mode: ${config.defaultPermissionMode}`);
 
-    if (config.openBrowser) {
-      const platform = os.platform();
-      let cmd: string;
-      let args: string[];
-      if (platform === "darwin") {
-        cmd = "open";
-        args = [serverUrl];
-      } else if (platform === "win32") {
-        cmd = "cmd";
-        args = ["/c", "start", "", serverUrl];
-      } else {
-        // Detect WSL: use cmd.exe to open in Windows browser
-        let isWsl = false;
-        try {
-          isWsl = fs
-            .readFileSync("/proc/version", "utf-8")
-            .toLowerCase()
-            .includes("microsoft");
-        } catch {}
-        if (isWsl) {
-          cmd = "cmd.exe";
+      if (config.openBrowser) {
+        const platform = os.platform();
+        let cmd: string;
+        let args: string[];
+        if (platform === "darwin") {
+          cmd = "open";
+          args = [serverUrl];
+        } else if (platform === "win32") {
+          cmd = "cmd";
           args = ["/c", "start", "", serverUrl];
         } else {
-          cmd = "xdg-open";
-          args = [serverUrl];
+          // Detect WSL: use cmd.exe to open in Windows browser
+          let isWsl = false;
+          try {
+            isWsl = fs
+              .readFileSync("/proc/version", "utf-8")
+              .toLowerCase()
+              .includes("microsoft");
+          } catch {}
+          if (isWsl) {
+            cmd = "cmd.exe";
+            args = ["/c", "start", "", serverUrl];
+          } else {
+            cmd = "xdg-open";
+            args = [serverUrl];
+          }
         }
+        execFile(cmd, args, (err) => {
+          if (err) {
+            console.warn(`Could not open browser: ${err.message}`);
+          }
+        });
       }
-      execFile(cmd, args, (err) => {
-        if (err) {
-          console.warn(`Could not open browser: ${err.message}`);
-        }
-      });
-    }
 
-    // Notify all connected clients that the backend has restarted
-    // This allows other tabs to clear their "reload needed" banner
-    eventBus.emit({
-      type: "backend-reloaded",
-      timestamp: new Date().toISOString(),
-    });
-  });
+      // Notify all connected clients that the backend has restarted
+      // This allows other tabs to clear their "reload needed" banner
+      eventBus.emit({
+        type: "backend-reloaded",
+        timestamp: new Date().toISOString(),
+      });
+    },
+    { fatalOnError: true },
+  );
 
   // Start network socket if enabled in saved settings (and not CLI-overridden)
   const networkConfig = networkBindingService.getNetworkConfig();

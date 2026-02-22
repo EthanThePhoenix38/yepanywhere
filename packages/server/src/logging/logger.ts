@@ -26,8 +26,6 @@ export interface LogConfig {
   consoleLevel: LogLevel;
   /** Minimum log level for file. Default: info (or LOG_FILE_LEVEL env var) */
   fileLevel: LogLevel;
-  /** Also log to console. Default: true */
-  logToConsole: boolean;
   /** Log to file. Default: true */
   logToFile: boolean;
   /** Use pretty printing for console. Default: true in dev */
@@ -42,9 +40,10 @@ const defaultConfig: LogConfig = {
     (process.env.LOG_FILE_LEVEL as LogLevel) ||
     (process.env.LOG_LEVEL as LogLevel) ||
     "info",
-  logToConsole: true,
   logToFile: true,
-  prettyPrint: process.env.NODE_ENV !== "production",
+  prettyPrint: !["false", "0", "no", "off"].includes(
+    (process.env.LOG_PRETTY ?? "").toLowerCase(),
+  ),
 };
 
 let logger: pino.Logger | null = null;
@@ -81,27 +80,24 @@ export function initLogger(config: Partial<LogConfig> = {}): pino.Logger {
   const streams: pino.StreamEntry[] = [];
 
   // Console stream
-  if (finalConfig.logToConsole) {
-    if (finalConfig.prettyPrint) {
-      // Use pino-pretty for development
-      const pretty = pino.transport({
-        target: "pino-pretty",
-        options: {
-          colorize: true,
-          translateTime: "HH:MM:ss",
-          ignore: "pid,hostname,console",
-        },
-      });
-      streams.push({
-        stream: pretty,
-        level: finalConfig.consoleLevel as pino.Level,
-      });
-    } else {
-      streams.push({
-        stream: process.stdout,
-        level: finalConfig.consoleLevel as pino.Level,
-      });
-    }
+  if (finalConfig.prettyPrint) {
+    const pretty = pino.transport({
+      target: "pino-pretty",
+      options: {
+        colorize: true,
+        translateTime: "HH:MM:ss",
+        ignore: "pid,hostname,console",
+      },
+    });
+    streams.push({
+      stream: pretty,
+      level: finalConfig.consoleLevel as pino.Level,
+    });
+  } else {
+    streams.push({
+      stream: process.stdout,
+      level: finalConfig.consoleLevel as pino.Level,
+    });
   }
 
   // File stream

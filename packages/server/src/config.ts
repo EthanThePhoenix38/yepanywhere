@@ -94,10 +94,11 @@ export interface Config {
   logLevel: LogLevel;
   /** Minimum log level for file. Default: same as logLevel or LOG_FILE_LEVEL */
   logFileLevel: LogLevel;
-  /** Whether to log to file. Default: true */
+  /** Whether to log to file. Default: false */
   logToFile: boolean;
-  /** Whether to log to console. Default: true */
-  logToConsole: boolean;
+  /** Whether to pretty-print console logs. Default: true */
+  logPretty: boolean;
+
   /** Whether cookie-based auth is disabled by env var (--auth-disable or AUTH_DISABLED=true). Used for recovery. */
   authDisabled: boolean;
   /** Cookie signing secret. Auto-generated if not provided. */
@@ -110,6 +111,8 @@ export interface Config {
   cliHostOverride: boolean;
   /** Whether to open the dashboard in the default browser on startup */
   openBrowser: boolean;
+  /** Enable HTTPS with an auto-generated self-signed certificate. */
+  httpsSelfSigned: boolean;
 }
 
 /**
@@ -217,8 +220,8 @@ export function loadConfig(): Config {
     logFileLevel: parseLogLevel(
       process.env.LOG_FILE_LEVEL ?? process.env.LOG_LEVEL,
     ),
-    logToFile: process.env.LOG_TO_FILE !== "false",
-    logToConsole: process.env.LOG_TO_CONSOLE !== "false",
+    logToFile: process.env.LOG_TO_FILE === "true",
+    logPretty: parseBooleanOrDefault(process.env.LOG_PRETTY, true),
     // Auth disabled override (for recovery if user forgets password)
     authDisabled: process.env.AUTH_DISABLED === "true",
     authCookieSecret: process.env.AUTH_COOKIE_SECRET,
@@ -235,6 +238,7 @@ export function loadConfig(): Config {
       process.env.PORT !== undefined,
     cliHostOverride: process.env.CLI_HOST_OVERRIDE === "true",
     openBrowser: process.env.OPEN_BROWSER === "true",
+    httpsSelfSigned: process.env.HTTPS_SELF_SIGNED === "true",
   };
 }
 
@@ -248,6 +252,35 @@ function parseIntOrDefault(
   if (!value) return defaultValue;
   const parsed = Number.parseInt(value, 10);
   return Number.isNaN(parsed) ? defaultValue : parsed;
+}
+
+/**
+ * Parse boolean-ish env values with a default fallback.
+ */
+function parseBooleanOrDefault(
+  value: string | undefined,
+  defaultValue: boolean,
+): boolean {
+  if (value === undefined) return defaultValue;
+
+  const normalized = value.trim().toLowerCase();
+  if (
+    normalized === "true" ||
+    normalized === "1" ||
+    normalized === "yes" ||
+    normalized === "on"
+  ) {
+    return true;
+  }
+  if (
+    normalized === "false" ||
+    normalized === "0" ||
+    normalized === "no" ||
+    normalized === "off"
+  ) {
+    return false;
+  }
+  return defaultValue;
 }
 
 /**

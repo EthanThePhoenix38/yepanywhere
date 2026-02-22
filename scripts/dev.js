@@ -21,6 +21,40 @@ import { fileURLToPath } from "node:url";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const rootDir = join(__dirname, "..");
+const pnpmBin = process.platform === "win32" ? "pnpm.cmd" : "pnpm";
+
+function isSuppressedViteBannerLine(line) {
+  return (
+    /^\s*VITE v.+ready in /.test(line) ||
+    /^\s*➜\s+Local:/.test(line) ||
+    /^\s*➜\s+Network:/.test(line) ||
+    /^\s*➜\s+press h \+ enter to show help/.test(line)
+  );
+}
+
+function forwardWithLineFilter(stream, output, shouldSuppressLine) {
+  if (!stream) return;
+  let buffered = "";
+
+  stream.on("data", (chunk) => {
+    buffered += chunk.toString();
+
+    const lines = buffered.split(/\r?\n/);
+    buffered = lines.pop() ?? "";
+
+    for (const line of lines) {
+      if (!shouldSuppressLine(line)) {
+        output.write(`${line}\n`);
+      }
+    }
+  });
+
+  stream.on("end", () => {
+    if (buffered && !shouldSuppressLine(buffered)) {
+      output.write(buffered);
+    }
+  });
+}
 
 // Load .env file if it exists (simple parser, no dependencies)
 function loadEnvFile() {
@@ -82,11 +116,20 @@ const basePort = process.env.PORT
 const vitePort = process.env.VITE_PORT
   ? Number.parseInt(process.env.VITE_PORT, 10)
   : basePort + 2;
+const protocol = process.env.HTTPS_SELF_SIGNED === "true" ? "https" : "http";
+const configuredHost = process.env.HOST?.trim();
+const displayHost =
+  configuredHost && configuredHost !== "0.0.0.0" && configuredHost !== "::"
+    ? configuredHost
+    : "localhost";
 
 console.log("Starting dev server...");
-console.log(`  Access at: http://localhost:${basePort}`);
+console.log(`  Access at: ${protocol}://${displayHost}:${basePort}`);
 console.log(
   `  Ports: server=${basePort}, maintenance=${basePort + 1}, vite=${vitePort}`,
+);
+console.log(
+  `  Note: Vite output on :${vitePort} is internal HMR only; browse ${protocol}://${displayHost}:${basePort}`,
 );
 if (backendWatch) console.log("  Backend auto-reload: ENABLED (--watch)");
 if (noFrontendReload) console.log("  Frontend HMR: DISABLED");
@@ -131,11 +174,10 @@ function startServer() {
   // Use dev:watch for auto-reload, dev for no-reload (default)
   const serverScript = backendWatch ? "dev:watch" : "dev";
 
-  const server = spawn("pnpm", ["--filter", "server", serverScript], {
+  const server = spawn(pnpmBin, ["--filter", "server", serverScript], {
     cwd: rootDir,
     env,
     stdio: "inherit",
-    shell: true,
   });
 
   children.push(server);
@@ -162,12 +204,22 @@ function startServer() {
  * Start the client dev server
  */
 function startClient() {
-  const client = spawn("pnpm", ["--filter", "client", "dev"], {
+  const client = spawn(pnpmBin, ["--filter", "client", "dev"], {
     cwd: rootDir,
     env,
-    stdio: "inherit",
-    shell: true,
+    stdio: ["ignore", "pipe", "pipe"],
   });
+
+  forwardWithLineFilter(
+    client.stdout,
+    process.stdout,
+    isSuppressedViteBannerLine,
+  );
+  forwardWithLineFilter(
+    client.stderr,
+    process.stderr,
+    isSuppressedViteBannerLine,
+  );
 
   children.push(client);
 

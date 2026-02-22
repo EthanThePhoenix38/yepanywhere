@@ -18,7 +18,7 @@ Comprehensive comparison of AI coding agent supervisors.
 | Agent | yepanywhere | Codex App | Claude Desktop | emdash | Conductor | HAPI | Happy |
 |-------|-------------|-----------|----------------|--------|-----------|------|-------|
 | Claude Code | ✅ | ❌ | ✅ | ✅ | ✅ | ✅ | ✅ |
-| Codex | ✅ | ✅ | ❌ | ✅ | ✅ | ✅ | ❌ |
+| Codex | ✅ | ✅ | ❌ | ✅ | ✅ | ✅ | ✅ |
 | Codex OSS | ✅ | ❌ | ❌ | ? | ❌ | ❌ | ❌ |
 | Gemini | ✅ | ❌ | ❌ | ✅ | ❌ | ✅ | ❌ |
 | OpenCode | ❌ | ❌ | ❌ | ✅ | ❌ | ✅ | ❌ |

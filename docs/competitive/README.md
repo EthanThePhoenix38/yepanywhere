@@ -21,7 +21,7 @@ Official apps from AI providers:
 | [emdash](emdash.md) | Desktop app | 20+ | Multi-agent orchestration, git worktrees |
 | [Conductor](conductor.md) | macOS app | Claude, Codex | Git worktree isolation |
 | [HAPI](hapi.md) | Web + CLI | Claude, Codex, Gemini, OpenCode | CLI-wrapper architecture, terminal page |
-| [Happy](happy.md) | Mobile + CLI | Claude | Voice commands, native mobile apps |
+| [Happy](happy.md) | Mobile + CLI | Claude, Codex | Voice commands, native mobile apps |
 
 See also [Community Projects](community-projects.md) for smaller tools shared on Reddit/forums.
 

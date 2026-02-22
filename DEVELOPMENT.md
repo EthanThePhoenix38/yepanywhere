@@ -70,8 +70,8 @@ tail -f ~/.yep-anywhere/logs/server.log
 
 Environment variables:
 - `LOG_LEVEL` — Minimum level: fatal, error, warn, info, debug, trace (default: info)
-- `LOG_TO_FILE` — Set to "false" to disable file logging
-- `LOG_TO_CONSOLE` — Set to "false" to disable console logging
+- `LOG_TO_FILE` — Set to "true" to enable file logging (default: off)
+- `LOG_PRETTY` — Set to "false" to disable pretty console logs (default: on)
 
 ## Maintenance Server
 
