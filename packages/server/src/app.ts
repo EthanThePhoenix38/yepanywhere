@@ -512,6 +512,7 @@ export function createApp(options: AppOptions): AppResult {
       geminiScanner,
       geminiSessionsDir: GEMINI_TMP_DIR,
       geminiReaderFactory,
+      eventBus: options.eventBus,
     }),
   );
 

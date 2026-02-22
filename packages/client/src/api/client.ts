@@ -706,6 +706,10 @@ export const api = {
       query ? `/sessions?${query}` : "/sessions",
     );
   },
+  getGlobalSessionStats: () =>
+    fetchJSON<{
+      stats: GlobalSessionStats;
+    }>("/sessions/stats"),
 
   // Auth API
   getAuthStatus: () => fetchJSON<AuthStatus>("/auth/status"),

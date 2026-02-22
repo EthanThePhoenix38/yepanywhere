@@ -13,6 +13,7 @@ import type { ISessionReader } from "../../src/sessions/types.js";
 import type { ExternalSessionTracker } from "../../src/supervisor/ExternalSessionTracker.js";
 import type { Supervisor } from "../../src/supervisor/Supervisor.js";
 import type { Project, SessionSummary } from "../../src/supervisor/types.js";
+import { EventBus } from "../../src/watcher/EventBus.js";
 
 // Helper to create ISO timestamps relative to now
 function minutesAgo(minutes: number): string {
@@ -145,7 +146,9 @@ describe("Global Sessions Routes", () => {
     } as unknown as SessionMetadataService;
   });
 
-  function getDeps(): GlobalSessionsDeps {
+  function getDeps(
+    overrides: Partial<GlobalSessionsDeps> = {},
+  ): GlobalSessionsDeps {
     return {
       scanner: mockScanner,
       readerFactory: mockReaderFactory,
@@ -154,6 +157,7 @@ describe("Global Sessions Routes", () => {
       notificationService: mockNotificationService,
       sessionIndexService: mockSessionIndexService,
       sessionMetadataService: mockMetadataService,
+      ...overrides,
     };
   }
 
@@ -162,6 +166,15 @@ describe("Global Sessions Routes", () => {
   ): Promise<GlobalSessionsResponse> {
     const routes = createGlobalSessionsRoutes(getDeps());
     const response = await routes.request(`/${queryString}`);
+    expect(response.status).toBe(200);
+    return response.json();
+  }
+
+  async function makeStatsRequest(
+    routes = createGlobalSessionsRoutes(getDeps()),
+    queryString = "",
+  ): Promise<{ stats: GlobalSessionsResponse["stats"] }> {
+    const response = await routes.request(`/stats${queryString}`);
     expect(response.status).toBe(200);
     return response.json();
   }
@@ -234,6 +247,41 @@ describe("Global Sessions Routes", () => {
 
       expect(result.sessions[0].projectId).toBe("proj1");
       expect(result.sessions[0].projectName).toBe("my-project");
+    });
+  });
+
+  describe("stats endpoint", () => {
+    it("returns cached stats and invalidates on metadata changes", async () => {
+      const project = createProject("proj1", "project-one", "/sessions/proj1");
+      const session = createSession("sess1", "proj1", minutesAgo(5));
+      const eventBus = new EventBus();
+      vi.mocked(mockScanner.listProjects).mockResolvedValue([project]);
+      sessionsByDir.set("/sessions/proj1", [session]);
+
+      const routes = createGlobalSessionsRoutes(getDeps({ eventBus }));
+
+      const first = await makeStatsRequest(routes);
+      expect(first.stats.totalCount).toBe(1);
+      expect(first.stats.archivedCount).toBe(0);
+      expect(vi.mocked(mockScanner.listProjects)).toHaveBeenCalledTimes(1);
+
+      metadataMap.set("sess1", { isArchived: true });
+      const second = await makeStatsRequest(routes);
+      expect(second.stats.totalCount).toBe(1);
+      expect(second.stats.archivedCount).toBe(0);
+      expect(vi.mocked(mockScanner.listProjects)).toHaveBeenCalledTimes(1);
+
+      eventBus.emit({
+        type: "session-metadata-changed",
+        sessionId: "sess1",
+        archived: true,
+        timestamp: new Date().toISOString(),
+      });
+
+      const third = await makeStatsRequest(routes);
+      expect(third.stats.totalCount).toBe(0);
+      expect(third.stats.archivedCount).toBe(1);
+      expect(vi.mocked(mockScanner.listProjects)).toHaveBeenCalledTimes(2);
     });
   });
 

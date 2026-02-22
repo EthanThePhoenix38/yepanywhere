@@ -63,9 +63,13 @@ This leaves list endpoints (`/api/sessions`, `/api/projects/:id/sessions`, `/api
 - `/api/sessions` now supports `includeStats=true`.
   - Default request path skips global stats aggregation.
   - Global stats are only computed when explicitly requested (used by the global sessions page).
+- Added dedicated `/api/sessions/stats` endpoint with in-memory caching and event-driven invalidation.
+  - Stats cache TTL: 5s.
+  - Invalidated on session file/metadata/update/read events.
 - UI consumers that do not render global counts now request sessions with stats disabled:
   - sidebar session lists
   - recent sessions dropdown
+- Global sessions page now fetches stats separately via `/api/sessions/stats`.
 - `SessionIndexService` index persistence now uses atomic write+rename to avoid partially-written cache files.
 - Added tests for:
   - `includeStats` behavior in global sessions route

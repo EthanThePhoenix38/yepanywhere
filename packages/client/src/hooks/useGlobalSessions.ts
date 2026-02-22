@@ -97,14 +97,21 @@ export function useGlobalSessions(options: UseGlobalSessionsOptions = {}) {
     setError(null);
 
     try {
-      const data = await api.getGlobalSessions({
+      const sessionsPromise = api.getGlobalSessions({
         project: projectId ?? undefined,
         q: searchQuery || undefined,
         limit,
         includeArchived,
         starred,
-        includeStats,
+        includeStats: false,
       });
+      const statsPromise =
+        includeStats && !projectId ? api.getGlobalSessionStats() : null;
+
+      const [data, statsResponse] = await Promise.all([
+        sessionsPromise,
+        statsPromise,
+      ]);
 
       if (!hasInitialLoadRef.current || optionsChanged) {
         setSessions(data.sessions);
@@ -134,7 +141,7 @@ export function useGlobalSessions(options: UseGlobalSessionsOptions = {}) {
       }
 
       setHasMore(data.hasMore);
-      setStats(includeStats ? data.stats : DEFAULT_STATS);
+      setStats(statsResponse?.stats ?? DEFAULT_STATS);
       setProjects(data.projects);
     } catch (err) {
       setError(err instanceof Error ? err : new Error(String(err)));

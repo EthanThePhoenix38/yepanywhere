@@ -29,6 +29,7 @@ import type {
   SessionOwnership,
   SessionSummary,
 } from "../supervisor/types.js";
+import type { BusEvent, EventBus } from "../watcher/index.js";
 import { buildProviderProjectCatalog } from "./provider-catalog.js";
 
 export interface GlobalSessionsDeps {
@@ -51,6 +52,8 @@ export interface GlobalSessionsDeps {
   geminiSessionsDir?: string;
   /** Optional shared Gemini reader factory for cross-provider session lookups */
   geminiReaderFactory?: (projectPath: string) => GeminiSessionReader;
+  /** Event bus for cache invalidation */
+  eventBus?: EventBus;
 }
 
 export interface GlobalSessionItem {
@@ -108,6 +111,8 @@ const DEFAULT_LIMIT = 100;
 
 /** Maximum allowed limit */
 const MAX_LIMIT = 500;
+/** Stats cache TTL in milliseconds */
+const STATS_CACHE_TTL_MS = 5000;
 
 function createEmptyStats(): GlobalSessionStats {
   return {
@@ -122,6 +127,199 @@ function createEmptyStats(): GlobalSessionStats {
 
 export function createGlobalSessionsRoutes(deps: GlobalSessionsDeps): Hono {
   const routes = new Hono();
+  let cachedStats: { value: GlobalSessionStats; timestamp: number } | null =
+    null;
+  let statsDirty = true;
+  let inFlightStats: Promise<GlobalSessionStats> | null = null;
+
+  const shouldInvalidateStats = (event: BusEvent): boolean => {
+    switch (event.type) {
+      case "file-change":
+      case "session-created":
+      case "session-updated":
+      case "session-seen":
+      case "session-metadata-changed":
+        return true;
+      default:
+        return false;
+    }
+  };
+
+  const invalidateStats = (): void => {
+    statsDirty = true;
+  };
+
+  if (deps.eventBus) {
+    deps.eventBus.subscribe((event) => {
+      if (shouldInvalidateStats(event)) {
+        invalidateStats();
+      }
+    });
+  }
+
+  const listSessionsForProject = async (
+    project: Project,
+    providerCatalog: Awaited<ReturnType<typeof buildProviderProjectCatalog>>,
+  ): Promise<SessionSummary[]> => {
+    const reader = deps.readerFactory(project);
+
+    // Get sessions using cache if available
+    // SessionIndexService only works with Claude's directory structure
+    let sessions: SessionSummary[];
+    if (deps.sessionIndexService && project.provider === "claude") {
+      sessions = await deps.sessionIndexService.getSessionsWithCache(
+        project.sessionDir,
+        project.id,
+        reader,
+      );
+      // Include sessions from cross-machine merged directories
+      if (project.mergedSessionDirs) {
+        for (const dir of project.mergedSessionDirs) {
+          const mergedReader = new ClaudeSessionReader({ sessionDir: dir });
+          const merged = await deps.sessionIndexService.getSessionsWithCache(
+            dir,
+            project.id,
+            mergedReader,
+          );
+          sessions = [...sessions, ...merged];
+        }
+      }
+    } else {
+      sessions = await reader.listSessions(project.id);
+    }
+
+    // For Claude projects, also check for Codex sessions for the same path
+    // This handles the case where a project has sessions from multiple providers
+    if (
+      project.provider === "claude" &&
+      providerCatalog.codexPaths.has(project.path) &&
+      (deps.codexReaderFactory || deps.codexSessionsDir)
+    ) {
+      const codexReader =
+        deps.codexReaderFactory?.(project.path) ??
+        (deps.codexSessionsDir
+          ? new CodexSessionReader({
+              sessionsDir: deps.codexSessionsDir,
+              projectPath: project.path,
+            })
+          : null);
+      if (codexReader) {
+        const codexSessionSummaries = await codexReader.listSessions(
+          project.id,
+        );
+        // Merge Codex sessions with Claude sessions
+        sessions = [...sessions, ...codexSessionSummaries];
+      }
+    }
+
+    // For Claude/Codex projects, also check for Gemini sessions for the same path
+    // This handles the case where a project has sessions from multiple providers
+    if (
+      (project.provider === "claude" || project.provider === "codex") &&
+      providerCatalog.geminiPaths.has(project.path) &&
+      (deps.geminiReaderFactory || deps.geminiSessionsDir)
+    ) {
+      const geminiReader =
+        deps.geminiReaderFactory?.(project.path) ??
+        (deps.geminiSessionsDir
+          ? new GeminiSessionReader({
+              sessionsDir: deps.geminiSessionsDir,
+              projectPath: project.path,
+              hashToCwd: providerCatalog.geminiHashToCwd,
+            })
+          : null);
+      if (geminiReader) {
+        const geminiSessionSummaries = await geminiReader.listSessions(
+          project.id,
+        );
+        // Merge Gemini sessions with Claude/Codex sessions
+        sessions = [...sessions, ...geminiSessionSummaries];
+      }
+    }
+
+    return sessions;
+  };
+
+  const computeGlobalStats = async (): Promise<GlobalSessionStats> => {
+    const projects = await deps.scanner.listProjects();
+    const stats: GlobalSessionStats = createEmptyStats();
+    const providerCatalog = await buildProviderProjectCatalog({
+      codexScanner: deps.codexScanner,
+      geminiScanner: deps.geminiScanner,
+    });
+
+    for (const project of projects) {
+      const sessions = await listSessionsForProject(project, providerCatalog);
+      for (const session of sessions) {
+        const metadata = deps.sessionMetadataService?.getMetadata(session.id);
+        const isArchived = metadata?.isArchived ?? session.isArchived ?? false;
+        const isStarred = metadata?.isStarred ?? session.isStarred ?? false;
+        const executor = metadata?.executor;
+
+        const hasUnread = deps.notificationService
+          ? deps.notificationService.hasUnread(session.id, session.updatedAt)
+          : false;
+
+        if (isArchived) {
+          stats.archivedCount++;
+        } else {
+          stats.totalCount++;
+          if (hasUnread) stats.unreadCount++;
+          if (session.provider) {
+            stats.providerCounts[session.provider] =
+              (stats.providerCounts[session.provider] ?? 0) + 1;
+          }
+          const executorKey = executor ?? "local";
+          stats.executorCounts[executorKey] =
+            (stats.executorCounts[executorKey] ?? 0) + 1;
+        }
+        if (isStarred) stats.starredCount++;
+      }
+    }
+
+    return stats;
+  };
+
+  const getCachedGlobalStats = async (): Promise<GlobalSessionStats> => {
+    const now = Date.now();
+    const isFresh =
+      cachedStats &&
+      !statsDirty &&
+      now - cachedStats.timestamp < STATS_CACHE_TTL_MS;
+    if (isFresh && cachedStats) {
+      return cachedStats.value;
+    }
+
+    if (inFlightStats) {
+      return inFlightStats;
+    }
+
+    const statsPromise = computeGlobalStats()
+      .then((stats) => {
+        cachedStats = { value: stats, timestamp: Date.now() };
+        statsDirty = false;
+        return stats;
+      })
+      .finally(() => {
+        if (inFlightStats === statsPromise) {
+          inFlightStats = null;
+        }
+      });
+
+    inFlightStats = statsPromise;
+    return statsPromise;
+  };
+
+  // GET /api/sessions/stats - Get cached global session stats
+  routes.get("/stats", async (c) => {
+    const filterProjectId = c.req.query("project");
+    if (filterProjectId) {
+      return c.json({ stats: createEmptyStats() });
+    }
+
+    const stats = await getCachedGlobalStats();
+    return c.json({ stats });
+  });
 
   // GET /api/sessions - Get all sessions with pagination
   routes.get("/", async (c) => {
@@ -151,9 +349,6 @@ export function createGlobalSessionsRoutes(deps: GlobalSessionsDeps): Hono {
       .map((p) => ({ id: p.id, name: p.name }))
       .sort((a, b) => a.name.localeCompare(b.name));
 
-    // Global stats counters (computed from ALL sessions, ignoring filters)
-    const stats: GlobalSessionStats = createEmptyStats();
-
     // Collect all sessions with enriched data
     const allSessions: GlobalSessionItem[] = [];
     const providerCatalog = await buildProviderProjectCatalog({
@@ -162,81 +357,7 @@ export function createGlobalSessionsRoutes(deps: GlobalSessionsDeps): Hono {
     });
 
     for (const project of projects) {
-      const reader = deps.readerFactory(project);
-
-      // Get sessions using cache if available
-      // SessionIndexService only works with Claude's directory structure
-      let sessions: SessionSummary[];
-      if (deps.sessionIndexService && project.provider === "claude") {
-        sessions = await deps.sessionIndexService.getSessionsWithCache(
-          project.sessionDir,
-          project.id,
-          reader,
-        );
-        // Include sessions from cross-machine merged directories
-        if (project.mergedSessionDirs) {
-          for (const dir of project.mergedSessionDirs) {
-            const mergedReader = new ClaudeSessionReader({ sessionDir: dir });
-            const merged = await deps.sessionIndexService.getSessionsWithCache(
-              dir,
-              project.id,
-              mergedReader,
-            );
-            sessions = [...sessions, ...merged];
-          }
-        }
-      } else {
-        sessions = await reader.listSessions(project.id);
-      }
-
-      // For Claude projects, also check for Codex sessions for the same path
-      // This handles the case where a project has sessions from multiple providers
-      if (
-        project.provider === "claude" &&
-        providerCatalog.codexPaths.has(project.path) &&
-        (deps.codexReaderFactory || deps.codexSessionsDir)
-      ) {
-        const codexReader =
-          deps.codexReaderFactory?.(project.path) ??
-          (deps.codexSessionsDir
-            ? new CodexSessionReader({
-                sessionsDir: deps.codexSessionsDir,
-                projectPath: project.path,
-              })
-            : null);
-        if (codexReader) {
-          const codexSessionSummaries = await codexReader.listSessions(
-            project.id,
-          );
-          // Merge Codex sessions with Claude sessions
-          sessions = [...sessions, ...codexSessionSummaries];
-        }
-      }
-
-      // For Claude/Codex projects, also check for Gemini sessions for the same path
-      // This handles the case where a project has sessions from multiple providers
-      if (
-        (project.provider === "claude" || project.provider === "codex") &&
-        providerCatalog.geminiPaths.has(project.path) &&
-        (deps.geminiReaderFactory || deps.geminiSessionsDir)
-      ) {
-        const geminiReader =
-          deps.geminiReaderFactory?.(project.path) ??
-          (deps.geminiSessionsDir
-            ? new GeminiSessionReader({
-                sessionsDir: deps.geminiSessionsDir,
-                projectPath: project.path,
-                hashToCwd: providerCatalog.geminiHashToCwd,
-              })
-            : null);
-        if (geminiReader) {
-          const geminiSessionSummaries = await geminiReader.listSessions(
-            project.id,
-          );
-          // Merge Gemini sessions with Claude/Codex sessions
-          sessions = [...sessions, ...geminiSessionSummaries];
-        }
-      }
+      const sessions = await listSessionsForProject(project, providerCatalog);
 
       // Enrich each session
       for (const session of sessions) {
@@ -251,27 +372,6 @@ export function createGlobalSessionsRoutes(deps: GlobalSessionsDeps): Hono {
         const hasUnread = deps.notificationService
           ? deps.notificationService.hasUnread(session.id, session.updatedAt)
           : undefined;
-
-        // Update global stats (optional)
-        // Stats are computed only for global view when includeStats=true.
-        if (includeStats && !filterProjectId) {
-          if (isArchived) {
-            stats.archivedCount++;
-          } else {
-            stats.totalCount++;
-            if (hasUnread) stats.unreadCount++;
-            // Provider counts only for non-archived
-            if (session.provider) {
-              stats.providerCounts[session.provider] =
-                (stats.providerCounts[session.provider] ?? 0) + 1;
-            }
-            // Executor counts only for non-archived ("local" for sessions without executor)
-            const executorKey = executor ?? "local";
-            stats.executorCounts[executorKey] =
-              (stats.executorCounts[executorKey] ?? 0) + 1;
-          }
-          if (isStarred) stats.starredCount++;
-        }
 
         // Skip archived sessions unless explicitly requested
         if (isArchived && !includeArchived) continue;
@@ -367,11 +467,15 @@ export function createGlobalSessionsRoutes(deps: GlobalSessionsDeps): Hono {
     const sessionsWithExtra = filteredSessions.slice(0, limit + 1);
     const hasMore = sessionsWithExtra.length > limit;
     const sessions = sessionsWithExtra.slice(0, limit);
+    const stats =
+      includeStats && !filterProjectId
+        ? await getCachedGlobalStats()
+        : createEmptyStats();
 
     const response: GlobalSessionsResponse = {
       sessions,
       hasMore,
-      stats: includeStats ? stats : createEmptyStats(),
+      stats,
       projects: projectOptions,
     };
 
