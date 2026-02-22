@@ -2,19 +2,24 @@
  * SRP-6a client helpers for remote access authentication.
  *
  * Uses tssrp6a library with 2048-bit prime group and SHA-256.
+ * The library is loaded lazily via dynamic import() to avoid crashing
+ * in non-secure contexts (HTTP on LAN IPs) where crypto.subtle is
+ * unavailable — tssrp6a checks crypto.subtle at module init time.
  */
-import {
-  SRPClientSession,
-  type SRPClientSessionStep1,
-  type SRPClientSessionStep2,
-  SRPParameters,
-  SRPRoutines,
-  bigIntToArrayBuffer,
+import type {
+  SRPClientSession as SRPClientSessionType,
+  SRPClientSessionStep1,
+  SRPClientSessionStep2,
 } from "tssrp6a";
 
-/** SRP parameters: 2048-bit prime group with SHA-256 */
-const SRP_PARAMS = new SRPParameters();
-const SRP_ROUTINES = new SRPRoutines(SRP_PARAMS);
+let _tssrp6a: typeof import("tssrp6a") | null = null;
+
+async function loadSrp() {
+  if (!_tssrp6a) {
+    _tssrp6a = await import("tssrp6a");
+  }
+  return _tssrp6a;
+}
 
 /**
  * Convert bigint to hex string.
@@ -41,15 +46,11 @@ function hexToBigInt(hex: string): bigint {
  * 5. Get key: `session.getSessionKey()` → returns raw session key bytes
  */
 export class SrpClientSession {
-  private session: SRPClientSession;
+  private session: SRPClientSessionType | null = null;
   private step1Result: SRPClientSessionStep1 | null = null;
   private step2Result: SRPClientSessionStep2 | null = null;
   private sessionKey: Uint8Array | null = null;
   private identity: string | null = null;
-
-  constructor() {
-    this.session = new SRPClientSession(SRP_ROUTINES);
-  }
 
   /**
    * Generate hello message (step 1).
@@ -63,6 +64,11 @@ export class SrpClientSession {
     identity: string,
     password: string,
   ): Promise<{ identity: string }> {
+    const { SRPClientSession, SRPParameters, SRPRoutines } = await loadSrp();
+    const params = new SRPParameters();
+    const routines = new SRPRoutines(params);
+    this.session = new SRPClientSession(routines);
+
     this.identity = identity;
     this.step1Result = await this.session.step1(identity, password);
     return { identity };
@@ -106,6 +112,7 @@ export class SrpClientSession {
       throw new Error("Must call processChallenge before verifyServer");
     }
 
+    const { bigIntToArrayBuffer } = await loadSrp();
     const M2 = hexToBigInt(serverM2);
 
     try {
