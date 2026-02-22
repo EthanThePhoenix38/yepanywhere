@@ -117,6 +117,14 @@ Per-chat session isolation via composite key `userId:chatId` prevents context le
 - **Lightweight deployment** — `npm install` vs downloading an Electron app
 - **Per-tool-call mobile approval** — their channels auto-approve everything (yoloMode)
 
+### Subscription Auth: A Cost Disadvantage for AionUi
+
+Anthropic's [Jan 2026 crackdown](https://www.theregister.com/2026/02/20/anthropic_clarifies_ban_third_party_claude_access/) banned third-party tools that spoof client identity to use subscription OAuth tokens. AionUi's `claude-agent-acp` bridge requires an API key (no OAuth support), so users must pay per-token — significantly more expensive than a $200/month Max subscription.
+
+Yepanywhere uses the official Agent SDK with the user's own subscription credentials. Anthropic [confirmed](https://x.com/trq212/status/2024212378402095389) that individual use of the Agent SDK with Max subscriptions is permitted. This gives us a meaningful cost advantage for Claude users.
+
+For Gemini, AionUi calls the `@google/genai` API directly (API key required). Google's Gemini CLI free tier uses Google OAuth with rate limits; AionUi bypasses this entirely. For Codex, both approaches use API keys — no subscription model exists.
+
 ### Different Approach, Same Space
 
 AionUi wraps agents behind ACP and extends reach via messaging platforms. We use the Agent SDK directly for Claude and provide a purpose-built mobile supervision UI. Their approach trades approval granularity for reach (Telegram = instant mobile access for billions of users). Ours trades reach for control (custom UI = better approval UX, E2E encryption, tiered inbox).
