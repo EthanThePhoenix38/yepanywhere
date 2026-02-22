@@ -131,6 +131,7 @@ function SessionPageContent({
     pendingMessages,
     addPendingMessage,
     removePendingMessage,
+    updatePendingMessage,
     deferredMessages,
     slashCommands,
     sessionTools,
@@ -253,6 +254,10 @@ function SessionPageContent({
   // File attachment state
   const [attachments, setAttachments] = useState<UploadedFile[]>([]);
   const [uploadProgress, setUploadProgress] = useState<UploadProgress[]>([]);
+  // Track in-flight upload promises so handleSend can wait for them
+  const pendingUploadsRef = useRef<Map<string, Promise<UploadedFile | null>>>(
+    new Map(),
+  );
 
   // Approval panel collapsed state (separate from message input collapse)
   const [approvalCollapsed, setApprovalCollapsed] = useState(false);
@@ -296,9 +301,27 @@ function SessionPageContent({
     setProcessState("in-turn"); // Optimistic: show processing indicator immediately
     setScrollTrigger((prev) => prev + 1); // Force scroll to bottom
 
-    // Capture current attachments and clear optimistically
+    // Capture already-completed attachments
     const currentAttachments = [...attachments];
-    setAttachments([]);
+
+    // Wait for any in-flight uploads to complete before sending
+    const pendingAtSendTime = [...pendingUploadsRef.current.values()];
+    if (pendingAtSendTime.length > 0) {
+      updatePendingMessage(tempId, { status: "Uploading..." });
+      setAttachments([]); // Clear input area immediately
+      const results = await Promise.all(pendingAtSendTime);
+      for (const result of results) {
+        if (result) currentAttachments.push(result);
+      }
+      // Remove uploaded files that handleAttach added to state during the wait
+      // (they're already captured in currentAttachments). Preserve any new uploads
+      // started after send was clicked.
+      const sentIds = new Set(currentAttachments.map((a) => a.id));
+      setAttachments((prev) => prev.filter((a) => !sentIds.has(a.id)));
+      updatePendingMessage(tempId, { status: undefined });
+    } else {
+      setAttachments([]);
+    }
 
     try {
       if (status.owner === "none") {
@@ -392,9 +415,24 @@ function SessionPageContent({
     const tempId = addPendingMessage(text);
     setScrollTrigger((prev) => prev + 1);
 
-    // Capture current attachments and clear optimistically
+    // Capture already-completed attachments
     const currentAttachments = [...attachments];
-    setAttachments([]);
+
+    // Wait for any in-flight uploads to complete before queuing
+    const pendingAtSendTime = [...pendingUploadsRef.current.values()];
+    if (pendingAtSendTime.length > 0) {
+      updatePendingMessage(tempId, { status: "Uploading..." });
+      setAttachments([]);
+      const results = await Promise.all(pendingAtSendTime);
+      for (const result of results) {
+        if (result) currentAttachments.push(result);
+      }
+      const sentIds = new Set(currentAttachments.map((a) => a.id));
+      setAttachments((prev) => prev.filter((a) => !sentIds.has(a.id)));
+      updatePendingMessage(tempId, { status: undefined });
+    } else {
+      setAttachments([]);
+    }
 
     try {
       const thinking = getThinkingSetting();
@@ -521,8 +559,10 @@ function SessionPageContent({
   );
 
   // Handle file attachment uploads
+  // Each file uploads independently (parallel) and its promise is tracked
+  // so handleSend can wait for in-flight uploads before sending
   const handleAttach = useCallback(
-    async (files: File[]) => {
+    (files: File[]) => {
       for (const file of files) {
         const tempId = crypto.randomUUID();
 
@@ -538,8 +578,9 @@ function SessionPageContent({
           },
         ]);
 
-        try {
-          const uploaded = await connection.upload(projectId, sessionId, file, {
+        // Start upload and track promise for handleSend to await
+        const uploadPromise = connection
+          .upload(projectId, sessionId, file, {
             onProgress: (bytesUploaded) => {
               setUploadProgress((prev) =>
                 prev.map((p) =>
@@ -553,18 +594,28 @@ function SessionPageContent({
                 ),
               );
             },
+          })
+          .then(
+            (uploaded) => {
+              setAttachments((prev) => [...prev, uploaded]);
+              return uploaded;
+            },
+            (err) => {
+              console.error("Upload failed:", err);
+              const errorMsg =
+                err instanceof Error ? err.message : "Upload failed";
+              showToast(`Failed to upload ${file.name}: ${errorMsg}`, "error");
+              return null as UploadedFile | null;
+            },
+          )
+          .finally(() => {
+            setUploadProgress((prev) =>
+              prev.filter((p) => p.fileId !== tempId),
+            );
+            pendingUploadsRef.current.delete(tempId);
           });
 
-          // Add completed file to attachments
-          setAttachments((prev) => [...prev, uploaded]);
-        } catch (err) {
-          console.error("Upload failed:", err);
-          const errorMsg = err instanceof Error ? err.message : "Upload failed";
-          showToast(`Failed to upload ${file.name}: ${errorMsg}`, "error");
-        } finally {
-          // Remove from progress tracking
-          setUploadProgress((prev) => prev.filter((p) => p.fileId !== tempId));
-        }
+        pendingUploadsRef.current.set(tempId, uploadPromise);
       }
     },
     [projectId, sessionId, showToast, connection],

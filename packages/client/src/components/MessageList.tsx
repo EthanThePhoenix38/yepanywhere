@@ -47,6 +47,7 @@ interface PendingMessage {
   tempId: string;
   content: string;
   timestamp: string;
+  status?: string;
 }
 
 /** Deferred message queued server-side */
@@ -259,13 +260,15 @@ export const MessageList = memo(function MessageList({
           </div>
         );
       })}
-      {/* Pending messages - shown as "Sending..." until server confirms */}
+      {/* Pending messages - shown as "Uploading..." or "Sending..." until server confirms */}
       {pendingMessages.map((pending) => (
         <div key={pending.tempId} className="pending-message">
           <div className="message-user-prompt pending-message-bubble">
             {pending.content}
           </div>
-          <div className="pending-message-status">Sending...</div>
+          <div className="pending-message-status">
+            {pending.status || "Sending..."}
+          </div>
         </div>
       ))}
       {/* Deferred messages - queued server-side, waiting for agent turn to end */}

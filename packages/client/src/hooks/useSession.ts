@@ -48,6 +48,8 @@ export interface PendingMessage {
   tempId: string;
   content: string;
   timestamp: string;
+  /** Display status text (e.g. "Uploading...", "Sending..."). Defaults to "Sending..." */
+  status?: string;
 }
 
 /** Deferred message queued server-side, waiting for agent's turn to end */
@@ -307,6 +309,16 @@ export function useSession(
   const removePendingMessage = useCallback((tempId: string) => {
     setPendingMessages((prev) => prev.filter((p) => p.tempId !== tempId));
   }, []);
+
+  // Update a pending message's fields (e.g. status text)
+  const updatePendingMessage = useCallback(
+    (tempId: string, updates: Partial<PendingMessage>) => {
+      setPendingMessages((prev) =>
+        prev.map((p) => (p.tempId === tempId ? { ...p, ...updates } : p)),
+      );
+    },
+    [],
+  );
 
   // Track if we've loaded pending agents for this session
   const pendingAgentsLoadedRef = useRef<string | null>(null);
@@ -1050,6 +1062,7 @@ export function useSession(
     pendingMessages, // Messages waiting for server confirmation
     addPendingMessage, // Add to pending queue, returns tempId
     removePendingMessage, // Remove from pending by tempId
+    updatePendingMessage, // Update pending message fields (e.g. status)
     deferredMessages, // Messages queued server-side waiting for agent turn to end
     slashCommands, // Available slash commands from init message
     sessionTools, // Available tools from init message
