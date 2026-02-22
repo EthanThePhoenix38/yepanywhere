@@ -81,6 +81,8 @@ export class RelayProtocol {
   readonly pendingRequests = new Map<string, PendingRequest>();
   readonly pendingUploads = new Map<string, PendingUpload>();
   readonly subscriptions = new Map<string, StreamHandlers>();
+  /** Recently-closed subscription IDs — suppresses warnings for in-flight events */
+  private recentlyClosed = new Set<string>();
 
   private transport: RelayTransport;
   private options: RelayProtocolOptions;
@@ -159,9 +161,13 @@ export class RelayProtocol {
     }
 
     if (!handlers) {
-      console.warn(
-        `${this.logPrefix} Received event for unknown subscription: ${event.subscriptionId} (${event.eventType})`,
-      );
+      // Suppress warnings for subscriptions that were recently closed — the
+      // server may still send a few events before it processes our unsubscribe.
+      if (!this.recentlyClosed.has(event.subscriptionId)) {
+        console.warn(
+          `${this.logPrefix} Received event for unknown subscription: ${event.subscriptionId} (${event.eventType})`,
+        );
+      }
       return;
     }
 
@@ -447,6 +453,7 @@ export class RelayProtocol {
     return {
       close: () => {
         this.subscriptions.delete(subscriptionId);
+        this.trackRecentlyClosed(subscriptionId);
         if (this.transport.isConnected()) {
           const msg: RelayUnsubscribe = {
             type: "unsubscribe",
@@ -509,6 +516,7 @@ export class RelayProtocol {
     return {
       close: () => {
         this.subscriptions.delete(subscriptionId);
+        this.trackRecentlyClosed(subscriptionId);
         if (logEventDebug) {
           console.log(
             `${this.logPrefix} Closing activity subscribe:`,
@@ -567,6 +575,7 @@ export class RelayProtocol {
     return {
       close: () => {
         this.subscriptions.delete(subscriptionId);
+        this.trackRecentlyClosed(subscriptionId);
         if (this.transport.isConnected()) {
           const msg: RelayUnsubscribe = {
             type: "unsubscribe",
@@ -678,10 +687,20 @@ export class RelayProtocol {
   }
 
   /**
+   * Track a subscription ID as recently closed so in-flight events are
+   * silently ignored instead of triggering warnings.
+   */
+  private trackRecentlyClosed(id: string): void {
+    this.recentlyClosed.add(id);
+    setTimeout(() => this.recentlyClosed.delete(id), 5_000);
+  }
+
+  /**
    * Notify all subscriptions that the connection closed, then clear them.
    */
   notifySubscriptionsClosed(error?: Error): void {
-    for (const handlers of this.subscriptions.values()) {
+    for (const [id, handlers] of this.subscriptions) {
+      this.trackRecentlyClosed(id);
       if (error) {
         handlers.onError?.(error);
       }
@@ -696,7 +715,8 @@ export class RelayProtocol {
   close(): void {
     const closeError = new Error("Connection closed");
 
-    for (const handlers of this.subscriptions.values()) {
+    for (const [id, handlers] of this.subscriptions) {
+      this.trackRecentlyClosed(id);
       handlers.onClose?.();
     }
     this.subscriptions.clear();

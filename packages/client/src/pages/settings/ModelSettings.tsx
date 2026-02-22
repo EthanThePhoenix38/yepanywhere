@@ -1,12 +1,11 @@
 import {
+  EFFORT_LEVEL_OPTIONS,
   MODEL_OPTIONS,
-  THINKING_LEVEL_OPTIONS,
   useModelSettings,
 } from "../../hooks/useModelSettings";
 
 export function ModelSettings() {
-  const { model, setModel, thinkingLevel, setThinkingLevel } =
-    useModelSettings();
+  const { model, setModel, effortLevel, setEffortLevel } = useModelSettings();
 
   return (
     <section className="settings-section">
@@ -32,22 +31,22 @@ export function ModelSettings() {
         </div>
         <div className="settings-item">
           <div className="settings-item-info">
-            <strong>Thinking Level</strong>
+            <strong>Effort Level</strong>
             <p>
-              Token budget for extended thinking. Higher levels enable deeper
-              reasoning but use more tokens.
+              Controls how much effort Claude puts into responses when thinking
+              is enabled. Higher levels use more tokens.
             </p>
           </div>
           <div className="font-size-selector">
-            {THINKING_LEVEL_OPTIONS.map((opt) => (
+            {EFFORT_LEVEL_OPTIONS.map((opt) => (
               <button
                 key={opt.value}
                 type="button"
-                className={`font-size-option ${thinkingLevel === opt.value ? "active" : ""}`}
-                onClick={() => setThinkingLevel(opt.value)}
+                className={`font-size-option ${effortLevel === opt.value ? "active" : ""}`}
+                onClick={() => setEffortLevel(opt.value)}
                 title={opt.description}
               >
-                {opt.label} ({opt.description})
+                {opt.label}
               </button>
             ))}
           </div>

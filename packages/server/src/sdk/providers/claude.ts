@@ -315,9 +315,10 @@ export class ClaudeProvider implements AgentProvider {
             : { type: "preset" as const, preset: "claude_code" as const },
           settingSources: ["user", "project", "local"],
           includePartialMessages: true,
-          // Model and thinking options
+          // Model, thinking, and effort options
           model: options.model,
-          maxThinkingTokens: options.maxThinkingTokens,
+          thinking: options.thinking,
+          effort: options.effort,
           // Filter env to exclude npm_*, yep-anywhere specific, and other irrelevant vars
           env: filterEnvForChildProcess(),
           // Remote execution via SSH

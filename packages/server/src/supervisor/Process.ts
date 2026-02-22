@@ -1,10 +1,12 @@
 import { randomUUID } from "node:crypto";
 import path from "node:path";
 import type {
+  EffortLevel,
   ModelInfo,
   PermissionRules,
   ProviderName,
   SlashCommand,
+  ThinkingConfig,
   UrlProjectId,
 } from "@yep-anywhere/shared";
 import { getLogger } from "../logging/logger.js";
@@ -129,8 +131,10 @@ export class Process {
   /** Version counter for permission mode changes (for multi-tab sync) */
   private _modeVersion = 0;
 
-  /** Max thinking tokens this process was created with (undefined = thinking disabled) */
-  private _maxThinkingTokens: number | undefined;
+  /** Thinking configuration (undefined = thinking disabled) */
+  private _thinking: ThinkingConfig | undefined;
+  /** Effort level for response quality */
+  private _effort: EffortLevel | undefined;
 
   /** Function to change max thinking tokens at runtime (SDK 0.2.7+) */
   private setMaxThinkingTokensFn:
@@ -190,7 +194,8 @@ export class Process {
     this.provider = options.provider;
     this.model = options.model;
     this.executor = options.executor;
-    this._maxThinkingTokens = options.maxThinkingTokens;
+    this._thinking = options.thinking;
+    this._effort = options.effort;
     this.setMaxThinkingTokensFn = options.setMaxThinkingTokensFn ?? null;
     this.interruptFn = options.interruptFn ?? null;
     this.steerFn = options.steerFn ?? null;
@@ -264,11 +269,26 @@ export class Process {
   }
 
   /**
-   * Max thinking tokens this process was created with.
+   * Thinking configuration for this process.
    * undefined means thinking is disabled.
    */
-  get maxThinkingTokens(): number | undefined {
-    return this._maxThinkingTokens;
+  get thinking(): ThinkingConfig | undefined {
+    return this._thinking;
+  }
+
+  /**
+   * Effort level for this process.
+   */
+  get effort(): EffortLevel | undefined {
+    return this._effort;
+  }
+
+  /**
+   * Update thinking config and effort after a dynamic change.
+   */
+  updateThinkingConfig(thinking?: ThinkingConfig, effort?: EffortLevel): void {
+    this._thinking = thinking;
+    this._effort = effort;
   }
 
   /**
@@ -316,10 +336,11 @@ export class Process {
   }
 
   /**
-   * Change max thinking tokens at runtime without restarting the process.
+   * Change thinking mode at runtime via the deprecated setMaxThinkingTokens API.
+   * On Opus 4.6, 0 = disabled, any non-zero = adaptive.
    * Only supported by Claude SDK 0.2.7+.
    *
-   * @param tokens - New max thinking tokens, or undefined to disable thinking
+   * @param tokens - Non-zero to enable adaptive thinking, undefined/0 to disable
    * @returns true if the change was applied, false if not supported
    */
   async setMaxThinkingTokens(tokens: number | undefined): Promise<boolean> {
@@ -333,15 +354,14 @@ export class Process {
         event: "thinking_mode_change",
         sessionId: this._sessionId,
         processId: this.id,
-        oldThinking: this._maxThinkingTokens,
-        newThinking: tokens,
+        oldThinking: this._thinking?.type,
+        newThinking: tokens ? "adaptive" : "disabled",
       },
-      `Changing thinking mode: ${this._maxThinkingTokens} → ${tokens}`,
+      `Changing thinking mode: ${this._thinking?.type ?? "disabled"} → ${tokens ? "adaptive" : "disabled"}`,
     );
 
     // SDK uses null to disable, we use undefined for consistency with our types
     await this.setMaxThinkingTokensFn(tokens ?? null);
-    this._maxThinkingTokens = tokens;
     return true;
   }
 
@@ -638,7 +658,8 @@ export class Process {
       queueDepth: this.queueDepth,
       provider: this.provider,
       model: this._resolvedModel ?? this.model,
-      maxThinkingTokens: this._maxThinkingTokens,
+      thinking: this._thinking,
+      effort: this._effort,
       executor: this.executor,
     };
 

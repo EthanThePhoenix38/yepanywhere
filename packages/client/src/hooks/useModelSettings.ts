@@ -1,3 +1,4 @@
+import type { EffortLevel, ThinkingOption } from "@yep-anywhere/shared";
 import { useCallback, useState } from "react";
 import {
   LEGACY_KEYS,
@@ -12,14 +13,9 @@ import {
 export type ModelOption = "default" | "sonnet" | "opus" | "haiku";
 
 /**
- * Thinking budget presets (levels when thinking is enabled).
+ * Re-export shared types for convenience.
  */
-export type ThinkingLevel = "light" | "medium" | "thorough";
-
-/**
- * Full thinking option including off state (for API compatibility).
- */
-export type ThinkingOption = "off" | ThinkingLevel;
+export type { EffortLevel, ThinkingOption };
 
 export const MODEL_OPTIONS: { value: ModelOption; label: string }[] = [
   { value: "default", label: "Default" },
@@ -28,25 +24,15 @@ export const MODEL_OPTIONS: { value: ModelOption; label: string }[] = [
   { value: "haiku", label: "Haiku" },
 ];
 
-export const THINKING_LEVEL_OPTIONS: {
-  value: ThinkingLevel;
+export const EFFORT_LEVEL_OPTIONS: {
+  value: EffortLevel;
   label: string;
-  tokens: number;
   description: string;
 }[] = [
-  { value: "light", label: "Light", tokens: 4096, description: "4K tokens" },
-  {
-    value: "medium",
-    label: "Medium",
-    tokens: 16000,
-    description: "16K tokens",
-  },
-  {
-    value: "thorough",
-    label: "Thorough",
-    tokens: 32000,
-    description: "32K tokens",
-  },
+  { value: "low", label: "Low", description: "Fastest responses" },
+  { value: "medium", label: "Medium", description: "Moderate thinking" },
+  { value: "high", label: "High", description: "Deep reasoning" },
+  { value: "max", label: "Max", description: "Maximum effort" },
 ];
 
 function loadModel(): ModelOption {
@@ -61,15 +47,31 @@ function saveModel(model: ModelOption) {
   setServerScoped("model", model, LEGACY_KEYS.model);
 }
 
-function loadThinkingLevel(): ThinkingLevel {
+/** Migration map from old thinking levels to effort levels */
+const LEGACY_LEVEL_MAP: Record<string, EffortLevel> = {
+  light: "low",
+  medium: "medium",
+  thorough: "max",
+};
+
+function loadEffortLevel(): EffortLevel {
   const stored = getServerScoped("thinkingLevel", LEGACY_KEYS.thinkingLevel);
-  if (stored && ["light", "medium", "thorough"].includes(stored)) {
-    return stored as ThinkingLevel;
+  if (stored) {
+    // Check for new effort level values
+    if (["low", "medium", "high", "max"].includes(stored)) {
+      return stored as EffortLevel;
+    }
+    // Migrate old thinking level values
+    const migrated = LEGACY_LEVEL_MAP[stored];
+    if (migrated) {
+      saveEffortLevel(migrated);
+      return migrated;
+    }
   }
-  return "medium"; // Default level when enabled
+  return "high"; // SDK default
 }
 
-function saveThinkingLevel(level: ThinkingLevel) {
+function saveEffortLevel(level: EffortLevel) {
   setServerScoped("thinkingLevel", level, LEGACY_KEYS.thinkingLevel);
 }
 
@@ -111,8 +113,8 @@ function saveVoiceInputEnabled(enabled: boolean) {
  */
 export function useModelSettings() {
   const [model, setModelState] = useState<ModelOption>(loadModel);
-  const [thinkingLevel, setThinkingLevelState] =
-    useState<ThinkingLevel>(loadThinkingLevel);
+  const [effortLevel, setEffortLevelState] =
+    useState<EffortLevel>(loadEffortLevel);
   const [thinkingEnabled, setThinkingEnabledState] =
     useState<boolean>(loadThinkingEnabled);
   const [voiceInputEnabled, setVoiceInputEnabledState] = useState<boolean>(
@@ -124,9 +126,9 @@ export function useModelSettings() {
     saveModel(m);
   }, []);
 
-  const setThinkingLevel = useCallback((level: ThinkingLevel) => {
-    setThinkingLevelState(level);
-    saveThinkingLevel(level);
+  const setEffortLevel = useCallback((level: EffortLevel) => {
+    setEffortLevelState(level);
+    saveEffortLevel(level);
   }, []);
 
   const setThinkingEnabled = useCallback((enabled: boolean) => {
@@ -154,8 +156,11 @@ export function useModelSettings() {
   return {
     model,
     setModel,
-    thinkingLevel,
-    setThinkingLevel,
+    effortLevel,
+    setEffortLevel,
+    // Keep thinkingLevel as alias for backward compat with components
+    thinkingLevel: effortLevel,
+    setThinkingLevel: setEffortLevel,
     thinkingEnabled,
     setThinkingEnabled,
     toggleThinking,
@@ -174,14 +179,14 @@ export function getModelSetting(): ModelOption {
 
 /**
  * Get thinking setting as ThinkingOption (for API compatibility).
- * Returns "off" if disabled, otherwise returns the current level.
+ * Returns "off" if disabled, otherwise returns the current effort level.
  */
 export function getThinkingSetting(): ThinkingOption {
   const enabled = loadThinkingEnabled();
   if (!enabled) {
     return "off";
   }
-  return loadThinkingLevel();
+  return loadEffortLevel();
 }
 
 /**
@@ -196,14 +201,6 @@ export function getThinkingEnabled(): boolean {
  */
 export function setThinkingEnabled(enabled: boolean): void {
   saveThinkingEnabled(enabled);
-}
-
-/**
- * Convert thinking level to token budget.
- */
-export function getThinkingTokens(level: ThinkingLevel): number {
-  const opt = THINKING_LEVEL_OPTIONS.find((o) => o.value === level);
-  return opt?.tokens ?? 16000; // Default to medium
 }
 
 /**

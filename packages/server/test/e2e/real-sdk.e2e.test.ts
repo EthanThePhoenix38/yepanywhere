@@ -439,7 +439,8 @@ describe("Real SDK E2E", () => {
       initialMessage: { text: 'Say "model test" and nothing else' },
       permissionMode: "bypassPermissions",
       model: "sonnet", // Use a different model
-      maxThinkingTokens: 4096, // Enable light thinking
+      thinking: { type: "adaptive" }, // Enable adaptive thinking
+      effort: "low",
     };
 
     const { iterator, abort } = await sdk.startSession(sessionOptions);

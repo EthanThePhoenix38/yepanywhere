@@ -1,8 +1,10 @@
 import { randomUUID } from "node:crypto";
 import {
+  type EffortLevel,
   type PermissionRules,
   type ProviderName,
   SESSION_TITLE_MAX_LENGTH,
+  type ThinkingConfig,
   type UrlProjectId,
 } from "@yep-anywhere/shared";
 import type { AgentActivity, PendingInputType } from "@yep-anywhere/shared";
@@ -59,8 +61,10 @@ const STALE_IN_TURN_THRESHOLD_MS = 5 * 60 * 1000;
 export interface ModelSettings {
   /** Model to use (e.g., "sonnet", "opus", "haiku"). undefined = use CLI default */
   model?: string;
-  /** Max thinking tokens. undefined = thinking disabled */
-  maxThinkingTokens?: number;
+  /** Thinking configuration. undefined = thinking disabled */
+  thinking?: ThinkingConfig;
+  /** Effort level for response quality. undefined = SDK default */
+  effort?: EffortLevel;
   /** Provider to use for this session. undefined = use default (Claude) */
   providerName?: ProviderName;
   /** SSH host for remote execution (undefined = local) */
@@ -338,7 +342,8 @@ export class Supervisor {
       // No initialMessage - queue will block until one is pushed
       permissionMode: effectiveMode,
       model: modelSettings?.model,
-      maxThinkingTokens: modelSettings?.maxThinkingTokens,
+      thinking: modelSettings?.thinking,
+      effort: modelSettings?.effort,
       globalInstructions: modelSettings?.globalInstructions,
       onToolApproval: async (toolName, input, opts) => {
         if (!processHolder.process) {
@@ -375,7 +380,8 @@ export class Supervisor {
       permissionMode: effectiveMode,
       provider: "claude", // Real SDK is always Claude
       model: modelSettings?.model,
-      maxThinkingTokens: modelSettings?.maxThinkingTokens,
+      thinking: modelSettings?.thinking,
+      effort: modelSettings?.effort,
       executor: modelSettings?.executor,
       permissions: modelSettings?.permissions,
     };
@@ -430,7 +436,8 @@ export class Supervisor {
       resumeSessionId,
       permissionMode: effectiveMode,
       model: modelSettings?.model,
-      maxThinkingTokens: modelSettings?.maxThinkingTokens,
+      thinking: modelSettings?.thinking,
+      effort: modelSettings?.effort,
       executor: modelSettings?.executor,
       remoteEnv: modelSettings?.remoteEnv,
       globalInstructions: modelSettings?.globalInstructions,
@@ -469,7 +476,8 @@ export class Supervisor {
       permissionMode: effectiveMode,
       provider: "claude", // Real SDK is always Claude
       model: modelSettings?.model,
-      maxThinkingTokens: modelSettings?.maxThinkingTokens,
+      thinking: modelSettings?.thinking,
+      effort: modelSettings?.effort,
       executor: modelSettings?.executor,
       permissions: modelSettings?.permissions,
     };
@@ -519,7 +527,8 @@ export class Supervisor {
       // No initialMessage - queue will block until one is pushed
       permissionMode: effectiveMode,
       model: modelSettings?.model,
-      maxThinkingTokens: modelSettings?.maxThinkingTokens,
+      thinking: modelSettings?.thinking,
+      effort: modelSettings?.effort,
       executor: modelSettings?.executor,
       remoteEnv: modelSettings?.remoteEnv,
       globalInstructions: modelSettings?.globalInstructions,
@@ -560,7 +569,8 @@ export class Supervisor {
       permissionMode: effectiveMode,
       provider: activeProvider.name,
       model: modelSettings?.model,
-      maxThinkingTokens: modelSettings?.maxThinkingTokens,
+      thinking: modelSettings?.thinking,
+      effort: modelSettings?.effort,
       executor: modelSettings?.executor,
       permissions: modelSettings?.permissions,
     };
@@ -612,7 +622,8 @@ export class Supervisor {
       resumeSessionId,
       permissionMode: effectiveMode,
       model: modelSettings?.model,
-      maxThinkingTokens: modelSettings?.maxThinkingTokens,
+      thinking: modelSettings?.thinking,
+      effort: modelSettings?.effort,
       executor: modelSettings?.executor,
       remoteEnv: modelSettings?.remoteEnv,
       globalInstructions: modelSettings?.globalInstructions,
@@ -652,7 +663,8 @@ export class Supervisor {
       permissionMode: effectiveMode,
       provider: activeProvider.name,
       model: modelSettings?.model,
-      maxThinkingTokens: modelSettings?.maxThinkingTokens,
+      thinking: modelSettings?.thinking,
+      effort: modelSettings?.effort,
       executor: modelSettings?.executor,
       permissions: modelSettings?.permissions,
     };
@@ -732,15 +744,31 @@ export class Supervisor {
         if (existingProcess.isTerminated) {
           this.unregisterProcess(existingProcess);
         } else {
-          // Check if thinking settings changed
-          const requestedThinking = modelSettings?.maxThinkingTokens;
-          if (existingProcess.maxThinkingTokens !== requestedThinking) {
-            // Try to change thinking mode dynamically (SDK 0.2.7+)
-            if (existingProcess.supportsThinkingModeChange) {
-              const changed =
-                await existingProcess.setMaxThinkingTokens(requestedThinking);
-              if (!changed) {
-                // Should not happen if supportsThinkingModeChange is true
+          // Check if thinking/effort settings changed
+          const thinkingChanged =
+            existingProcess.thinking?.type !==
+            (modelSettings?.thinking?.type ?? undefined);
+          const effortChanged =
+            existingProcess.effort !== modelSettings?.effort;
+
+          if (thinkingChanged || effortChanged) {
+            if (
+              thinkingChanged &&
+              !effortChanged &&
+              existingProcess.supportsThinkingModeChange
+            ) {
+              // Toggle adaptive/disabled dynamically via deprecated API
+              const tokens =
+                modelSettings?.thinking?.type === "disabled" ? 0 : 1;
+              const changed = await existingProcess.setMaxThinkingTokens(
+                tokens === 0 ? undefined : tokens,
+              );
+              if (changed) {
+                existingProcess.updateThinkingConfig(
+                  modelSettings?.thinking,
+                  modelSettings?.effort,
+                );
+              } else {
                 const log = getLogger();
                 log.warn(
                   {
@@ -751,21 +779,21 @@ export class Supervisor {
                   "Failed to change thinking mode dynamically",
                 );
               }
-              // Continue with existing process
             } else {
-              // Legacy behavior: abort and restart for older SDKs
+              // Effort changed or no dynamic support: restart process
               const log = getLogger();
               log.info(
                 {
                   event: "thinking_mode_changed_restart",
                   sessionId,
                   processId: existingProcess.id,
-                  oldThinking: existingProcess.maxThinkingTokens,
-                  newThinking: requestedThinking,
+                  oldThinking: existingProcess.thinking?.type,
+                  oldEffort: existingProcess.effort,
+                  newThinking: modelSettings?.thinking?.type,
+                  newEffort: modelSettings?.effort,
                 },
-                `Thinking mode changed, restarting process (no dynamic support): ${existingProcess.maxThinkingTokens} → ${requestedThinking}`,
+                "Thinking/effort changed, restarting process",
               );
-              // Abort the existing process and start fresh with new thinking settings
               await existingProcess.abort();
               this.unregisterProcess(existingProcess);
               // Fall through to start a new session with the updated settings
@@ -911,13 +939,28 @@ export class Supervisor {
       return { success: false, error: "Process terminated" };
     }
 
-    // Check if thinking settings changed
-    const requestedThinking = modelSettings?.maxThinkingTokens;
-    if (process.maxThinkingTokens !== requestedThinking) {
-      // Try to change thinking mode dynamically (SDK 0.2.7+)
-      if (process.supportsThinkingModeChange) {
-        const changed = await process.setMaxThinkingTokens(requestedThinking);
-        if (!changed) {
+    // Check if thinking/effort settings changed
+    const thinkingChanged =
+      process.thinking?.type !== (modelSettings?.thinking?.type ?? undefined);
+    const effortChanged = process.effort !== modelSettings?.effort;
+
+    if (thinkingChanged || effortChanged) {
+      if (
+        thinkingChanged &&
+        !effortChanged &&
+        process.supportsThinkingModeChange
+      ) {
+        // Toggle adaptive/disabled dynamically via deprecated API
+        const tokens = modelSettings?.thinking?.type === "disabled" ? 0 : 1;
+        const changed = await process.setMaxThinkingTokens(
+          tokens === 0 ? undefined : tokens,
+        );
+        if (changed) {
+          process.updateThinkingConfig(
+            modelSettings?.thinking,
+            modelSettings?.effort,
+          );
+        } else {
           const log = getLogger();
           log.warn(
             {
@@ -928,26 +971,25 @@ export class Supervisor {
             "Failed to change thinking mode dynamically on queue",
           );
         }
-        // Continue with existing process below
       } else {
-        // Legacy behavior: abort and restart for older SDKs
+        // Effort changed or no dynamic support: restart process
         const log = getLogger();
         log.info(
           {
             event: "thinking_mode_changed_queue_restart",
             sessionId,
             processId: process.id,
-            oldThinking: process.maxThinkingTokens,
-            newThinking: requestedThinking,
+            oldThinking: process.thinking?.type,
+            oldEffort: process.effort,
+            newThinking: modelSettings?.thinking?.type,
+            newEffort: modelSettings?.effort,
           },
-          `Thinking mode changed on queue, restarting process (no dynamic support): ${process.maxThinkingTokens} → ${requestedThinking}`,
+          "Thinking/effort changed on queue, restarting process",
         );
 
-        // Abort the existing process
         await process.abort();
         this.unregisterProcess(process);
 
-        // Start a new session with the message and new thinking settings
         const result = await this.resumeSession(
           sessionId,
           projectPath,
@@ -956,11 +998,9 @@ export class Supervisor {
           modelSettings,
         );
 
-        // Check if we got a process back
         if ("id" in result) {
           return { success: true, process: result, restarted: true };
         }
-        // Queued or error
         return { success: false, error: "Request was queued or failed" };
       }
     }

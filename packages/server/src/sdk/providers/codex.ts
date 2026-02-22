@@ -829,22 +829,23 @@ export class CodexProvider implements AgentProvider {
       .join("-");
   }
 
-  private mapThinkingTokensToReasoningEffort(
-    maxThinkingTokens?: number,
+  private mapEffortToReasoningEffort(
+    effort?: import("@yep-anywhere/shared").EffortLevel,
+    thinking?: import("@yep-anywhere/shared").ThinkingConfig,
   ): "none" | "minimal" | "low" | "medium" | "high" | "xhigh" {
-    if (!maxThinkingTokens || maxThinkingTokens <= 0) {
+    if (thinking?.type === "disabled" || !effort) {
       return "minimal";
     }
-    if (maxThinkingTokens <= 4096) {
-      return "low";
+    switch (effort) {
+      case "low":
+        return "low";
+      case "medium":
+        return "medium";
+      case "high":
+        return "high";
+      case "max":
+        return "xhigh";
     }
-    if (maxThinkingTokens <= 16384) {
-      return "medium";
-    }
-    if (maxThinkingTokens <= 32768) {
-      return "high";
-    }
-    return "xhigh";
   }
 
   private mapPermissionModeToThreadPolicy(
@@ -1071,8 +1072,9 @@ export class CodexProvider implements AgentProvider {
         const turnStartParams: TurnStartParams = {
           threadId: sessionId,
           input: [{ type: "text", text: userPrompt, text_elements: [] }],
-          effort: this.mapThinkingTokensToReasoningEffort(
-            options.maxThinkingTokens,
+          effort: this.mapEffortToReasoningEffort(
+            options.effort,
+            options.thinking,
           ),
         };
         const turnResult = await appServer.request<TurnStartResponse>(

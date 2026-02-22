@@ -119,31 +119,37 @@ export function resolveModel(
 }
 
 /**
- * Extended thinking budget option.
- * - "off": No extended thinking
- * - "light": 4K tokens
- * - "medium": 16K tokens
- * - "thorough": 32K tokens
+ * Effort level for Claude's response quality.
+ * Maps to the SDK's effort parameter.
  */
-export type ThinkingOption = "off" | "light" | "medium" | "thorough";
+export type EffortLevel = "low" | "medium" | "high" | "max";
 
 /**
- * Convert thinking option to token budget.
- * Returns undefined for "off" (thinking disabled).
+ * Thinking + effort option sent from client to server.
+ * - "off": Thinking disabled, no effort override
+ * - EffortLevel: Adaptive thinking enabled with the given effort level
  */
-export function thinkingOptionToTokens(
-  option: ThinkingOption,
-): number | undefined {
-  switch (option) {
-    case "light":
-      return 4096;
-    case "medium":
-      return 16000;
-    case "thorough":
-      return 32000;
-    default:
-      return undefined;
+export type ThinkingOption = "off" | EffortLevel;
+
+/**
+ * Thinking configuration for the SDK.
+ */
+export type ThinkingConfig =
+  | { type: "adaptive" }
+  | { type: "enabled"; budgetTokens?: number }
+  | { type: "disabled" };
+
+/**
+ * Convert thinking option to SDK thinking config + effort level.
+ */
+export function thinkingOptionToConfig(option: ThinkingOption): {
+  thinking: ThinkingConfig;
+  effort?: EffortLevel;
+} {
+  if (option === "off") {
+    return { thinking: { type: "disabled" } };
   }
+  return { thinking: { type: "adaptive" }, effort: option };
 }
 
 /**

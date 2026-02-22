@@ -7,7 +7,7 @@ import {
   type UploadedFile,
   getModelContextWindow,
   isUrlProjectId,
-  thinkingOptionToTokens,
+  thinkingOptionToConfig,
 } from "@yep-anywhere/shared";
 import { Hono } from "hono";
 import {
@@ -942,11 +942,10 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
       tempId: body.tempId,
     };
 
-    // Convert thinking option to token budget
-    const maxThinkingTokens =
-      body.thinking && body.thinking !== "off"
-        ? thinkingOptionToTokens(body.thinking)
-        : undefined;
+    // Convert thinking option to SDK config
+    const { thinking, effort } = body.thinking
+      ? thinkingOptionToConfig(body.thinking)
+      : { thinking: undefined, effort: undefined };
 
     // Convert model option (undefined or "default" means use CLI default)
     const model =
@@ -968,7 +967,8 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
       body.mode,
       {
         model,
-        maxThinkingTokens,
+        thinking,
+        effort,
         providerName: body.provider,
         executor,
         globalInstructions,
@@ -1032,11 +1032,10 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
       return c.json({ error: executorError }, 400);
     }
 
-    // Convert thinking option to token budget
-    const maxThinkingTokens =
-      body.thinking && body.thinking !== "off"
-        ? thinkingOptionToTokens(body.thinking)
-        : undefined;
+    // Convert thinking option to SDK config
+    const { thinking, effort } = body.thinking
+      ? thinkingOptionToConfig(body.thinking)
+      : { thinking: undefined, effort: undefined };
 
     // Convert model option (undefined or "default" means use CLI default)
     const model =
@@ -1050,7 +1049,8 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
       body.mode,
       {
         model,
-        maxThinkingTokens,
+        thinking,
+        effort,
         providerName: body.provider,
         executor,
         globalInstructions,
@@ -1124,11 +1124,10 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
       tempId: body.tempId,
     };
 
-    // Convert thinking option to token budget
-    const maxThinkingTokens =
-      body.thinking && body.thinking !== "off"
-        ? thinkingOptionToTokens(body.thinking)
-        : undefined;
+    // Convert thinking option to SDK config
+    const { thinking, effort } = body.thinking
+      ? thinkingOptionToConfig(body.thinking)
+      : { thinking: undefined, effort: undefined };
 
     // Convert model option (undefined or "default" means use CLI default)
     const model =
@@ -1178,7 +1177,8 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
       body.mode,
       {
         model,
-        maxThinkingTokens,
+        thinking,
+        effort,
         providerName: body.provider,
         executor,
         globalInstructions,
@@ -1252,11 +1252,10 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
       return c.json({ queued: true, deferred: true });
     }
 
-    // Convert thinking option to token budget
-    const maxThinkingTokens =
-      body.thinking && body.thinking !== "off"
-        ? thinkingOptionToTokens(body.thinking)
-        : undefined;
+    // Convert thinking option to SDK config
+    const { thinking, effort } = body.thinking
+      ? thinkingOptionToConfig(body.thinking)
+      : { thinking: undefined, effort: undefined };
 
     // Use queueMessageToSession which handles thinking mode changes
     // If thinking mode changed, it will restart the process automatically
@@ -1267,7 +1266,7 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
       process.projectPath,
       userMessage,
       body.mode,
-      { maxThinkingTokens, globalInstructions: queueGlobalInstructions },
+      { thinking, effort, globalInstructions: queueGlobalInstructions },
     );
 
     if (!result.success) {

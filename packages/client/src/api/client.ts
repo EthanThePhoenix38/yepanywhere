@@ -502,7 +502,8 @@ export const api = {
         terminationReason?: string;
         terminatedAt?: string;
         provider: string;
-        maxThinkingTokens?: number;
+        thinking?: { type: string };
+        effort?: string;
         model?: string;
       } | null;
     }>(`/sessions/${sessionId}/process`),
@@ -827,6 +828,8 @@ export interface RemoteExecutorTestResult {
   homeDir?: string;
   /** Whether Claude CLI is available on remote */
   claudeAvailable?: boolean;
+  /** Claude CLI version on remote (e.g. "1.0.12") */
+  claudeVersion?: string;
 }
 
 /** Server-wide settings that persist across restarts */

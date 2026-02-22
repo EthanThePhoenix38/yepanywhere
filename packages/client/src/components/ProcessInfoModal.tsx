@@ -25,7 +25,8 @@ interface ProcessInfo {
   terminationReason?: string;
   terminatedAt?: string;
   provider: string;
-  maxThinkingTokens?: number;
+  thinking?: { type: string };
+  effort?: string;
   model?: string;
   executor?: string;
 }
@@ -49,12 +50,13 @@ interface ProcessInfoModalProps {
   onClose: () => void;
 }
 
-function formatThinkingBudget(tokens: number | undefined): string {
-  if (!tokens) return "Disabled";
-  if (tokens >= 1000) {
-    return `${Math.round(tokens / 1000)}K tokens`;
-  }
-  return `${tokens} tokens`;
+function formatThinkingConfig(
+  thinking?: { type: string },
+  effort?: string,
+): string {
+  if (!thinking || thinking.type === "disabled") return "Disabled";
+  const mode = thinking.type === "adaptive" ? "Adaptive" : "Enabled";
+  return effort ? `${mode} (${effort})` : mode;
 }
 
 function formatDuration(startedAt: string): string {
@@ -314,7 +316,10 @@ export function ProcessInfoModal({
                   <InfoRow label="Queue depth" value={processInfo.queueDepth} />
                   <InfoRow
                     label="Extended thinking"
-                    value={formatThinkingBudget(processInfo.maxThinkingTokens)}
+                    value={formatThinkingConfig(
+                      processInfo.thinking,
+                      processInfo.effort,
+                    )}
                   />
                   {processInfo.idleSince && (
                     <InfoRow

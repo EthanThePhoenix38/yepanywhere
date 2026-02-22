@@ -24,6 +24,8 @@ export type {
   PermissionMode,
   ModelOption,
   ThinkingOption,
+  ThinkingConfig,
+  EffortLevel,
   FileMetadata,
   FileContentResponse,
   PatchHunk,
@@ -33,7 +35,7 @@ export type {
 } from "./types.js";
 export {
   ALL_PROVIDERS,
-  thinkingOptionToTokens,
+  thinkingOptionToConfig,
   resolveModel,
   DEFAULT_MODEL,
   DEFAULT_PROVIDER,

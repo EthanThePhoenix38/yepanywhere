@@ -123,8 +123,10 @@ export interface StartSessionOptions {
   permissionMode?: PermissionMode;
   /** Model to use (e.g., "sonnet", "opus", "haiku"). undefined = use CLI default */
   model?: string;
-  /** Max thinking tokens. undefined = thinking disabled */
-  maxThinkingTokens?: number;
+  /** Thinking configuration (undefined = thinking disabled) */
+  thinking?: import("@yep-anywhere/shared").ThinkingConfig;
+  /** Effort level for response quality (undefined = SDK default) */
+  effort?: import("@yep-anywhere/shared").EffortLevel;
   onToolApproval?: CanUseTool;
   /** SSH host for remote execution (undefined = local) */
   executor?: string;

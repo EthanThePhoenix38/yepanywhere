@@ -1,10 +1,12 @@
 import type {
   AgentActivity,
   ContextUsage,
+  EffortLevel,
   InputRequest,
   PendingInputType,
   PermissionRules,
   ProviderName,
+  ThinkingConfig,
   UrlProjectId,
 } from "@yep-anywhere/shared";
 import type { PermissionMode, SDKMessage } from "../sdk/types.js";
@@ -188,8 +190,10 @@ export interface ProcessInfo {
   terminationReason?: string; // why it terminated
   terminatedAt?: string; // when it terminated (ISO timestamp)
   provider: ProviderName; // which provider is running this process
-  /** Max thinking tokens this process was created with (undefined = thinking disabled) */
-  maxThinkingTokens?: number;
+  /** Thinking configuration (undefined = thinking disabled) */
+  thinking?: ThinkingConfig;
+  /** Effort level for response quality (undefined = SDK default) */
+  effort?: EffortLevel;
   /** Model used for this session (e.g., "claude-opus-4-5-20251101") */
   model?: string;
   /** Context window usage from the last assistant message */
@@ -220,8 +224,10 @@ export interface ProcessOptions {
   idleTimeoutMs?: number; // default 5 minutes
   permissionMode?: PermissionMode;
   provider: ProviderName; // which provider is running this process
-  /** Max thinking tokens this process was created with (undefined = thinking disabled) */
-  maxThinkingTokens?: number;
+  /** Thinking configuration (undefined = thinking disabled) */
+  thinking?: ThinkingConfig;
+  /** Effort level for response quality (undefined = SDK default) */
+  effort?: EffortLevel;
   /** Model used for this session (e.g., "claude-opus-4-5-20251101") */
   model?: string;
   /** SSH host for remote execution (undefined = local) */

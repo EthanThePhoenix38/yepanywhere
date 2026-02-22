@@ -344,6 +344,9 @@ export function createRemoteSpawn(
     // The SDK passes "node /local/path/to/cli.js --flags..." but that local path
     // doesn't exist on the remote machine. We need to use "claude" directly since
     // the remote should have Claude installed (verified by testSSHConnection).
+    // NOTE: The SDK bundles its own claude binary (cli.js) for local sessions, so
+    // the local SDK version and remote system-installed `claude` CLI can diverge.
+    // If the SDK uses features newer than the remote CLI, things may break.
     let remoteCommand = command;
     let remoteArgs = args;
     const firstArg = args[0];

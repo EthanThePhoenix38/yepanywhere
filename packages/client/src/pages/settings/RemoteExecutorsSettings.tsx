@@ -154,7 +154,7 @@ export function RemoteExecutorsSettings() {
                   {status?.result?.success && (
                     <p className="remote-executor-details">
                       {status.result.claudeAvailable
-                        ? "Claude CLI available"
+                        ? `Claude CLI ${status.result.claudeVersion ? `v${status.result.claudeVersion}` : "available"}`
                         : "Claude CLI not found"}
                     </p>
                   )}
@@ -188,7 +188,11 @@ export function RemoteExecutorsSettings() {
         <ul className="settings-requirements">
           <li>SSH host alias configured in ~/.ssh/config</li>
           <li>SSH key-based authentication (no password prompts)</li>
-          <li>Claude CLI installed on the remote machine</li>
+          <li>
+            Claude CLI installed on the remote machine (the SDK bundles its own
+            CLI for local sessions, so the remote CLI version can diverge — keep
+            them in sync to avoid feature incompatibilities)
+          </li>
           <li>
             Project paths must be the same on local and remote machines (e.g.,
             ~/code/project)
