@@ -11,6 +11,7 @@ interface Props {
   isStreaming: boolean;
   thinkingExpanded: boolean;
   toggleThinkingExpanded: () => void;
+  sessionProvider?: string;
 }
 
 export const RenderItemComponent = memo(function RenderItemComponent({
@@ -18,6 +19,7 @@ export const RenderItemComponent = memo(function RenderItemComponent({
   isStreaming,
   thinkingExpanded,
   toggleThinkingExpanded,
+  sessionProvider,
 }: Props) {
   const handleClick = useCallback(
     (e: React.MouseEvent) => {
@@ -67,6 +69,7 @@ export const RenderItemComponent = memo(function RenderItemComponent({
             toolInput={item.toolInput}
             toolResult={item.toolResult}
             status={item.status}
+            sessionProvider={sessionProvider}
           />
         );
 

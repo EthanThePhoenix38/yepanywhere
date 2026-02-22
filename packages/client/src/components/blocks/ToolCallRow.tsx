@@ -10,6 +10,7 @@ interface Props {
   toolInput: unknown;
   toolResult?: ToolResultData;
   status: "pending" | "complete" | "error" | "aborted";
+  sessionProvider?: string;
 }
 
 export const ToolCallRow = memo(function ToolCallRow({
@@ -18,13 +19,20 @@ export const ToolCallRow = memo(function ToolCallRow({
   toolInput,
   toolResult,
   status,
+  sessionProvider,
 }: Props) {
   // Check if this tool renders inline (bypasses entire tool-row structure)
   const hasInlineRenderer = toolRegistry.hasInlineRenderer(toolName);
   // Check if this tool has interactive summary (no expand/collapse)
   const hasInteractiveSummary = toolRegistry.hasInteractiveSummary(toolName);
+  const suppressCollapsedPreview = shouldSuppressBashCollapsedPreviewForCodex(
+    toolName,
+    toolInput,
+    sessionProvider,
+  );
   // Check if this tool has a collapsed preview
-  const hasCollapsedPreview = toolRegistry.hasCollapsedPreview(toolName);
+  const hasCollapsedPreview =
+    toolRegistry.hasCollapsedPreview(toolName) && !suppressCollapsedPreview;
   // Tools with collapsed preview or interactive summary don't expand
   const isNonExpandable = hasInteractiveSummary || hasCollapsedPreview;
 
@@ -162,6 +170,44 @@ export const ToolCallRow = memo(function ToolCallRow({
     </div>
   );
 });
+
+function shouldSuppressBashCollapsedPreviewForCodex(
+  toolName: string,
+  toolInput: unknown,
+  sessionProvider?: string,
+): boolean {
+  if (toolName !== "Bash") {
+    return false;
+  }
+
+  if (sessionProvider !== "codex" && sessionProvider !== "codex-oss") {
+    return false;
+  }
+
+  const command = extractBashCommand(toolInput);
+  if (!command) {
+    return false;
+  }
+
+  return /^(rg|grep|sed|nl|cat)\b/.test(command.trimStart());
+}
+
+function extractBashCommand(toolInput: unknown): string | undefined {
+  if (!toolInput || typeof toolInput !== "object") {
+    return undefined;
+  }
+
+  const input = toolInput as Record<string, unknown>;
+  if (typeof input.command === "string" && input.command.trim().length > 0) {
+    return input.command;
+  }
+
+  if (typeof input.cmd === "string" && input.cmd.trim().length > 0) {
+    return input.cmd;
+  }
+
+  return undefined;
+}
 
 function ToolUseExpanded({
   toolName,

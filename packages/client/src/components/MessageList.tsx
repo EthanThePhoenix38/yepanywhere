@@ -59,6 +59,7 @@ interface DeferredMessage {
 
 interface Props {
   messages: Message[];
+  provider?: string;
   isStreaming?: boolean;
   isProcessing?: boolean;
   /** True when context is being compressed */
@@ -79,6 +80,7 @@ interface Props {
 
 export const MessageList = memo(function MessageList({
   messages,
+  provider,
   isStreaming = false,
   isProcessing = false,
   isCompacting = false,
@@ -240,6 +242,7 @@ export const MessageList = memo(function MessageList({
               isStreaming={isStreaming}
               thinkingExpanded={thinkingExpanded}
               toggleThinkingExpanded={toggleThinkingExpanded}
+              sessionProvider={provider}
             />
           );
         }
@@ -255,6 +258,7 @@ export const MessageList = memo(function MessageList({
                 isStreaming={isStreaming}
                 thinkingExpanded={thinkingExpanded}
                 toggleThinkingExpanded={toggleThinkingExpanded}
+                sessionProvider={provider}
               />
             ))}
           </div>

@@ -1015,6 +1015,7 @@ function SessionPageContent({
               >
                 <MessageList
                   messages={messages}
+                  provider={session?.provider}
                   isProcessing={
                     status.owner === "self" && processState === "in-turn"
                   }

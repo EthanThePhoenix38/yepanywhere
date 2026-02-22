@@ -207,6 +207,222 @@ describe("Codex Normalization", () => {
     });
   });
 
+  it("maps ripgrep exec_command calls to Grep and treats no matches as non-error", () => {
+    const entries: CodexSessionEntry[] = [
+      {
+        type: "response_item",
+        timestamp: "2024-01-01T00:00:01Z",
+        payload: {
+          type: "function_call",
+          name: "exec_command",
+          call_id: "call-rg",
+          arguments:
+            '{"cmd":"rg -n \\"preventBackgroundThrottling|background.*throttl\\" packages/server/src -S"}',
+        },
+      },
+      {
+        type: "response_item",
+        timestamp: "2024-01-01T00:00:02Z",
+        payload: {
+          type: "function_call_output",
+          call_id: "call-rg",
+          output:
+            "Chunk ID: 9e8716\nWall time: 0.8740 seconds\nProcess exited with code 1\nOriginal token count: 0\nOutput:\n\n",
+        },
+      },
+    ];
+
+    const result = normalizeSession(buildLoadedSession(entries));
+    expect(result.messages).toHaveLength(2);
+
+    const toolUseContent = result.messages[0]?.message?.content;
+    const useBlock = Array.isArray(toolUseContent)
+      ? toolUseContent[0]
+      : toolUseContent;
+    expect(useBlock).toMatchObject({
+      type: "tool_use",
+      id: "call-rg",
+      name: "Grep",
+      input: {
+        pattern: "preventBackgroundThrottling|background.*throttl",
+        path: "packages/server/src",
+      },
+    });
+
+    const toolResultContent = result.messages[1]?.message?.content;
+    const resultBlock = Array.isArray(toolResultContent)
+      ? toolResultContent[0]
+      : toolResultContent;
+    expect(resultBlock).toMatchObject({
+      type: "tool_result",
+      tool_use_id: "call-rg",
+    });
+    expect((resultBlock as { is_error?: boolean }).is_error).toBeUndefined();
+    expect(result.messages[1]?.toolUseResult).toMatchObject({
+      mode: "files_with_matches",
+      numFiles: 0,
+      filenames: [],
+    });
+  });
+
+  it("maps sed range commands to Read with line metadata", () => {
+    const entries: CodexSessionEntry[] = [
+      {
+        type: "response_item",
+        timestamp: "2024-01-01T00:00:01Z",
+        payload: {
+          type: "function_call",
+          name: "shell_command",
+          call_id: "call-sed",
+          arguments:
+            '{"command":"sed -n \\"120,122p\\" packages/server/src/auth/routes.ts"}',
+        },
+      },
+      {
+        type: "response_item",
+        timestamp: "2024-01-01T00:00:02Z",
+        payload: {
+          type: "function_call_output",
+          call_id: "call-sed",
+          output:
+            "Chunk ID: 111111\nWall time: 0.4000 seconds\nProcess exited with code 0\nOriginal token count: 123\nOutput:\n\nline120\nline121\nline122\n",
+        },
+      },
+    ];
+
+    const result = normalizeSession(buildLoadedSession(entries));
+    expect(result.messages).toHaveLength(2);
+
+    const toolUseContent = result.messages[0]?.message?.content;
+    const useBlock = Array.isArray(toolUseContent)
+      ? toolUseContent[0]
+      : toolUseContent;
+    expect(useBlock).toMatchObject({
+      type: "tool_use",
+      id: "call-sed",
+      name: "Read",
+      input: {
+        file_path: "packages/server/src/auth/routes.ts",
+        offset: 120,
+        limit: 3,
+      },
+    });
+
+    expect(result.messages[1]?.toolUseResult).toMatchObject({
+      type: "text",
+      file: {
+        filePath: "packages/server/src/auth/routes.ts",
+        numLines: 3,
+        startLine: 120,
+        totalLines: 122,
+      },
+    });
+  });
+
+  it("maps nl -ba | sed range commands to Read and strips line numbers", () => {
+    const entries: CodexSessionEntry[] = [
+      {
+        type: "response_item",
+        timestamp: "2024-01-01T00:00:01Z",
+        payload: {
+          type: "function_call",
+          name: "shell_command",
+          call_id: "call-nl-sed",
+          arguments:
+            '{"command":"nl -ba packages/server/src/auth/routes.ts | sed -n \\"200,202p\\""}',
+        },
+      },
+      {
+        type: "response_item",
+        timestamp: "2024-01-01T00:00:02Z",
+        payload: {
+          type: "function_call_output",
+          call_id: "call-nl-sed",
+          output:
+            "Chunk ID: 222222\nWall time: 0.4100 seconds\nProcess exited with code 0\nOriginal token count: 210\nOutput:\n\n  200\tconst a = 1;\n  201\tconst b = 2;\n  202\treturn a + b;\n",
+        },
+      },
+    ];
+
+    const result = normalizeSession(buildLoadedSession(entries));
+    expect(result.messages).toHaveLength(2);
+
+    const toolUseContent = result.messages[0]?.message?.content;
+    const useBlock = Array.isArray(toolUseContent)
+      ? toolUseContent[0]
+      : toolUseContent;
+    expect(useBlock).toMatchObject({
+      type: "tool_use",
+      id: "call-nl-sed",
+      name: "Read",
+      input: {
+        file_path: "packages/server/src/auth/routes.ts",
+        offset: 200,
+        limit: 3,
+      },
+    });
+
+    expect(result.messages[1]?.toolUseResult).toMatchObject({
+      type: "text",
+      file: {
+        filePath: "packages/server/src/auth/routes.ts",
+        content: "const a = 1;\nconst b = 2;\nreturn a + b;\n",
+        numLines: 3,
+        startLine: 200,
+        totalLines: 202,
+      },
+    });
+  });
+
+  it("maps simple cat commands to Read for richer file rendering", () => {
+    const entries: CodexSessionEntry[] = [
+      {
+        type: "response_item",
+        timestamp: "2024-01-01T00:00:01Z",
+        payload: {
+          type: "function_call",
+          name: "shell_command",
+          call_id: "call-cat",
+          arguments: '{"command":"cat packages/server/package.json"}',
+        },
+      },
+      {
+        type: "response_item",
+        timestamp: "2024-01-01T00:00:02Z",
+        payload: {
+          type: "function_call_output",
+          call_id: "call-cat",
+          output:
+            'Chunk ID: 333333\nWall time: 0.5000 seconds\nProcess exited with code 0\nOriginal token count: 300\nOutput:\n\n{"name":"@yep-anywhere/server","private":true}\n',
+        },
+      },
+    ];
+
+    const result = normalizeSession(buildLoadedSession(entries));
+    expect(result.messages).toHaveLength(2);
+
+    const toolUseContent = result.messages[0]?.message?.content;
+    const useBlock = Array.isArray(toolUseContent)
+      ? toolUseContent[0]
+      : toolUseContent;
+    expect(useBlock).toMatchObject({
+      type: "tool_use",
+      id: "call-cat",
+      name: "Read",
+      input: {
+        file_path: "packages/server/package.json",
+      },
+    });
+
+    expect(result.messages[1]?.toolUseResult).toMatchObject({
+      type: "text",
+      file: {
+        filePath: "packages/server/package.json",
+        startLine: 1,
+      },
+    });
+  });
+
   it('does not mark shell output as error when exit code is 0 and output text contains "failed"', () => {
     const entries: CodexSessionEntry[] = [
       {
