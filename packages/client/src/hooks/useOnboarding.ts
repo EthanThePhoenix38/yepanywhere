@@ -9,6 +9,13 @@ interface OnboardingState {
   isLoading: boolean;
 }
 
+// Module-level event bus so all useOnboarding() instances stay in sync
+type Listener = (showWizard: boolean) => void;
+const listeners = new Set<Listener>();
+function notifyAll(showWizard: boolean) {
+  for (const listener of listeners) listener(showWizard);
+}
+
 /**
  * Hook to manage onboarding wizard state.
  * Fetches completion status from server and provides methods to complete/reset.
@@ -18,6 +25,17 @@ export function useOnboarding() {
     showWizard: false,
     isLoading: true,
   });
+
+  // Subscribe to cross-instance state changes
+  useEffect(() => {
+    const listener: Listener = (showWizard) => {
+      setState((prev) => ({ ...prev, showWizard }));
+    };
+    listeners.add(listener);
+    return () => {
+      listeners.delete(listener);
+    };
+  }, []);
 
   // Fetch initial onboarding status from server
   useEffect(() => {
@@ -66,10 +84,12 @@ export function useOnboarding() {
     try {
       await api.completeOnboarding();
       setState((prev) => ({ ...prev, showWizard: false }));
+      notifyAll(false);
     } catch (error) {
       console.error("Failed to complete onboarding:", error);
       // Still hide wizard on error to avoid blocking user
       setState((prev) => ({ ...prev, showWizard: false }));
+      notifyAll(false);
     }
   }, []);
 
@@ -78,6 +98,7 @@ export function useOnboarding() {
     try {
       await api.resetOnboarding();
       setState((prev) => ({ ...prev, showWizard: true }));
+      notifyAll(true);
     } catch (error) {
       console.error("Failed to reset onboarding:", error);
     }
