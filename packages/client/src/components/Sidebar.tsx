@@ -66,13 +66,14 @@ export function Sidebar({
 
   // Fetch global sessions for sidebar (non-starred only for recent/older sections)
   const { sessions: globalSessions, loading: globalLoading } =
-    useGlobalSessions({ limit: 50 });
+    useGlobalSessions({ limit: 50, includeStats: false });
 
   // Fetch starred sessions separately to ensure we get ALL starred sessions
   const { sessions: starredSessions, loading: starredLoading } =
     useGlobalSessions({
       starred: true,
       limit: 100,
+      includeStats: false,
     });
 
   const sessionsLoading = globalLoading || starredLoading;

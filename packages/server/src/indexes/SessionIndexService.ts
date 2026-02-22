@@ -252,13 +252,20 @@ export class SessionIndexService implements ISessionIndexService {
     if (!index) return;
 
     const indexPath = this.getIndexPath(sessionDir);
+    const tempPath = `${indexPath}.tmp-${process.pid}-${Date.now()}-${Math.random()
+      .toString(16)
+      .slice(2)}`;
 
     try {
       // Ensure directory exists
       await fs.mkdir(path.dirname(indexPath), { recursive: true });
       const content = JSON.stringify(index, null, 2);
-      await fs.writeFile(indexPath, content, "utf-8");
+      await fs.writeFile(tempPath, content, "utf-8");
+      await fs.rename(tempPath, indexPath);
     } catch (error) {
+      await fs.unlink(tempPath).catch(() => {
+        // Best-effort cleanup for failed atomic writes.
+      });
       logger.error(
         { err: error },
         `[SessionIndexService] Failed to save index for ${sessionDir}`,

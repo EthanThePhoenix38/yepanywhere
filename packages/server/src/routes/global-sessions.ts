@@ -109,6 +109,17 @@ const DEFAULT_LIMIT = 100;
 /** Maximum allowed limit */
 const MAX_LIMIT = 500;
 
+function createEmptyStats(): GlobalSessionStats {
+  return {
+    totalCount: 0,
+    unreadCount: 0,
+    starredCount: 0,
+    archivedCount: 0,
+    providerCounts: {},
+    executorCounts: {},
+  };
+}
+
 export function createGlobalSessionsRoutes(deps: GlobalSessionsDeps): Hono {
   const routes = new Hono();
 
@@ -120,6 +131,7 @@ export function createGlobalSessionsRoutes(deps: GlobalSessionsDeps): Hono {
     const afterCursor = c.req.query("after");
     const includeArchived = c.req.query("includeArchived") === "true";
     const starredOnly = c.req.query("starred") === "true";
+    const includeStats = c.req.query("includeStats") === "true";
     const limitParam = c.req.query("limit");
     const limit = Math.min(
       Math.max(1, Number.parseInt(limitParam || "", 10) || DEFAULT_LIMIT),
@@ -140,14 +152,7 @@ export function createGlobalSessionsRoutes(deps: GlobalSessionsDeps): Hono {
       .sort((a, b) => a.name.localeCompare(b.name));
 
     // Global stats counters (computed from ALL sessions, ignoring filters)
-    const stats: GlobalSessionStats = {
-      totalCount: 0,
-      unreadCount: 0,
-      starredCount: 0,
-      archivedCount: 0,
-      providerCounts: {},
-      executorCounts: {},
-    };
+    const stats: GlobalSessionStats = createEmptyStats();
 
     // Collect all sessions with enriched data
     const allSessions: GlobalSessionItem[] = [];
@@ -247,9 +252,9 @@ export function createGlobalSessionsRoutes(deps: GlobalSessionsDeps): Hono {
           ? deps.notificationService.hasUnread(session.id, session.updatedAt)
           : undefined;
 
-        // Update global stats (always, regardless of filters)
-        // Stats are computed only when not filtering by project (global view)
-        if (!filterProjectId) {
+        // Update global stats (optional)
+        // Stats are computed only for global view when includeStats=true.
+        if (includeStats && !filterProjectId) {
           if (isArchived) {
             stats.archivedCount++;
           } else {
@@ -366,7 +371,7 @@ export function createGlobalSessionsRoutes(deps: GlobalSessionsDeps): Hono {
     const response: GlobalSessionsResponse = {
       sessions,
       hasMore,
-      stats,
+      stats: includeStats ? stats : createEmptyStats(),
       projects: projectOptions,
     };
 

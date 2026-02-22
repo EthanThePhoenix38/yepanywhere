@@ -1,5 +1,12 @@
 import { randomUUID } from "node:crypto";
-import { mkdir, readFile, rm, stat, writeFile } from "node:fs/promises";
+import {
+  mkdir,
+  readFile,
+  readdir,
+  rm,
+  stat,
+  writeFile,
+} from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { toUrlProjectId } from "@yep-anywhere/shared";
@@ -446,6 +453,16 @@ describe("SessionIndexService", () => {
       );
       expect(sessions).toHaveLength(1);
       expect(sessions[0]?.title).toBe("Persistent session");
+    });
+
+    it("writes index atomically without leftover temp files", async () => {
+      await createSession("session-1", "Atomic session");
+
+      await service.getSessionsWithCache(sessionDir, projectId, reader);
+
+      const files = await readdir(dataDir);
+      const tempFiles = files.filter((file) => file.includes(".tmp-"));
+      expect(tempFiles).toHaveLength(0);
     });
   });
 });

@@ -691,6 +691,7 @@ export const api = {
     limit?: number;
     includeArchived?: boolean;
     starred?: boolean;
+    includeStats?: boolean;
   }) => {
     const searchParams = new URLSearchParams();
     if (params?.project) searchParams.set("project", params.project);
@@ -699,6 +700,7 @@ export const api = {
     if (params?.limit) searchParams.set("limit", String(params.limit));
     if (params?.includeArchived) searchParams.set("includeArchived", "true");
     if (params?.starred) searchParams.set("starred", "true");
+    if (params?.includeStats) searchParams.set("includeStats", "true");
     const query = searchParams.toString();
     return fetchJSON<GlobalSessionsResponse>(
       query ? `/sessions?${query}` : "/sessions",

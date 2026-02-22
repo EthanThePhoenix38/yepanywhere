@@ -127,6 +127,7 @@ export function GlobalSessionsPage() {
       projectId: projectFilter,
       searchQuery,
       includeArchived,
+      includeStats: !projectFilter,
     });
 
   // Filter sessions based on status and provider filters (client-side)

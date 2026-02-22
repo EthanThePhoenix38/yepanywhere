@@ -81,7 +81,10 @@ export function RecentSessionsDropdown({
   const dropdownRef = useRef<HTMLDivElement>(null);
 
   // Fetch recent sessions across all projects
-  const { sessions } = useGlobalSessions({ limit: MAX_RECENT_SESSIONS + 5 });
+  const { sessions } = useGlobalSessions({
+    limit: MAX_RECENT_SESSIONS + 5,
+    includeStats: false,
+  });
 
   // Filter out current session and limit
   const recentSessions = sessions

@@ -58,6 +58,19 @@ This leaves list endpoints (`/api/sessions`, `/api/projects/:id/sessions`, `/api
 - Add atomic index writes and optional single-writer lock for multi-instance safety.
 - Expand perf and integration tests (watcher loss/recovery, call-count regression, concurrency).
 
+#### Phase 3 implementation (current)
+
+- `/api/sessions` now supports `includeStats=true`.
+  - Default request path skips global stats aggregation.
+  - Global stats are only computed when explicitly requested (used by the global sessions page).
+- UI consumers that do not render global counts now request sessions with stats disabled:
+  - sidebar session lists
+  - recent sessions dropdown
+- `SessionIndexService` index persistence now uses atomic write+rename to avoid partially-written cache files.
+- Added tests for:
+  - `includeStats` behavior in global sessions route
+  - no temporary index files left after atomic writes
+
 ## Phase 1 Implementation Notes
 
 Implemented in this session:

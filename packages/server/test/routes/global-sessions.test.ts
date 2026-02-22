@@ -198,6 +198,31 @@ describe("Global Sessions Routes", () => {
       expect(result.sessions[1].projectName).toBe("project-two");
     });
 
+    it("only computes global stats when includeStats=true", async () => {
+      const project = createProject("proj1", "project-one", "/sessions/proj1");
+      const session = createSession("sess1", "proj1", minutesAgo(5));
+      vi.mocked(mockScanner.listProjects).mockResolvedValue([project]);
+      sessionsByDir.set("/sessions/proj1", [session]);
+      unreadMap.set("sess1", true);
+      metadataMap.set("sess1", { isStarred: true });
+
+      const withoutStats = await makeRequest();
+      expect(withoutStats.stats).toEqual({
+        totalCount: 0,
+        unreadCount: 0,
+        starredCount: 0,
+        archivedCount: 0,
+        providerCounts: {},
+        executorCounts: {},
+      });
+
+      const withStats = await makeRequest("?includeStats=true");
+      expect(withStats.stats.totalCount).toBe(1);
+      expect(withStats.stats.unreadCount).toBe(1);
+      expect(withStats.stats.starredCount).toBe(1);
+      expect(withStats.stats.providerCounts.claude).toBe(1);
+    });
+
     it("includes project context on each session", async () => {
       const project = createProject("proj1", "my-project", "/sessions/proj1");
       const session = createSession("sess1", "proj1", minutesAgo(5));

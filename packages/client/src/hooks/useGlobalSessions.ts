@@ -23,6 +23,7 @@ export interface UseGlobalSessionsOptions {
   limit?: number;
   includeArchived?: boolean;
   starred?: boolean;
+  includeStats?: boolean;
 }
 
 /** Default stats when no data loaded */
@@ -36,7 +37,14 @@ const DEFAULT_STATS: GlobalSessionStats = {
 };
 
 export function useGlobalSessions(options: UseGlobalSessionsOptions = {}) {
-  const { projectId, searchQuery, limit, includeArchived, starred } = options;
+  const {
+    projectId,
+    searchQuery,
+    limit,
+    includeArchived,
+    starred,
+    includeStats = false,
+  } = options;
   const [sessions, setSessions] = useState<GlobalSessionItem[]>([]);
   const [stats, setStats] = useState<GlobalSessionStats>(DEFAULT_STATS);
   const [projects, setProjects] = useState<ProjectOption[]>([]);
@@ -57,6 +65,7 @@ export function useGlobalSessions(options: UseGlobalSessionsOptions = {}) {
     limit?: number;
     includeArchived?: boolean;
     starred?: boolean;
+    includeStats?: boolean;
   }>({});
 
   const fetch = useCallback(async () => {
@@ -65,7 +74,8 @@ export function useGlobalSessions(options: UseGlobalSessionsOptions = {}) {
       lastFetchOptionsRef.current.projectId !== projectId ||
       lastFetchOptionsRef.current.searchQuery !== searchQuery ||
       lastFetchOptionsRef.current.includeArchived !== includeArchived ||
-      lastFetchOptionsRef.current.starred !== starred;
+      lastFetchOptionsRef.current.starred !== starred ||
+      lastFetchOptionsRef.current.includeStats !== includeStats;
 
     if (optionsChanged) {
       hasInitialLoadRef.current = false;
@@ -77,6 +87,7 @@ export function useGlobalSessions(options: UseGlobalSessionsOptions = {}) {
       limit,
       includeArchived,
       starred,
+      includeStats,
     };
 
     // Only show loading state on initial load
@@ -92,6 +103,7 @@ export function useGlobalSessions(options: UseGlobalSessionsOptions = {}) {
         limit,
         includeArchived,
         starred,
+        includeStats,
       });
 
       if (!hasInitialLoadRef.current || optionsChanged) {
@@ -122,14 +134,14 @@ export function useGlobalSessions(options: UseGlobalSessionsOptions = {}) {
       }
 
       setHasMore(data.hasMore);
-      setStats(data.stats);
+      setStats(includeStats ? data.stats : DEFAULT_STATS);
       setProjects(data.projects);
     } catch (err) {
       setError(err instanceof Error ? err : new Error(String(err)));
     } finally {
       setLoading(false);
     }
-  }, [projectId, searchQuery, limit, includeArchived, starred]);
+  }, [projectId, searchQuery, limit, includeArchived, starred, includeStats]);
 
   // Load more sessions (pagination)
   const loadMore = useCallback(async () => {
@@ -146,6 +158,7 @@ export function useGlobalSessions(options: UseGlobalSessionsOptions = {}) {
         after: lastSession.updatedAt,
         includeArchived,
         starred,
+        includeStats: false,
       });
 
       setSessions((prev) => {
