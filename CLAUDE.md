@@ -91,6 +91,10 @@ pnpm test:e2e   # E2E tests (if UI changes)
 
 Fix any errors before considering the task complete.
 
+## Dependency Security Maintenance
+
+Periodically run `pnpm audit --prod` and pay special attention to the `web-push -> asn1.js -> bn.js` chain. Keep `bn.js` patched (currently via pnpm override) until `web-push` ships an upstream fix.
+
 ## Git Commits
 
 Never mention Claude, AI, or any AI assistant in commit messages. Write commit messages as if a human developer wrote them.
@@ -257,4 +261,3 @@ Key patterns:
 - **Message identification**: Use `getMessageId(m)` helper which returns `uuid ?? id`
 - **Content access**: Prefer `message.content` over top-level `content`
 - **Type discrimination**: Use `type` field (user/assistant/system/summary)
-
