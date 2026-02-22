@@ -1,6 +1,6 @@
 use serde::Serialize;
 use std::fs;
-use tauri::{AppHandle, Emitter, Manager};
+use tauri::{AppHandle, Emitter};
 use tokio::process::Command;
 
 use crate::config;
@@ -12,20 +12,19 @@ struct InstallProgress {
     message: String,
 }
 
-/// Resolve the bundled Bun binary path.
-fn bun_path(app: &AppHandle) -> Result<std::path::PathBuf, String> {
-    app.path()
-        .resource_dir()
-        .map(|dir| {
-            let triple = env!("TARGET_TRIPLE");
-            let bin_name = if cfg!(windows) {
-                format!("binaries/bun-{triple}.exe")
-            } else {
-                format!("binaries/bun-{triple}")
-            };
-            dir.join(bin_name)
-        })
-        .map_err(|e| format!("Could not resolve resource dir: {e}"))
+/// Resolve the bundled Bun sidecar binary path.
+/// Tauri places externalBin sidecars next to the main executable (Contents/MacOS/).
+fn bun_path(_app: &AppHandle) -> Result<std::path::PathBuf, String> {
+    let exe = std::env::current_exe().map_err(|e| format!("Could not resolve executable: {e}"))?;
+    let exe_dir = exe
+        .parent()
+        .ok_or_else(|| "Could not resolve executable directory".to_string())?;
+    let bin_name = if cfg!(windows) { "bun.exe" } else { "bun" };
+    let path = exe_dir.join(bin_name);
+    if path.exists() {
+        return Ok(path);
+    }
+    Err(format!("Bun sidecar not found at {}", path.display()))
 }
 
 fn emit_progress(app: &AppHandle, agent: &str, status: &str, message: &str) {
@@ -171,7 +170,10 @@ pub async fn install_codex(app: AppHandle) -> Result<(), String> {
             let path = entry
                 .path()
                 .map_err(|e| format!("Failed to read path: {e}"))?;
-            if path.file_name().is_some_and(|n| n == "codex") {
+            if path.file_name().is_some_and(|n| {
+                let s = n.to_string_lossy();
+                s == "codex" || s.starts_with("codex-")
+            }) {
                 entry
                     .unpack(&codex_bin)
                     .map_err(|e| format!("Failed to extract codex: {e}"))?;
@@ -217,6 +219,10 @@ pub async fn check_agent_installed(agent: String) -> Result<bool, String> {
             Ok(path.exists())
         }
         "yep" => {
+            // In dev mode, the server runs from local source — no install needed.
+            if config::dev_dir().is_some() {
+                return Ok(true);
+            }
             let path = config::data_dir()
                 .join("node_modules")
                 .join("yepanywhere")
@@ -226,4 +232,38 @@ pub async fn check_agent_installed(agent: String) -> Result<bool, String> {
         }
         _ => Err(format!("Unknown agent: {agent}")),
     }
+}
+
+/// Check if Claude is already authenticated by running `claude auth status`
+/// and parsing the JSON output. Returns true if `loggedIn` is true.
+#[tauri::command]
+pub async fn check_claude_auth(app: AppHandle) -> Result<bool, String> {
+    let bun = bun_path(&app)?;
+    let data_dir = config::data_dir();
+    let script = data_dir
+        .join("node_modules")
+        .join("@anthropic-ai")
+        .join("claude-code")
+        .join("cli.js");
+
+    if !script.exists() {
+        return Ok(false);
+    }
+
+    let output = Command::new(&bun)
+        .args([script.to_string_lossy().as_ref(), "auth", "status"])
+        .output()
+        .await
+        .map_err(|e| format!("Failed to run claude auth status: {e}"))?;
+
+    // claude auth status prints JSON to stdout (may exit non-zero even when logged in)
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    let text = if stdout.contains("loggedIn") {
+        stdout
+    } else {
+        stderr
+    };
+
+    Ok(text.contains("\"loggedIn\": true") || text.contains("\"loggedIn\":true"))
 }

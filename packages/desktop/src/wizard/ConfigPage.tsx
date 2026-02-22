@@ -1,6 +1,4 @@
 interface Props {
-  port: number;
-  onPortChange: (port: number) => void;
   startMinimized: boolean;
   onStartMinimizedChange: (v: boolean) => void;
   autostart: boolean;
@@ -9,8 +7,6 @@ interface Props {
 }
 
 export function ConfigPage({
-  port,
-  onPortChange,
   startMinimized,
   onStartMinimizedChange,
   autostart,
@@ -58,24 +54,6 @@ export function ConfigPage({
           />
         </label>
 
-        <div
-          style={{
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "space-between",
-            padding: "12px 0",
-          }}
-        >
-          <span>Server port</span>
-          <input
-            type="number"
-            value={port}
-            onChange={(e) => onPortChange(Number(e.target.value))}
-            min={1024}
-            max={65535}
-            style={{ width: 100, textAlign: "center" }}
-          />
-        </div>
       </div>
 
       <button className="btn-primary" onClick={onNext} style={{ width: "100%" }}>

@@ -32,6 +32,10 @@ interface AuthContextValue {
   authDisabledByEnv: boolean;
   /** Path to auth.json file (for recovery instructions) */
   authFilePath: string;
+  /** Whether the server has a desktop auth token (Tauri app) */
+  hasDesktopToken: boolean;
+  /** Whether unauthenticated localhost access is allowed */
+  localhostOpen: boolean;
   /** Login with password */
   login: (password: string) => Promise<void>;
   /** Logout current session */
@@ -44,6 +48,8 @@ interface AuthContextValue {
   setupAccount: (password: string) => Promise<void>;
   /** Change password */
   changePassword: (newPassword: string) => Promise<void>;
+  /** Toggle unauthenticated localhost access */
+  setLocalhostOpen: (open: boolean) => Promise<void>;
   /** Re-check auth status */
   checkAuth: () => Promise<void>;
 }
@@ -61,6 +67,8 @@ export function AuthProvider({ children }: AuthProviderProps) {
   const [authEnabled, setAuthEnabled] = useState(false);
   const [authDisabledByEnv, setAuthDisabledByEnv] = useState(false);
   const [authFilePath, setAuthFilePath] = useState("");
+  const [hasDesktopToken, setHasDesktopToken] = useState(false);
+  const [localhostOpen, setLocalhostOpenState] = useState(false);
   const navigate = useNavigate();
   const location = useLocation();
 
@@ -72,6 +80,8 @@ export function AuthProvider({ children }: AuthProviderProps) {
       setAuthFilePath(status.authFilePath);
       setIsAuthenticated(status.authenticated);
       setIsSetupMode(status.setupRequired);
+      setHasDesktopToken(status.hasDesktopToken ?? false);
+      setLocalhostOpenState(status.localhostOpen ?? false);
     } catch (error) {
       // If we get a network error or the endpoint doesn't exist,
       // assume auth is not enabled (for backward compatibility)
@@ -164,6 +174,11 @@ export function AuthProvider({ children }: AuthProviderProps) {
     await api.changePassword(newPassword);
   }, []);
 
+  const setLocalhostOpen = useCallback(async (open: boolean) => {
+    await api.setLocalhostAccess(open);
+    setLocalhostOpenState(open);
+  }, []);
+
   return (
     <AuthContext.Provider
       value={{
@@ -173,12 +188,15 @@ export function AuthProvider({ children }: AuthProviderProps) {
         authEnabled,
         authDisabledByEnv,
         authFilePath,
+        hasDesktopToken,
+        localhostOpen,
         login,
         logout,
         enableAuth,
         disableAuth,
         setupAccount,
         changePassword,
+        setLocalhostOpen,
         checkAuth,
       }}
     >

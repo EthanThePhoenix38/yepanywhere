@@ -117,6 +117,8 @@ export interface AppOptions {
   authService?: AuthService;
   /** Whether auth is disabled by env var (--auth-disable). Bypasses all auth. */
   authDisabled?: boolean;
+  /** Desktop auth token for Tauri app. Requests with matching X-Desktop-Token header bypass auth. */
+  desktopAuthToken?: string;
   /** RemoteAccessService for SRP-based remote access (optional) */
   remoteAccessService?: RemoteAccessService;
   /** RemoteSessionService for session persistence (optional) */
@@ -184,6 +186,7 @@ export function createApp(options: AppOptions): AppResult {
       createAuthMiddleware({
         authService: options.authService,
         authDisabled: options.authDisabled,
+        desktopAuthToken: options.desktopAuthToken,
       }),
     );
   }
@@ -196,6 +199,7 @@ export function createApp(options: AppOptions): AppResult {
       createAuthRoutes({
         authService: options.authService,
         authDisabled: options.authDisabled,
+        desktopAuthToken: options.desktopAuthToken,
       }),
     );
   }
@@ -365,7 +369,8 @@ export function createApp(options: AppOptions): AppResult {
     });
   }
 
-  // Health check (outside /api)
+  // Health check (outside /api — needs CORS for Tauri desktop app)
+  app.use("/health/*", corsMiddleware);
   app.route("/health", health);
 
   // Version check (outside /api for easy access)

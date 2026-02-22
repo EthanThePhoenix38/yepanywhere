@@ -21,6 +21,12 @@ fn get_data_dir() -> String {
     config::data_dir().to_string_lossy().to_string()
 }
 
+/// Returns the dev directory path if `YEP_DEV_DIR` is set, or null otherwise.
+#[tauri::command]
+fn is_dev_mode() -> Option<String> {
+    config::dev_dir().map(|p| p.to_string_lossy().to_string())
+}
+
 pub fn run() {
     let mut builder = tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
@@ -54,15 +60,20 @@ pub fn run() {
             get_config,
             save_app_config,
             get_data_dir,
+            is_dev_mode,
             server::start_server,
             server::stop_server,
             server::get_server_status,
+            server::get_desktop_token,
+            server::get_server_port,
             installer::install_yep_server,
             installer::install_claude,
             installer::install_codex,
             installer::check_agent_installed,
+            installer::check_claude_auth,
             pty::spawn_pty,
             pty::write_pty,
+            pty::resize_pty,
             pty::kill_pty,
         ])
         .setup(|app| {
@@ -92,6 +103,12 @@ pub fn run() {
                 api.prevent_close();
             }
         })
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .build(tauri::generate_context!())
+        .expect("error while building tauri application")
+        .run(|app_handle, event| {
+            if let tauri::RunEvent::Exit = event {
+                let state = app_handle.state::<server::ServerState>();
+                state.kill_sync();
+            }
+        });
 }

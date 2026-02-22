@@ -23,7 +23,7 @@ export function RemoteAccessStep({
     <div className="onboarding-step-content">
       <p className="onboarding-step-description">
         Access yepanywhere from anywhere using a secure relay connection. This
-        lets you supervise Claude agents from your phone while away from your
+        lets you supervise coding agents from your phone while away from your
         computer.
       </p>
 

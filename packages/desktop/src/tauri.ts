@@ -4,7 +4,8 @@ import { listen } from "@tauri-apps/api/event";
 export interface AppConfig {
   setup_complete: boolean;
   agents: string[];
-  port: number;
+  /** User-specified port override. Undefined/null = auto-pick a free port on each launch. */
+  port?: number | null;
   start_minimized: boolean;
 }
 
@@ -20,6 +21,11 @@ export async function getDataDir(): Promise<string> {
   return invoke("get_data_dir");
 }
 
+/** Returns the dev directory path if YEP_DEV_DIR is set, or null otherwise. */
+export async function isDevMode(): Promise<string | null> {
+  return invoke("is_dev_mode");
+}
+
 export async function startServer(): Promise<void> {
   return invoke("start_server");
 }
@@ -30,6 +36,14 @@ export async function stopServer(): Promise<void> {
 
 export async function getServerStatus(): Promise<string> {
   return invoke("get_server_status");
+}
+
+export async function getDesktopToken(): Promise<string | null> {
+  return invoke("get_desktop_token");
+}
+
+export async function getServerPort(): Promise<number | null> {
+  return invoke("get_server_port");
 }
 
 export async function installYepServer(): Promise<void> {
@@ -48,6 +62,10 @@ export async function checkAgentInstalled(agent: string): Promise<boolean> {
   return invoke("check_agent_installed", { agent });
 }
 
+export async function checkClaudeAuth(): Promise<boolean> {
+  return invoke("check_claude_auth");
+}
+
 export async function spawnPty(
   command: string,
   args: string[],
@@ -57,6 +75,10 @@ export async function spawnPty(
 
 export async function writePty(data: string): Promise<void> {
   return invoke("write_pty", { data });
+}
+
+export async function resizePty(cols: number, rows: number): Promise<void> {
+  return invoke("resize_pty", { cols, rows });
 }
 
 export async function killPty(): Promise<void> {

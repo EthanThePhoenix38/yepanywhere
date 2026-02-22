@@ -26,6 +26,8 @@ export interface AuthState {
   version: number;
   /** Whether auth is enabled (can be enabled via settings UI) */
   enabled?: boolean;
+  /** Whether unauthenticated localhost access is allowed (bypasses desktop token floor) */
+  localhostOpen?: boolean;
   /** Account credentials (undefined = setup mode) */
   account?: {
     /** bcrypt-hashed password */
@@ -123,6 +125,21 @@ export class AuthService {
    */
   isEnabled(): boolean {
     return this.state.enabled === true;
+  }
+
+  /**
+   * Check if unauthenticated localhost access is allowed (bypasses desktop token floor).
+   */
+  isLocalhostOpen(): boolean {
+    return this.state.localhostOpen === true;
+  }
+
+  /**
+   * Set whether unauthenticated localhost access is allowed.
+   */
+  async setLocalhostOpen(open: boolean): Promise<void> {
+    this.state.localhostOpen = open || undefined; // Don't persist false
+    await this.save();
   }
 
   /**

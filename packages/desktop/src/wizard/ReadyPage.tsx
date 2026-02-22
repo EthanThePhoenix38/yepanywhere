@@ -4,7 +4,6 @@ import { saveConfig, startServer, type AppConfig } from "../tauri";
 
 interface Props {
   agents: string[];
-  port: number;
   startMinimized: boolean;
   autostart: boolean;
   onComplete: (config: AppConfig) => void;
@@ -12,7 +11,6 @@ interface Props {
 
 export function ReadyPage({
   agents,
-  port,
   startMinimized,
   autostart,
   onComplete,
@@ -27,7 +25,6 @@ export function ReadyPage({
     const config: AppConfig = {
       setup_complete: true,
       agents,
-      port,
       start_minimized: startMinimized,
     };
 

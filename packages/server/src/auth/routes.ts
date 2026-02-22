@@ -2,6 +2,7 @@
  * Authentication API routes
  */
 
+import * as crypto from "node:crypto";
 import { Hono } from "hono";
 import { deleteCookie, getCookie, setCookie } from "hono/cookie";
 import type { AuthService } from "./AuthService.js";
@@ -12,6 +13,8 @@ export interface AuthRoutesDeps {
   authService: AuthService;
   /** Whether auth is disabled by env var (--auth-disable). Overrides settings. */
   authDisabled?: boolean;
+  /** Desktop auth token (for protecting localhost-access endpoint). */
+  desktopAuthToken?: string;
 }
 
 interface SetupBody {
@@ -50,7 +53,7 @@ function shouldUseSecureCookie(c: {
 
 export function createAuthRoutes(deps: AuthRoutesDeps): Hono {
   const app = new Hono();
-  const { authService, authDisabled = false } = deps;
+  const { authService, authDisabled = false, desktopAuthToken } = deps;
 
   /**
    * GET /api/auth/status
@@ -65,26 +68,31 @@ export function createAuthRoutes(deps: AuthRoutesDeps): Hono {
    */
   app.get("/status", async (c) => {
     const isEnabled = authService.isEnabled();
+    const base = {
+      hasDesktopToken: !!desktopAuthToken,
+      localhostOpen: authService.isLocalhostOpen(),
+      authFilePath: authService.getFilePath(),
+    };
 
     // If auth is disabled by env var, it overrides settings
     if (authDisabled) {
       return c.json({
+        ...base,
         enabled: isEnabled,
         authenticated: true, // Bypass auth
         setupRequired: false,
         disabledByEnv: true,
-        authFilePath: authService.getFilePath(),
       });
     }
 
     // If auth is not enabled in settings, no auth required
     if (!isEnabled) {
       return c.json({
+        ...base,
         enabled: false,
         authenticated: true, // No auth needed
         setupRequired: false,
         disabledByEnv: false,
-        authFilePath: authService.getFilePath(),
       });
     }
 
@@ -96,31 +104,31 @@ export function createAuthRoutes(deps: AuthRoutesDeps): Hono {
       // This shouldn't happen normally since enableAuth creates account,
       // but handle edge case
       return c.json({
+        ...base,
         enabled: true,
         authenticated: false,
         setupRequired: true,
         disabledByEnv: false,
-        authFilePath: authService.getFilePath(),
       });
     }
 
     if (!sessionId) {
       return c.json({
+        ...base,
         enabled: true,
         authenticated: false,
         setupRequired: false,
         disabledByEnv: false,
-        authFilePath: authService.getFilePath(),
       });
     }
 
     const valid = await authService.validateSession(sessionId);
     return c.json({
+      ...base,
       enabled: true,
       authenticated: valid,
       setupRequired: false,
       disabledByEnv: false,
-      authFilePath: authService.getFilePath(),
     });
   });
 
@@ -311,6 +319,49 @@ export function createAuthRoutes(deps: AuthRoutesDeps): Hono {
     }
 
     return c.json({ success: true });
+  });
+
+  /**
+   * POST /api/auth/localhost-access
+   * Toggle unauthenticated localhost access (bypasses desktop token floor).
+   * Requires valid desktop token or authenticated session.
+   */
+  app.post("/localhost-access", async (c) => {
+    // Verify caller has desktop token or valid session
+    let authorized = false;
+
+    if (desktopAuthToken) {
+      const headerToken = c.req.header("x-desktop-token");
+      if (
+        headerToken &&
+        headerToken.length === desktopAuthToken.length &&
+        crypto.timingSafeEqual(
+          Buffer.from(headerToken),
+          Buffer.from(desktopAuthToken),
+        )
+      ) {
+        authorized = true;
+      }
+    }
+
+    if (!authorized) {
+      const sessionId = getCookie(c, SESSION_COOKIE_NAME);
+      if (sessionId && (await authService.validateSession(sessionId))) {
+        authorized = true;
+      }
+    }
+
+    if (!authorized) {
+      return c.json({ error: "Not authenticated" }, 401);
+    }
+
+    const body = await c.req.json<{ open: boolean }>();
+    if (typeof body.open !== "boolean") {
+      return c.json({ error: "open must be a boolean" }, 400);
+    }
+
+    await authService.setLocalhostOpen(body.open);
+    return c.json({ success: true, localhostOpen: body.open });
   });
 
   return app;

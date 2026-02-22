@@ -6,7 +6,9 @@ use std::path::PathBuf;
 pub struct AppConfig {
     pub setup_complete: bool,
     pub agents: Vec<String>,
-    pub port: u16,
+    /// User-specified port override. None = auto-pick a free port on each launch.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub port: Option<u16>,
     pub start_minimized: bool,
 }
 
@@ -15,7 +17,7 @@ impl Default for AppConfig {
         Self {
             setup_complete: false,
             agents: vec![],
-            port: 3400,
+            port: None,
             start_minimized: false,
         }
     }
@@ -32,6 +34,11 @@ pub fn config_path() -> PathBuf {
 
 pub fn bin_dir() -> PathBuf {
     data_dir().join("bin")
+}
+
+/// If `YEP_DEV_DIR` is set, run from local source instead of installed npm package.
+pub fn dev_dir() -> Option<PathBuf> {
+    std::env::var("YEP_DEV_DIR").ok().map(PathBuf::from)
 }
 
 pub fn load_config() -> AppConfig {

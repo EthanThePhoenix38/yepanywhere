@@ -1,4 +1,4 @@
-use portable_pty::{native_pty_system, CommandBuilder, PtySize};
+use portable_pty::{native_pty_system, CommandBuilder, MasterPty, PtySize};
 use serde::Serialize;
 use std::io::{Read, Write};
 use std::sync::{Mutex, PoisonError};
@@ -8,6 +8,7 @@ use crate::config;
 
 pub struct PtyState {
     writer: Mutex<Option<Box<dyn Write + Send>>>,
+    master: Mutex<Option<Box<dyn MasterPty + Send>>>,
     alive: Mutex<bool>,
 }
 
@@ -15,6 +16,7 @@ impl PtyState {
     pub fn new() -> Self {
         Self {
             writer: Mutex::new(None),
+            master: Mutex::new(None),
             alive: Mutex::new(false),
         }
     }
@@ -42,23 +44,45 @@ pub async fn spawn_pty(app: AppHandle, command: String, args: Vec<String>) -> Re
         })
         .map_err(|e| format!("Failed to open PTY: {e}"))?;
 
-    let mut cmd = CommandBuilder::new(&command);
-    for arg in &args {
-        cmd.arg(arg);
-    }
+    // Resolve command to use the bundled bun sidecar as the runtime.
+    // We can't rely on system node/bun — the app must work on a fresh macOS install.
+    let bun = {
+        let exe = std::env::current_exe()
+            .map_err(|e| format!("Could not resolve executable: {e}"))?;
+        let exe_dir = exe
+            .parent()
+            .ok_or_else(|| "Could not resolve executable directory".to_string())?;
+        let bin_name = if cfg!(windows) { "bun.exe" } else { "bun" };
+        exe_dir.join(bin_name)
+    };
 
-    // Add our bin dirs to PATH so claude/codex are found
     let data_dir = config::data_dir();
-    let node_bin = data_dir.join("node_modules").join(".bin");
-    let bin_dir = config::bin_dir();
-    let current_path = std::env::var("PATH").unwrap_or_default();
-    let new_path = format!(
-        "{}:{}:{}",
-        node_bin.display(),
-        bin_dir.display(),
-        current_path
-    );
-    cmd.env("PATH", new_path);
+
+    // For known commands (claude, codex), resolve to their actual scripts/binaries
+    // and run them with the bundled bun. For unknown commands, run directly.
+    let cmd = match command.as_str() {
+        "claude" => {
+            let script = data_dir
+                .join("node_modules")
+                .join("@anthropic-ai")
+                .join("claude-code")
+                .join("cli.js");
+            let mut c = CommandBuilder::new(&bun);
+            c.arg(&script);
+            for arg in &args {
+                c.arg(arg);
+            }
+            c.cwd(dirs::home_dir().unwrap_or_else(|| "/".into()));
+            c
+        }
+        _ => {
+            let mut c = CommandBuilder::new(&command);
+            for arg in &args {
+                c.arg(arg);
+            }
+            c
+        }
+    };
 
     let _child = pair
         .slave
@@ -71,16 +95,18 @@ pub async fn spawn_pty(app: AppHandle, command: String, args: Vec<String>) -> Re
         .take_writer()
         .map_err(|e| format!("Failed to get PTY writer: {e}"))?;
 
-    let state = app.state::<PtyState>();
-    *state.writer.lock().map_err(lock_err)? = Some(writer);
-    *state.alive.lock().map_err(lock_err)? = true;
-
-    // Read PTY output in background and emit events
+    // Clone reader before storing master
     let mut reader = pair
         .master
         .try_clone_reader()
         .map_err(|e| format!("Failed to get PTY reader: {e}"))?;
 
+    let state = app.state::<PtyState>();
+    *state.writer.lock().map_err(lock_err)? = Some(writer);
+    *state.master.lock().map_err(lock_err)? = Some(pair.master);
+    *state.alive.lock().map_err(lock_err)? = true;
+
+    // Read PTY output in background and emit events
     let app_clone = app.clone();
     std::thread::spawn(move || {
         let mut buf = [0u8; 4096];
@@ -122,9 +148,29 @@ pub async fn write_pty(app: AppHandle, data: String) -> Result<(), String> {
 }
 
 #[tauri::command]
+pub async fn resize_pty(app: AppHandle, cols: u16, rows: u16) -> Result<(), String> {
+    let state = app.state::<PtyState>();
+    let master_lock = state.master.lock().map_err(lock_err)?;
+
+    if let Some(ref master) = *master_lock {
+        master
+            .resize(PtySize {
+                rows,
+                cols,
+                pixel_width: 0,
+                pixel_height: 0,
+            })
+            .map_err(|e| format!("Failed to resize PTY: {e}"))?;
+    }
+
+    Ok(())
+}
+
+#[tauri::command]
 pub async fn kill_pty(app: AppHandle) -> Result<(), String> {
     let state = app.state::<PtyState>();
     *state.writer.lock().map_err(lock_err)? = None;
+    *state.master.lock().map_err(lock_err)? = None;
     *state.alive.lock().map_err(lock_err)? = false;
     Ok(())
 }

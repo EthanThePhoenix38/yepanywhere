@@ -115,6 +115,32 @@ export type { UploadedFile } from "@yep-anywhere/shared";
 
 const API_BASE = "/api";
 
+/**
+ * Desktop auth token read from URL query parameter (?desktop_token=...).
+ * When present, sent as X-Desktop-Token header on every API request.
+ * The Tauri desktop app passes this token to authenticate the iframe
+ * without cookies or sessions — the token is valid for the server's lifetime.
+ */
+let desktopAuthToken: string | null = null;
+if (typeof window !== "undefined") {
+  const params = new URLSearchParams(window.location.search);
+  const token = params.get("desktop_token");
+  if (token) {
+    desktopAuthToken = token;
+    // Strip token from URL to keep it out of history/bookmarks
+    params.delete("desktop_token");
+    const cleanUrl = params.toString()
+      ? `${window.location.pathname}?${params.toString()}${window.location.hash}`
+      : `${window.location.pathname}${window.location.hash}`;
+    window.history.replaceState({}, "", cleanUrl);
+  }
+}
+
+/** Get the desktop auth token (if running inside Tauri iframe). */
+export function getDesktopAuthToken(): string | null {
+  return desktopAuthToken;
+}
+
 export interface AuthStatus {
   /** Whether auth is enabled in settings */
   enabled: boolean;
@@ -126,6 +152,10 @@ export interface AuthStatus {
   disabledByEnv: boolean;
   /** Path to auth.json file (for recovery instructions) */
   authFilePath: string;
+  /** Whether the server has a desktop auth token (Tauri app) */
+  hasDesktopToken: boolean;
+  /** Whether unauthenticated localhost access is allowed */
+  localhostOpen: boolean;
 }
 
 export async function fetchJSON<T>(
@@ -146,12 +176,19 @@ export async function fetchJSON<T>(
     );
   }
 
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+    "X-Yep-Anywhere": "true",
+  };
+  if (desktopAuthToken) {
+    headers["X-Desktop-Token"] = desktopAuthToken;
+  }
+
   const res = await fetch(`${API_BASE}${path}`, {
     ...options,
     credentials: "include",
     headers: {
-      "Content-Type": "application/json",
-      "X-Yep-Anywhere": "true",
+      ...headers,
       ...options?.headers,
     },
   });
@@ -751,6 +788,16 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ newPassword }),
     }),
+
+  /** Toggle unauthenticated localhost access (desktop token floor bypass) */
+  setLocalhostAccess: (open: boolean) =>
+    fetchJSON<{ success: boolean; localhostOpen: boolean }>(
+      "/auth/localhost-access",
+      {
+        method: "POST",
+        body: JSON.stringify({ open }),
+      },
+    ),
 
   // Recents API
   getRecents: (limit?: number) =>

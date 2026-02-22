@@ -113,6 +113,8 @@ export interface Config {
   openBrowser: boolean;
   /** Enable HTTPS with an auto-generated self-signed certificate. */
   httpsSelfSigned: boolean;
+  /** Desktop auth token for Tauri app. Requests with matching X-Desktop-Token header bypass auth. */
+  desktopAuthToken?: string;
 }
 
 /**
@@ -239,6 +241,7 @@ export function loadConfig(): Config {
     cliHostOverride: process.env.CLI_HOST_OVERRIDE === "true",
     openBrowser: process.env.OPEN_BROWSER === "true",
     httpsSelfSigned: process.env.HTTPS_SELF_SIGNED === "true",
+    desktopAuthToken: process.env.DESKTOP_AUTH_TOKEN || undefined,
   };
 }
 

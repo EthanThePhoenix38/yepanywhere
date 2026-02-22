@@ -1,14 +1,13 @@
 import { useEffect, useState } from "react";
-import { getServerStatus, startServer, stopServer, type AppConfig } from "../tauri";
-import { Sidebar } from "./Sidebar";
+import {
+  getDesktopToken,
+  getServerPort,
+  getServerStatus,
+} from "../tauri";
 
-interface Props {
-  config: AppConfig;
-  onConfigChange: (config: AppConfig) => void;
-}
-
-export function MainLayout({ config }: Props) {
+export function MainLayout() {
   const [serverStatus, setServerStatus] = useState<string>("checking");
+  const [port, setPort] = useState<number | null>(null);
 
   useEffect(() => {
     const check = () => {
@@ -21,66 +20,75 @@ export function MainLayout({ config }: Props) {
     return () => clearInterval(interval);
   }, []);
 
-  const handleRestart = async () => {
-    setServerStatus("restarting");
-    try {
-      await stopServer();
-      await startServer();
-      setServerStatus("running");
-    } catch {
-      setServerStatus("error");
+  // Fetch the active port from server state once it's running
+  useEffect(() => {
+    if (serverStatus !== "running") {
+      setPort(null);
+      return;
     }
-  };
+    if (port != null) return;
+
+    const poll = async () => {
+      for (let i = 0; i < 50; i++) {
+        const p = await getServerPort();
+        if (p != null) {
+          setPort(p);
+          return;
+        }
+        await new Promise((r) => setTimeout(r, 100));
+      }
+    };
+    poll();
+  }, [serverStatus, port]);
+
+  // Poll /health, then navigate webview to server URL
+  useEffect(() => {
+    if (serverStatus !== "running" || port == null) return;
+
+    let cancelled = false;
+    const poll = async () => {
+      // Wait for HTTP server to be ready
+      while (!cancelled) {
+        try {
+          const res = await fetch(`http://localhost:${port}/health`);
+          if (res.ok) break;
+        } catch {
+          // Server not ready yet
+        }
+        await new Promise((r) => setTimeout(r, 100));
+      }
+      if (cancelled) return;
+
+      // Fetch desktop auth token and navigate
+      try {
+        const token = await getDesktopToken();
+        const url = token
+          ? `http://localhost:${port}/?desktop_token=${token}`
+          : `http://localhost:${port}`;
+        window.location.href = url;
+      } catch {
+        window.location.href = `http://localhost:${port}`;
+      }
+    };
+    poll();
+    return () => {
+      cancelled = true;
+    };
+  }, [serverStatus, port]);
 
   return (
-    <div style={{ height: "100vh", display: "flex" }}>
-      <Sidebar
-        serverStatus={serverStatus}
-        port={config.port}
-        onRestart={handleRestart}
-      />
-      <div style={{ flex: 1, position: "relative" }}>
-        {/* Title bar drag region */}
-        <div
-          data-tauri-drag-region
-          style={{
-            position: "absolute",
-            top: 0,
-            left: 0,
-            right: 0,
-            height: 32,
-            zIndex: 10,
-          }}
-        />
-        {serverStatus === "running" ? (
-          <iframe
-            src={`http://localhost:${config.port}`}
-            style={{
-              width: "100%",
-              height: "100%",
-              border: "none",
-              background: "#0a0a0a",
-            }}
-            title="Yep Anywhere"
-          />
-        ) : (
-          <div
-            style={{
-              height: "100%",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              color: "var(--text-secondary)",
-            }}
-          >
-            {serverStatus === "restarting"
-              ? "Restarting server..."
-              : serverStatus === "error"
-                ? "Server error. Try restarting."
-                : "Starting server..."}
-          </div>
-        )}
-      </div>
+    <div
+      style={{
+        height: "100vh",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        color: "var(--text-secondary)",
+      }}
+    >
+      {serverStatus === "error"
+        ? "Server error. Use tray menu to restart."
+        : "Starting server..."}
     </div>
   );
 }

@@ -31,6 +31,7 @@ export function LocalAccessSettings() {
 
   // Auth form state (merged into same form)
   const [requirePassword, setRequirePassword] = useState(false);
+  const [localhostOpenToggle, setLocalhostOpenToggle] = useState(false);
   const [authPassword, setAuthPassword] = useState("");
   const [authPasswordConfirm, setAuthPasswordConfirm] = useState("");
 
@@ -50,6 +51,7 @@ export function LocalAccessSettings() {
     setNetworkEnabled(binding.network.enabled);
     setSelectedInterface(binding.network.host ?? "");
     setRequirePassword(auth.authEnabled);
+    setLocalhostOpenToggle(auth.localhostOpen);
     // Initialize allowed hosts from server settings
     const ah = serverSettings.allowedHosts;
     if (ah === "*") {
@@ -81,6 +83,7 @@ export function LocalAccessSettings() {
     newPassword: string,
     newAllowAllHosts: boolean,
     newAllowedHostsText: string,
+    newLocalhostOpen: boolean,
   ) => {
     if (!binding || !auth || !serverSettings) return false;
     const portChanged = newPort !== String(binding.localhost.port);
@@ -88,6 +91,7 @@ export function LocalAccessSettings() {
     const interfaceChanged = newInterface !== (binding.network.host ?? "");
     const authChanged = newRequirePassword !== auth.authEnabled;
     const passwordEntered = newPassword.length > 0;
+    const localhostOpenChanged = newLocalhostOpen !== auth.localhostOpen;
     const newValue = getAllowedHostsValue(
       newAllowAllHosts,
       newAllowedHostsText,
@@ -100,6 +104,7 @@ export function LocalAccessSettings() {
       interfaceChanged ||
       authChanged ||
       passwordEntered ||
+      localhostOpenChanged ||
       allowedHostsChanged
     );
   };
@@ -113,6 +118,7 @@ export function LocalAccessSettings() {
     password?: string;
     allowAll?: boolean;
     hostsText?: string;
+    localhostOpen?: boolean;
   }) => {
     setHasChanges(
       checkForChanges(
@@ -123,6 +129,7 @@ export function LocalAccessSettings() {
         overrides.password ?? authPassword,
         overrides.allowAll ?? allowAllHostsToggle,
         overrides.hostsText ?? allowedHostsText,
+        overrides.localhostOpen ?? localhostOpenToggle,
       ),
     );
   };
@@ -178,6 +185,11 @@ export function LocalAccessSettings() {
         setAuthPasswordConfirm("");
       } else if (!requirePassword && auth.authEnabled) {
         await auth.disableAuth();
+      }
+
+      // Apply localhost access changes (desktop token floor bypass)
+      if (localhostOpenToggle !== auth.localhostOpen) {
+        await auth.setLocalhostOpen(localhostOpenToggle);
       }
 
       // Apply allowed hosts changes
@@ -534,6 +546,29 @@ export function LocalAccessSettings() {
               )}
             </>
           )}
+
+          {/* Allow Localhost Access - shown in desktop mode when password auth is off */}
+          {auth.hasDesktopToken &&
+            !requirePassword &&
+            !auth.authDisabledByEnv && (
+              <div className="settings-item">
+                <div className="settings-item-info">
+                  <strong>Allow Localhost Access</strong>
+                  <p>Let browsers on this device access without a password</p>
+                </div>
+                <label className="toggle-switch">
+                  <input
+                    type="checkbox"
+                    checked={localhostOpenToggle}
+                    onChange={(e) => {
+                      setLocalhostOpenToggle(e.target.checked);
+                      updateHasChanges({ localhostOpen: e.target.checked });
+                    }}
+                  />
+                  <span className="toggle-slider" />
+                </label>
+              </div>
+            )}
 
           {auth.authDisabledByEnv && (
             <p className="form-warning">

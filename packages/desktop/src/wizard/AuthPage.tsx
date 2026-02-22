@@ -2,7 +2,14 @@ import { useEffect, useRef, useState } from "react";
 import { Terminal } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
 import "@xterm/xterm/css/xterm.css";
-import { spawnPty, writePty, onPtyOutput, onPtyExit } from "../tauri";
+import {
+  spawnPty,
+  writePty,
+  resizePty,
+  onPtyOutput,
+  onPtyExit,
+  checkClaudeAuth,
+} from "../tauri";
 
 interface Props {
   agents: string[];
@@ -14,9 +21,20 @@ export function AuthPage({ agents, onNext }: Props) {
   const terminalRef = useRef<Terminal | null>(null);
   const [started, setStarted] = useState(false);
   const [exited, setExited] = useState(false);
+  const [alreadyAuthed, setAlreadyAuthed] = useState<boolean | null>(null);
+
+  const hasClaude = agents.includes("claude");
+
+  // Check if already authenticated on mount
+  useEffect(() => {
+    if (!hasClaude) return;
+    checkClaudeAuth()
+      .then((authed) => setAlreadyAuthed(authed))
+      .catch(() => setAlreadyAuthed(false));
+  }, [hasClaude]);
 
   useEffect(() => {
-    if (!termRef.current) return;
+    if (!termRef.current || alreadyAuthed) return;
 
     const term = new Terminal({
       theme: {
@@ -39,6 +57,11 @@ export function AuthPage({ agents, onNext }: Props) {
       writePty(data).catch(() => {});
     });
 
+    // Sync PTY size when terminal resizes
+    term.onResize(({ cols, rows }) => {
+      resizePty(cols, rows).catch(() => {});
+    });
+
     // Listen for PTY output
     const unlistenOutput = onPtyOutput((data) => {
       term.write(data);
@@ -59,22 +82,21 @@ export function AuthPage({ agents, onNext }: Props) {
       resizeObserver.disconnect();
       term.dispose();
     };
-  }, []);
+  }, [alreadyAuthed]);
 
   const startAuth = async () => {
     setStarted(true);
     try {
-      // claude login uses the installed binary
-      await spawnPty("claude", ["login"]);
+      await spawnPty("claude", ["auth", "login"]);
     } catch (e) {
       terminalRef.current?.writeln(`\r\nError: ${e}`);
     }
   };
 
-  const hasClaude = agents.includes("claude");
+  const canContinue = !hasClaude || alreadyAuthed || exited;
 
   return (
-    <div style={{ width: "100%", maxWidth: 500 }}>
+    <div style={{ width: "100%", maxWidth: 700 }}>
       <h2 style={{ fontSize: 22, fontWeight: 600, marginBottom: 8 }}>
         Sign in to your agents
       </h2>
@@ -85,17 +107,19 @@ export function AuthPage({ agents, onNext }: Props) {
           marginBottom: 16,
         }}
       >
-        {hasClaude
-          ? "Click the button below, then press Enter in the terminal to open your browser and sign in."
-          : "No agents require authentication. You can skip this step."}
+        {!hasClaude
+          ? "No agents require authentication. You can skip this step."
+          : alreadyAuthed
+            ? "You're already signed in to Claude. You can continue to the next step."
+            : "Click the button below, then press Enter in the terminal to open your browser and sign in."}
       </p>
 
-      {hasClaude && (
+      {hasClaude && !alreadyAuthed && alreadyAuthed !== null && (
         <>
           <div
             ref={termRef}
             style={{
-              height: 250,
+              height: 400,
               borderRadius: 8,
               overflow: "hidden",
               border: "1px solid var(--border)",
@@ -116,20 +140,22 @@ export function AuthPage({ agents, onNext }: Props) {
       )}
 
       <div style={{ display: "flex", gap: 12 }}>
-        <button
-          className="btn-secondary"
-          onClick={onNext}
-          style={{ flex: 1 }}
-        >
-          Skip
-        </button>
+        {!canContinue && (
+          <button
+            className="btn-secondary"
+            onClick={onNext}
+            style={{ flex: 1 }}
+          >
+            Skip
+          </button>
+        )}
         <button
           className="btn-primary"
           onClick={onNext}
-          disabled={hasClaude && started && !exited}
+          disabled={!canContinue && started}
           style={{ flex: 1 }}
         >
-          {exited || !hasClaude ? "Continue" : "Waiting..."}
+          {canContinue ? "Continue" : "Waiting..."}
         </button>
       </div>
     </div>

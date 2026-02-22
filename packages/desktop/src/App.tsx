@@ -29,7 +29,7 @@ export function App() {
   }
 
   if (config && config.setup_complete) {
-    return <MainLayout config={config} onConfigChange={setConfig} />;
+    return <MainLayout />;
   }
 
   return (

@@ -16,7 +16,7 @@ interface Props {
 export function WizardLayout({ onComplete }: Props) {
   const [step, setStep] = useState(0);
   const [agents, setAgents] = useState<string[]>(["claude"]);
-  const [port, setPort] = useState(3400);
+
   const [startMinimized, setStartMinimized] = useState(true);
   const [autostart, setAutostart] = useState(true);
 
@@ -41,8 +41,6 @@ export function WizardLayout({ onComplete }: Props) {
       case 4:
         return (
           <ConfigPage
-            port={port}
-            onPortChange={setPort}
             startMinimized={startMinimized}
             onStartMinimizedChange={setStartMinimized}
             autostart={autostart}
@@ -54,7 +52,6 @@ export function WizardLayout({ onComplete }: Props) {
         return (
           <ReadyPage
             agents={agents}
-            port={port}
             startMinimized={startMinimized}
             autostart={autostart}
             onComplete={onComplete}

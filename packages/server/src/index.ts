@@ -447,6 +447,7 @@ async function startServer() {
     recentsService,
     authService,
     authDisabled: config.authDisabled,
+    desktopAuthToken: config.desktopAuthToken,
     remoteAccessService,
     remoteSessionService,
     relayClientService,
