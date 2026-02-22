@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.1] - 2026-02-22
+
+### Added
+- Session cache with phased optimizations: cached scanner results, batched stats, cached stats endpoint with invalidation
+- Cross-process locking and atomic writes for session index files
+- Improved pending tool render and settings copy
+
+### Fixed
+- Fix localhost websocket auth policy when remote access is enabled
+- Fix send racing ahead of in-flight file uploads
+
 ## [0.4.0] - 2026-02-22
 
 ### Security
