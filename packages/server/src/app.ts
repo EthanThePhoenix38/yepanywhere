@@ -97,6 +97,8 @@ export interface AppOptions {
   projectMetadataService?: ProjectMetadataService;
   /** SessionIndexService for caching session summaries */
   sessionIndexService?: SessionIndexService;
+  /** Project scanner cache TTL in ms (0 = rescan every request). */
+  projectScanCacheTtlMs?: number;
   /** Maximum concurrent workers. 0 = unlimited (default) */
   maxWorkers?: number;
   /** Idle threshold in milliseconds for preemption */
@@ -218,39 +220,103 @@ export function createApp(options: AppOptions): AppResult {
   const scanner = new ProjectScanner({
     projectsDir: options.projectsDir,
     projectMetadataService: options.projectMetadataService,
+    eventBus: options.eventBus,
+    cacheTtlMs: options.projectScanCacheTtlMs,
   });
   const codexScanner = new CodexSessionScanner();
   const geminiScanner = new GeminiSessionScanner();
+  const readerCache = new Map<string, ISessionReader>();
+  const maxReaderCacheSize = 500;
+
+  const getOrCreateReader = <T extends ISessionReader>(
+    key: string,
+    factory: () => T,
+  ): T => {
+    const cached = readerCache.get(key);
+    if (cached) return cached as T;
+
+    const reader = factory();
+    readerCache.set(key, reader);
+
+    while (readerCache.size > maxReaderCacheSize) {
+      const oldestKey = readerCache.keys().next().value;
+      if (!oldestKey) break;
+      readerCache.delete(oldestKey);
+    }
+
+    return reader;
+  };
+
   /**
    * Create a session reader appropriate for the project's provider.
    * Routes call this with the project to get the right reader.
    */
   const readerFactory = (project: Project): ISessionReader => {
+    const mergedKey =
+      project.mergedSessionDirs && project.mergedSessionDirs.length > 0
+        ? `::merged=${project.mergedSessionDirs.join(",")}`
+        : "";
+
     switch (project.provider) {
       case "codex":
       case "codex-oss":
-        return new CodexSessionReader({
-          sessionsDir: project.sessionDir,
-          projectPath: project.path,
-        });
+        return getOrCreateReader(
+          `codex::${project.sessionDir}::${project.path}`,
+          () =>
+            new CodexSessionReader({
+              sessionsDir: project.sessionDir,
+              projectPath: project.path,
+            }),
+        );
       case "gemini":
       case "gemini-acp":
-        return new GeminiSessionReader({
-          sessionsDir: GEMINI_TMP_DIR,
-          projectPath: project.path,
-          hashToCwd: geminiScanner.getHashToCwd(),
-        });
+        return getOrCreateReader(
+          `gemini::${GEMINI_TMP_DIR}::${project.path}`,
+          () =>
+            new GeminiSessionReader({
+              sessionsDir: GEMINI_TMP_DIR,
+              projectPath: project.path,
+              hashToCwd: geminiScanner.getHashToCwd(),
+            }),
+        );
       case "claude":
-        return new ClaudeSessionReader({
-          sessionDir: project.sessionDir,
-          additionalDirs: project.mergedSessionDirs,
-        });
+        return getOrCreateReader(
+          `claude::${project.sessionDir}${mergedKey}`,
+          () =>
+            new ClaudeSessionReader({
+              sessionDir: project.sessionDir,
+              additionalDirs: project.mergedSessionDirs,
+            }),
+        );
       case "opencode":
-        return new OpenCodeSessionReader({
-          projectPath: project.path,
-        });
+        return getOrCreateReader(
+          `opencode::${project.path}`,
+          () =>
+            new OpenCodeSessionReader({
+              projectPath: project.path,
+            }),
+        );
     }
   };
+  const codexReaderFactory = (projectPath: string): CodexSessionReader =>
+    getOrCreateReader(
+      `codex-extra::${CODEX_SESSIONS_DIR}::${projectPath}`,
+      () =>
+        new CodexSessionReader({
+          sessionsDir: CODEX_SESSIONS_DIR,
+          projectPath,
+        }),
+    );
+  const geminiReaderFactory = (projectPath: string): GeminiSessionReader =>
+    getOrCreateReader(
+      `gemini-extra::${GEMINI_TMP_DIR}::${projectPath}`,
+      () =>
+        new GeminiSessionReader({
+          sessionsDir: GEMINI_TMP_DIR,
+          projectPath,
+          hashToCwd: geminiScanner.getHashToCwd(),
+        }),
+    );
   const getSessionSummary = async (sessionId: string, projectId: string) => {
     const project = await scanner.getProject(projectId);
     if (!project) return null;
@@ -381,8 +447,10 @@ export function createApp(options: AppOptions): AppResult {
       sessionIndexService: options.sessionIndexService,
       codexScanner,
       codexSessionsDir: CODEX_SESSIONS_DIR,
+      codexReaderFactory,
       geminiScanner,
       geminiSessionsDir: GEMINI_TMP_DIR,
+      geminiReaderFactory,
     }),
   );
   app.route(
@@ -397,8 +465,10 @@ export function createApp(options: AppOptions): AppResult {
       eventBus: options.eventBus,
       codexScanner,
       codexSessionsDir: CODEX_SESSIONS_DIR,
+      codexReaderFactory,
       geminiScanner,
       geminiSessionsDir: GEMINI_TMP_DIR,
+      geminiReaderFactory,
       serverSettingsService: options.serverSettingsService,
     }),
   );
@@ -438,8 +508,10 @@ export function createApp(options: AppOptions): AppResult {
       sessionMetadataService: options.sessionMetadataService,
       codexScanner,
       codexSessionsDir: CODEX_SESSIONS_DIR,
+      codexReaderFactory,
       geminiScanner,
       geminiSessionsDir: GEMINI_TMP_DIR,
+      geminiReaderFactory,
     }),
   );
 

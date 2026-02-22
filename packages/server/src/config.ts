@@ -48,6 +48,8 @@ export interface Config {
    * 0 = validate every request (legacy behavior).
    */
   sessionIndexFullValidationMs: number;
+  /** Project scanner cache TTL (ms). 0 = rescan every request. */
+  projectScanCacheTtlMs: number;
   /** Idle timeout in milliseconds before process cleanup */
   idleTimeoutMs: number;
   /** Default permission mode for new sessions */
@@ -140,6 +142,10 @@ export function loadConfig(): Config {
     0,
     parseIntOrDefault(process.env.SESSION_INDEX_FULL_VALIDATION_MS, 30000),
   );
+  const projectScanCacheTtlMs = Math.max(
+    0,
+    parseIntOrDefault(process.env.PROJECT_SCAN_CACHE_TTL_MS, 5000),
+  );
 
   return {
     dataDir,
@@ -149,6 +155,7 @@ export function loadConfig(): Config {
     codexSessionsDir,
     codexWatchPeriodicRescanMs,
     sessionIndexFullValidationMs,
+    projectScanCacheTtlMs,
     idleTimeoutMs: parseIntOrDefault(process.env.IDLE_TIMEOUT, 5 * 60) * 1000,
     defaultPermissionMode: parsePermissionMode(process.env.PERMISSION_MODE),
     port: parseIntOrDefault(process.env.PORT, 3400),

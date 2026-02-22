@@ -40,6 +40,18 @@ This leaves list endpoints (`/api/sessions`, `/api/projects/:id/sessions`, `/api
 - Avoid Codex/Gemini double-scan route patterns by reusing one provider catalog per request.
 - Reuse provider readers/scanners across route handlers to make TTLs effective.
 
+#### Phase 2 implementation (completed)
+
+- `ProjectScanner` now has:
+  - short-lived snapshot cache (`PROJECT_SCAN_CACHE_TTL_MS`, default `5000`)
+  - in-flight coalescing for concurrent `listProjects()` calls
+  - indexed lookup maps used by `getProject()` and `getProjectBySessionDirSuffix()`
+  - watcher-driven invalidation through `EventBus` file-change events
+  - explicit `invalidateCache()` for metadata-driven project additions
+- Added per-request provider catalogs in routes (`provider-catalog.ts`) so Codex/Gemini path discovery runs once per request instead of once per project.
+- Removed route-level Codex/Gemini scan-then-rescan checks; session detail fallback now reads directly through provider readers.
+- `createApp()` now reuses reader instances with a bounded cache so Codex/Gemini reader TTL caches apply across requests.
+
 ### Phase 3
 
 - Split expensive global stats from `/api/sessions` listing response (or cache stats separately).

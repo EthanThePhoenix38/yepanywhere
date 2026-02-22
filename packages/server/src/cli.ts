@@ -112,6 +112,8 @@ ENVIRONMENT VARIABLES:
                                 Codex watcher fallback rescan interval in ms (default: 5000 on macOS, 0 elsewhere)
   SESSION_INDEX_FULL_VALIDATION_MS
                                 Session index full validation interval in ms (default: 30000, 0 = validate every request)
+  PROJECT_SCAN_CACHE_TTL_MS
+                                Project scan cache TTL in ms (default: 5000, 0 = rescan every request)
 
 EXAMPLES:
   # Start with defaults (port 3400, localhost only)

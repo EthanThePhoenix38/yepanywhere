@@ -1,6 +1,6 @@
 import { access, readdir, stat } from "node:fs/promises";
 import { homedir } from "node:os";
-import { basename, join, sep } from "node:path";
+import { basename, join } from "node:path";
 import {
   DEFAULT_PROVIDER,
   type ProviderName,
@@ -8,6 +8,7 @@ import {
 } from "@yep-anywhere/shared";
 import type { ProjectMetadataService } from "../metadata/index.js";
 import type { Project } from "../supervisor/types.js";
+import type { EventBus, FileChangeEvent } from "../watcher/index.js";
 import { CODEX_SESSIONS_DIR, CodexSessionScanner } from "./codex-scanner.js";
 import { GEMINI_TMP_DIR, GeminiSessionScanner } from "./gemini-scanner.js";
 import {
@@ -26,6 +27,17 @@ export interface ScannerOptions {
   enableCodex?: boolean; // whether to include Codex projects (default: true)
   enableGemini?: boolean; // whether to include Gemini projects (default: true)
   projectMetadataService?: ProjectMetadataService; // for persisting added projects
+  /** Optional EventBus for watcher-driven cache invalidation */
+  eventBus?: EventBus;
+  /** Project snapshot TTL in milliseconds (default: 5000) */
+  cacheTtlMs?: number;
+}
+
+interface ProjectSnapshot {
+  projects: Project[];
+  byId: Map<string, Project>;
+  bySessionDirSuffix: Map<string, Project>;
+  timestamp: number;
 }
 
 export class ProjectScanner {
@@ -35,6 +47,11 @@ export class ProjectScanner {
   private enableCodex: boolean;
   private enableGemini: boolean;
   private projectMetadataService: ProjectMetadataService | null;
+  private cacheTtlMs: number;
+  private cacheDirty = true;
+  private snapshot: ProjectSnapshot | null = null;
+  private inFlightScan: Promise<ProjectSnapshot> | null = null;
+  private unsubscribeEventBus: (() => void) | null = null;
 
   constructor(options: ScannerOptions = {}) {
     this.projectsDir = options.projectsDir ?? CLAUDE_PROJECTS_DIR;
@@ -51,6 +68,14 @@ export class ProjectScanner {
         })
       : null;
     this.projectMetadataService = options.projectMetadataService ?? null;
+    this.cacheTtlMs = Math.max(0, options.cacheTtlMs ?? 5000);
+
+    if (options.eventBus) {
+      this.unsubscribeEventBus = options.eventBus.subscribe((event) => {
+        if (event.type !== "file-change") return;
+        this.handleFileChange(event);
+      });
+    }
   }
 
   /**
@@ -58,9 +83,116 @@ export class ProjectScanner {
    */
   setProjectMetadataService(service: ProjectMetadataService): void {
     this.projectMetadataService = service;
+    this.invalidateCache();
   }
 
   async listProjects(): Promise<Project[]> {
+    const snapshot = await this.getSnapshot();
+    return snapshot.projects.map((project) => this.cloneProject(project));
+  }
+
+  /**
+   * Mark the project snapshot stale so next read triggers a rescan.
+   */
+  invalidateCache(): void {
+    this.cacheDirty = true;
+  }
+
+  private async getSnapshot(forceRefresh = false): Promise<ProjectSnapshot> {
+    const now = Date.now();
+    const isFresh =
+      this.snapshot &&
+      !this.cacheDirty &&
+      now - this.snapshot.timestamp < this.cacheTtlMs;
+
+    if (!forceRefresh && isFresh && this.snapshot) {
+      return this.snapshot;
+    }
+
+    if (this.inFlightScan) {
+      return this.inFlightScan;
+    }
+
+    const scanPromise = this.scanProjects()
+      .then((projects) => {
+        const snapshot = this.buildSnapshot(projects);
+        this.snapshot = snapshot;
+        this.cacheDirty = false;
+        return snapshot;
+      })
+      .finally(() => {
+        if (this.inFlightScan === scanPromise) {
+          this.inFlightScan = null;
+        }
+      });
+
+    this.inFlightScan = scanPromise;
+    return scanPromise;
+  }
+
+  private buildSnapshot(projects: Project[]): ProjectSnapshot {
+    const byId = new Map<string, Project>();
+    const bySessionDirSuffix = new Map<string, Project>();
+
+    for (const project of projects) {
+      byId.set(project.id, project);
+
+      const primarySuffix = this.normalizeDirSuffix(
+        this.sessionDirToSuffix(project.sessionDir),
+      );
+      if (primarySuffix) {
+        bySessionDirSuffix.set(primarySuffix, project);
+      }
+
+      for (const mergedDir of project.mergedSessionDirs ?? []) {
+        const mergedSuffix = this.normalizeDirSuffix(
+          this.sessionDirToSuffix(mergedDir),
+        );
+        if (mergedSuffix) {
+          bySessionDirSuffix.set(mergedSuffix, project);
+        }
+      }
+    }
+
+    return {
+      projects,
+      byId,
+      bySessionDirSuffix,
+      timestamp: Date.now(),
+    };
+  }
+
+  private sessionDirToSuffix(sessionDir: string): string {
+    // Claude session dirs live under projectsDir; codex/gemini do not.
+    const relative = sessionDir.startsWith(this.projectsDir)
+      ? sessionDir.slice(this.projectsDir.length)
+      : sessionDir;
+    return relative.replace(/^[\\/]+/, "");
+  }
+
+  private normalizeDirSuffix(value: string): string {
+    return value.replace(/\\/g, "/").replace(/^\/+|\/+$/g, "");
+  }
+
+  private cloneProject(project: Project): Project {
+    return {
+      ...project,
+      mergedSessionDirs: project.mergedSessionDirs
+        ? [...project.mergedSessionDirs]
+        : undefined,
+    };
+  }
+
+  private handleFileChange(event: FileChangeEvent): void {
+    if (event.fileType !== "session" && event.fileType !== "agent-session") {
+      return;
+    }
+
+    // Any session file delta can affect project existence/count/lastActivity.
+    this.invalidateCache();
+  }
+
+  private async scanProjects(): Promise<Project[]> {
     const projects: Project[] = [];
     const seenPaths = new Set<string>();
     // Map from normalized path to project index for cross-machine dedup
@@ -199,7 +331,7 @@ export class ProjectScanner {
     // Merge Gemini projects if enabled
     if (this.geminiScanner) {
       // Register known paths for hash resolution before scanning
-      this.geminiScanner.registerKnownPaths(Array.from(seenPaths));
+      await this.geminiScanner.registerKnownPaths(Array.from(seenPaths));
 
       const geminiProjects = await this.geminiScanner.listProjects();
       for (const geminiProject of geminiProjects) {
@@ -265,8 +397,9 @@ export class ProjectScanner {
   }
 
   async getProject(projectId: string): Promise<Project | null> {
-    const projects = await this.listProjects();
-    return projects.find((p) => p.id === projectId) ?? null;
+    const snapshot = await this.getSnapshot();
+    const project = snapshot.byId.get(projectId);
+    return project ? this.cloneProject(project) : null;
   }
 
   /**
@@ -365,17 +498,15 @@ export class ProjectScanner {
   async getProjectBySessionDirSuffix(
     dirSuffix: string,
   ): Promise<Project | null> {
-    const projects = await this.listProjects();
-    // Match projects where sessionDir ends with the suffix pattern
-    // e.g., suffix "-home-user-project" matches "~/.claude/projects/-home-user-project"
-    // e.g., suffix "hostname/-home-user-project" matches "~/.claude/projects/hostname/-home-user-project"
-    return (
-      projects.find(
-        (p) =>
-          p.sessionDir.endsWith(`${sep}${dirSuffix}`) ||
-          p.mergedSessionDirs?.some((d) => d.endsWith(`${sep}${dirSuffix}`)),
-      ) ?? null
-    );
+    const snapshot = await this.getSnapshot();
+    const normalizedSuffix = this.normalizeDirSuffix(dirSuffix);
+    const project = snapshot.bySessionDirSuffix.get(normalizedSuffix);
+    return project ? this.cloneProject(project) : null;
+  }
+
+  dispose(): void {
+    this.unsubscribeEventBus?.();
+    this.unsubscribeEventBus = null;
   }
 
   /**

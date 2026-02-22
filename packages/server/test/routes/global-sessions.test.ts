@@ -409,6 +409,55 @@ describe("Global Sessions Routes", () => {
     });
   });
 
+  describe("provider catalog", () => {
+    it("builds codex project catalog once and avoids per-project scanner checks", async () => {
+      const project1 = createProject("proj1", "project-one", "/sessions/proj1");
+      const project2 = createProject("proj2", "project-two", "/sessions/proj2");
+
+      vi.mocked(mockScanner.listProjects).mockResolvedValue([
+        project1,
+        project2,
+      ]);
+      sessionsByDir.set("/sessions/proj1", []);
+      sessionsByDir.set("/sessions/proj2", []);
+
+      const codexScanner = {
+        listProjects: vi.fn(async () => [
+          {
+            ...project1,
+            provider: "codex",
+          },
+        ]),
+        getSessionsForProject: vi.fn(async () => []),
+      };
+
+      const codexReaderFactory = vi.fn(() => ({
+        listSessions: vi.fn(async () => [
+          createSession("codex-sess-1", "proj1", minutesAgo(1), {
+            provider: "codex",
+          }),
+        ]),
+      }));
+
+      const routes = createGlobalSessionsRoutes({
+        ...getDeps(),
+        codexScanner:
+          codexScanner as unknown as GlobalSessionsDeps["codexScanner"],
+        codexReaderFactory:
+          codexReaderFactory as unknown as GlobalSessionsDeps["codexReaderFactory"],
+      });
+      const response = await routes.request("/");
+      expect(response.status).toBe(200);
+      const result = (await response.json()) as GlobalSessionsResponse;
+
+      expect(codexScanner.listProjects).toHaveBeenCalledTimes(1);
+      expect(codexScanner.getSessionsForProject).not.toHaveBeenCalled();
+      expect(codexReaderFactory).toHaveBeenCalledTimes(1);
+      expect(codexReaderFactory).toHaveBeenCalledWith(project1.path);
+      expect(result.sessions.some((s) => s.id === "codex-sess-1")).toBe(true);
+    });
+  });
+
   describe("enrichment", () => {
     it("enriches with self ownership from supervisor", async () => {
       const project = createProject("proj1", "project", "/sessions/proj1");

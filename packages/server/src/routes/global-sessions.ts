@@ -29,6 +29,7 @@ import type {
   SessionOwnership,
   SessionSummary,
 } from "../supervisor/types.js";
+import { buildProviderProjectCatalog } from "./provider-catalog.js";
 
 export interface GlobalSessionsDeps {
   scanner: ProjectScanner;
@@ -42,10 +43,14 @@ export interface GlobalSessionsDeps {
   codexScanner?: CodexSessionScanner;
   /** Codex sessions directory (defaults to ~/.codex/sessions) */
   codexSessionsDir?: string;
+  /** Optional shared Codex reader factory for cross-provider session lookups */
+  codexReaderFactory?: (projectPath: string) => CodexSessionReader;
   /** Gemini scanner for checking if a project has Gemini sessions */
   geminiScanner?: GeminiSessionScanner;
   /** Gemini sessions directory (defaults to ~/.gemini/tmp) */
   geminiSessionsDir?: string;
+  /** Optional shared Gemini reader factory for cross-provider session lookups */
+  geminiReaderFactory?: (projectPath: string) => GeminiSessionReader;
 }
 
 export interface GlobalSessionItem {
@@ -146,6 +151,10 @@ export function createGlobalSessionsRoutes(deps: GlobalSessionsDeps): Hono {
 
     // Collect all sessions with enriched data
     const allSessions: GlobalSessionItem[] = [];
+    const providerCatalog = await buildProviderProjectCatalog({
+      codexScanner: deps.codexScanner,
+      geminiScanner: deps.geminiScanner,
+    });
 
     for (const project of projects) {
       const reader = deps.readerFactory(project);
@@ -177,15 +186,20 @@ export function createGlobalSessionsRoutes(deps: GlobalSessionsDeps): Hono {
 
       // For Claude projects, also check for Codex sessions for the same path
       // This handles the case where a project has sessions from multiple providers
-      if (project.provider === "claude" && deps.codexScanner) {
-        const codexSessions = await deps.codexScanner.getSessionsForProject(
-          project.path,
-        );
-        if (codexSessions.length > 0 && deps.codexSessionsDir) {
-          const codexReader = new CodexSessionReader({
-            sessionsDir: deps.codexSessionsDir,
-            projectPath: project.path,
-          });
+      if (
+        project.provider === "claude" &&
+        providerCatalog.codexPaths.has(project.path) &&
+        (deps.codexReaderFactory || deps.codexSessionsDir)
+      ) {
+        const codexReader =
+          deps.codexReaderFactory?.(project.path) ??
+          (deps.codexSessionsDir
+            ? new CodexSessionReader({
+                sessionsDir: deps.codexSessionsDir,
+                projectPath: project.path,
+              })
+            : null);
+        if (codexReader) {
           const codexSessionSummaries = await codexReader.listSessions(
             project.id,
           );
@@ -198,17 +212,19 @@ export function createGlobalSessionsRoutes(deps: GlobalSessionsDeps): Hono {
       // This handles the case where a project has sessions from multiple providers
       if (
         (project.provider === "claude" || project.provider === "codex") &&
-        deps.geminiScanner
+        providerCatalog.geminiPaths.has(project.path) &&
+        (deps.geminiReaderFactory || deps.geminiSessionsDir)
       ) {
-        const geminiSessions = await deps.geminiScanner.getSessionsForProject(
-          project.path,
-        );
-        if (geminiSessions.length > 0 && deps.geminiSessionsDir) {
-          const geminiReader = new GeminiSessionReader({
-            sessionsDir: deps.geminiSessionsDir,
-            projectPath: project.path,
-            hashToCwd: deps.geminiScanner.getHashToCwd(),
-          });
+        const geminiReader =
+          deps.geminiReaderFactory?.(project.path) ??
+          (deps.geminiSessionsDir
+            ? new GeminiSessionReader({
+                sessionsDir: deps.geminiSessionsDir,
+                projectPath: project.path,
+                hashToCwd: providerCatalog.geminiHashToCwd,
+              })
+            : null);
+        if (geminiReader) {
           const geminiSessionSummaries = await geminiReader.listSessions(
             project.id,
           );

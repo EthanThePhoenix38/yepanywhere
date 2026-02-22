@@ -109,8 +109,12 @@ export interface SessionsDeps {
   eventBus?: EventBus;
   codexScanner?: CodexSessionScanner;
   codexSessionsDir?: string;
+  /** Optional shared Codex reader factory for cross-provider session lookups */
+  codexReaderFactory?: (projectPath: string) => CodexSessionReader;
   geminiScanner?: GeminiSessionScanner;
   geminiSessionsDir?: string;
+  /** Optional shared Gemini reader factory for cross-provider session lookups */
+  geminiReaderFactory?: (projectPath: string) => GeminiSessionReader;
   /** ServerSettingsService for reading global instructions */
   serverSettingsService?: ServerSettingsService;
 }
@@ -740,17 +744,17 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
     if (
       !loadedSession &&
       project.provider === "claude" &&
-      deps.codexScanner &&
-      deps.codexSessionsDir
+      (deps.codexReaderFactory || deps.codexSessionsDir)
     ) {
-      const codexSessions = await deps.codexScanner.getSessionsForProject(
-        project.path,
-      );
-      if (codexSessions.length > 0) {
-        const codexReader = new CodexSessionReader({
-          sessionsDir: deps.codexSessionsDir,
-          projectPath: project.path,
-        });
+      const codexReader =
+        deps.codexReaderFactory?.(project.path) ??
+        (deps.codexSessionsDir
+          ? new CodexSessionReader({
+              sessionsDir: deps.codexSessionsDir,
+              projectPath: project.path,
+            })
+          : null);
+      if (codexReader) {
         loadedSession = await codexReader.getSession(
           sessionId,
           project.id,
@@ -765,18 +769,18 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
     if (
       !loadedSession &&
       (project.provider === "claude" || project.provider === "codex") &&
-      deps.geminiScanner &&
-      deps.geminiSessionsDir
+      (deps.geminiReaderFactory || deps.geminiSessionsDir)
     ) {
-      const geminiSessions = await deps.geminiScanner.getSessionsForProject(
-        project.path,
-      );
-      if (geminiSessions.length > 0) {
-        const geminiReader = new GeminiSessionReader({
-          sessionsDir: deps.geminiSessionsDir,
-          projectPath: project.path,
-          hashToCwd: await deps.geminiScanner.getHashToCwd(),
-        });
+      const geminiReader =
+        deps.geminiReaderFactory?.(project.path) ??
+        (deps.geminiSessionsDir
+          ? new GeminiSessionReader({
+              sessionsDir: deps.geminiSessionsDir,
+              projectPath: project.path,
+              hashToCwd: deps.geminiScanner?.getHashToCwd(),
+            })
+          : null);
+      if (geminiReader) {
         loadedSession = await geminiReader.getSession(
           sessionId,
           project.id,
