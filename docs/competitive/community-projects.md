@@ -216,6 +216,26 @@ Tech: React, Express, Vite, SQLite (better-sqlite3), node-pty, TypeScript/JSX, T
 
 ---
 
+### Codex Web UI
+**GitHub:** https://github.com/friuns2/codex-web-ui
+**Status:** Active (29 commits, 46 stars, v0.1.0, MIT)
+
+Runtime-patching toolkit that cracks open Codex Desktop's Electron app to expose full UI over HTTP/WebSocket:
+- Extracts `app.asar`, injects runtime HTTP+WS server patch, runs Electron headless
+- Any browser on the network gets the full Codex UI — no client install
+- Hand-rolled RFC 6455 WebSocket (zero npm deps in the injected code)
+- Token-based auth (timing-safe), rate limiting, single-active-client policy
+- Unlocks Codex Desktop's **hidden SSH remote execution engine** — fully compiled in the binary but never wired up in the UI
+- SSH mode: auto-selects remote host, key-based auth, remote git apply, command execution
+- Minification-safe patching strategies that survive Codex bundle updates
+- `npx -y codex-web-ui --port 5999` one-liner
+
+Tech: Bash (launcher), vanilla JS (bridge ~200 lines, server ~900 lines injected)
+
+**Note:** Fundamentally different approach — not a wrapper or SDK integration. It's reverse engineering of the proprietary Electron app. Fragile (breaks when Codex updates bundle shape) but proves the Electron window is a transport limitation, not a technical one. The SSH unlock is the most interesting finding — OpenAI shipped remote execution but never exposed it. No session management, no multi-agent, no relay — it's a raw transport enabler, not a supervisor.
+
+---
+
 ## Patterns Observed
 
 1. **Tailscale is popular** — Many use it for secure remote access
@@ -225,6 +245,7 @@ Tech: React, Express, Vite, SQLite (better-sqlite3), node-pty, TypeScript/JSX, T
 5. **Codex-specific tools emerging** — Codex Pocket and Farfield target Codex Desktop directly via IPC/app-server APIs rather than wrapping a CLI
 6. **Post-hoc analysis tools** — claude-devtools reads raw JSONL logs rather than wrapping or driving sessions, showing demand for session debugging/inspection
 7. **SDK-native integration emerging** — Claude Code UI uses the Agent SDK directly rather than spawning CLI processes, suggesting the SDK is becoming stable enough for third-party use
+8. **Electron reverse engineering** — codex-web-ui patches the proprietary Codex app at runtime rather than using any official API, and discovered that OpenAI shipped a fully-compiled SSH remote execution engine that was never wired up
 
 ## Last Updated
 
