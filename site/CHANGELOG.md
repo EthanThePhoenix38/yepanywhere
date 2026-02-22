@@ -6,6 +6,30 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [site-v1.5.0] - 2026-02-22
+
+### Security
+- Harden auth enable flow and add secure recovery path
+- Harden relay replay protection for SRP sessions
+- Harden session resume replay defenses for untrusted relays
+- Patch vulnerable dependencies (bn.js)
+
+### Added
+- Legacy relay protocol compatibility for old servers
+- Global agent instructions setting for cross-project context
+- Permission rules for session bash command filtering
+- Safe area insets for Tauri mobile edge-to-edge mode
+
+### Fixed
+- Guard SecureConnection send when WebSocket global is unavailable
+- Stop reconnect loop on intentional remote disconnect
+- Fix stale reconnect race and reduce reconnect noise
+
+### Changed
+- Default remote sessions to memory with dev persistence toggle
+- Warn relay users about resume protocol mismatch
+- Improve server update modal copy and layout
+
 ## [site-v1.4.2] - 2026-02-19
 
 ### Changed
