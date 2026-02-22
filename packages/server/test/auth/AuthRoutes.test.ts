@@ -116,3 +116,56 @@ describe("Auth routes - POST /enable", () => {
     );
   });
 });
+
+describe("Auth routes - cookie secure flag", () => {
+  let authService: AuthService;
+  let testDir: string;
+  let routes: ReturnType<typeof createAuthRoutes>;
+
+  beforeEach(async () => {
+    testDir = await fs.mkdtemp(path.join(os.tmpdir(), "auth-routes-test-"));
+    authService = new AuthService({
+      dataDir: testDir,
+      cookieSecret: "test-cookie-secret",
+    });
+    await authService.initialize();
+    await authService.enableAuth("password123");
+    routes = createAuthRoutes({ authService });
+  });
+
+  afterEach(async () => {
+    await fs.rm(testDir, { recursive: true, force: true });
+  });
+
+  it("does not set Secure on HTTP login cookies", async () => {
+    const res = await routes.request("http://192.168.1.139/login", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ password: "password123" }),
+    });
+
+    expect(res.status).toBe(200);
+    const cookie = res.headers.get("set-cookie");
+    expect(cookie).toBeTruthy();
+    expect(cookie).toContain(`${SESSION_COOKIE_NAME}=`);
+    expect(cookie).not.toContain("Secure");
+  });
+
+  it("sets Secure on HTTPS login cookies", async () => {
+    const res = await routes.request("https://example.com/login", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ password: "password123" }),
+    });
+
+    expect(res.status).toBe(200);
+    const cookie = res.headers.get("set-cookie");
+    expect(cookie).toBeTruthy();
+    expect(cookie).toContain(`${SESSION_COOKIE_NAME}=`);
+    expect(cookie).toContain("Secure");
+  });
+});

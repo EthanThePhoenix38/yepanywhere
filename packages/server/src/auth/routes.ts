@@ -27,6 +27,28 @@ interface ChangePasswordBody {
   newPassword: string;
 }
 
+function shouldUseSecureCookie(c: {
+  req: { url: string; header: (name: string) => string | undefined };
+}): boolean {
+  // Honor reverse-proxy protocol hints when present.
+  const forwardedProto = c.req.header("x-forwarded-proto");
+  if (forwardedProto) {
+    const protocol = forwardedProto.split(",")[0]?.trim().toLowerCase();
+    if (protocol === "https") {
+      return true;
+    }
+    if (protocol === "http") {
+      return false;
+    }
+  }
+
+  try {
+    return new URL(c.req.url).protocol === "https:";
+  } catch {
+    return false;
+  }
+}
+
 export function createAuthRoutes(deps: AuthRoutesDeps): Hono {
   const app = new Hono();
   const { authService, authDisabled = false } = deps;
@@ -203,7 +225,7 @@ export function createAuthRoutes(deps: AuthRoutesDeps): Hono {
 
     setCookie(c, SESSION_COOKIE_NAME, sessionId, {
       httpOnly: true,
-      secure: true,
+      secure: shouldUseSecureCookie(c),
       sameSite: "Lax",
       path: "/",
       maxAge: 30 * 24 * 60 * 60, // 30 days
@@ -241,7 +263,7 @@ export function createAuthRoutes(deps: AuthRoutesDeps): Hono {
 
     setCookie(c, SESSION_COOKIE_NAME, sessionId, {
       httpOnly: true,
-      secure: true,
+      secure: shouldUseSecureCookie(c),
       sameSite: "Lax",
       path: "/",
       maxAge: 30 * 24 * 60 * 60, // 30 days

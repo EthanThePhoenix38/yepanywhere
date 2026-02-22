@@ -7,6 +7,7 @@
 
 import type { StoredSession } from "./connection/SecureConnection";
 import { SAVED_HOSTS_KEY } from "./storageKeys";
+import { generateUUID } from "./uuid";
 
 /** A saved host configuration */
 export interface SavedHost {
@@ -121,7 +122,7 @@ export function createRelayHost(params: {
   displayName?: string;
 }): SavedHost {
   return {
-    id: crypto.randomUUID(),
+    id: generateUUID(),
     displayName: params.displayName ?? params.relayUsername,
     mode: "relay",
     relayUrl: params.relayUrl,
@@ -147,7 +148,7 @@ export function createDirectHost(params: {
   }
 
   return {
-    id: crypto.randomUUID(),
+    id: generateUUID(),
     displayName: params.displayName ?? defaultName,
     mode: "direct",
     wsUrl: params.wsUrl,

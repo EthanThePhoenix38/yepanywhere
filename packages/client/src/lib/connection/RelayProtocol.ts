@@ -16,6 +16,7 @@ import type {
   YepMessage,
 } from "@yep-anywhere/shared";
 import { getOrCreateBrowserProfileId } from "../storageKeys";
+import { generateUUID } from "../uuid";
 import type { StreamHandlers, Subscription, UploadOptions } from "./types";
 import { SubscriptionError } from "./types";
 
@@ -37,7 +38,7 @@ export interface RelayProtocolOptions {
 }
 
 function generateId(): string {
-  return crypto.randomUUID();
+  return generateUUID();
 }
 
 function isActivityDebugEnabled(): boolean {

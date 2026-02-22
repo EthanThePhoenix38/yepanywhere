@@ -1,4 +1,5 @@
 import { useCallback, useState } from "react";
+import { generateUUID } from "../lib/uuid";
 
 export interface ToastAction {
   label: string;
@@ -17,7 +18,7 @@ export function useToast() {
 
   const showToast = useCallback(
     (message: string, type: Toast["type"] = "info", action?: ToastAction) => {
-      const id = crypto.randomUUID();
+      const id = generateUUID();
       setToasts((prev) => [...prev, { id, message, type, action }]);
 
       // Auto-dismiss after 5 seconds (7 seconds if there's an action to give user time)

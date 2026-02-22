@@ -8,6 +8,7 @@
  * When accessing via yepanywhere.com/remote, users may connect to different
  * servers. Server-scoped settings ensure each server has independent config.
  */
+import { generateUUID } from "./uuid";
 
 // ============================================================================
 // Global Install ID (set once on connection, used for key scoping)
@@ -142,7 +143,7 @@ export function getOrCreateBrowserProfileId(): string {
     LEGACY_KEYS.browserProfileId,
   );
   if (!browserProfileId) {
-    browserProfileId = crypto.randomUUID();
+    browserProfileId = generateUUID();
     setServerScoped(
       "browserProfileId",
       browserProfileId,

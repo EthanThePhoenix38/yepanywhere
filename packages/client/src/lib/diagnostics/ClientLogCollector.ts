@@ -1,5 +1,6 @@
 import { fetchJSON } from "../../api/client";
 import { connectionManager } from "../connection";
+import { generateUUID } from "../uuid";
 import {
   countEntries,
   deleteEntries,
@@ -29,7 +30,7 @@ function getDeviceId(): string | undefined {
   try {
     let id = localStorage.getItem(DEVICE_ID_KEY);
     if (!id) {
-      id = crypto.randomUUID();
+      id = generateUUID();
       localStorage.setItem(DEVICE_ID_KEY, id);
     }
     return id;

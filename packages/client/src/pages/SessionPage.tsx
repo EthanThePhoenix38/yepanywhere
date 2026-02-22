@@ -35,6 +35,7 @@ import {
 } from "../hooks/useSession";
 import { useNavigationLayout } from "../layouts";
 import { preprocessMessages } from "../lib/preprocessMessages";
+import { generateUUID } from "../lib/uuid";
 import { getSessionDisplayTitle } from "../utils";
 
 export function SessionPage() {
@@ -564,7 +565,7 @@ function SessionPageContent({
   const handleAttach = useCallback(
     (files: File[]) => {
       for (const file of files) {
-        const tempId = crypto.randomUUID();
+        const tempId = generateUUID();
 
         // Add to progress tracking
         setUploadProgress((prev) => [

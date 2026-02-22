@@ -7,9 +7,9 @@
  * unavailable — tssrp6a checks crypto.subtle at module init time.
  */
 import type {
-  SRPClientSession as SRPClientSessionType,
   SRPClientSessionStep1,
   SRPClientSessionStep2,
+  SRPClientSession as SRPClientSessionType,
 } from "tssrp6a";
 
 let _tssrp6a: typeof import("tssrp6a") | null = null;
