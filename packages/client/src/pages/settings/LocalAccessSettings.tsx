@@ -31,6 +31,7 @@ export function LocalAccessSettings() {
 
   // Auth form state (merged into same form)
   const [requirePassword, setRequirePassword] = useState(false);
+  const [currentPassword, setCurrentPassword] = useState("");
   const [authPassword, setAuthPassword] = useState("");
   const [authPasswordConfirm, setAuthPasswordConfirm] = useState("");
 
@@ -169,7 +170,8 @@ export function LocalAccessSettings() {
 
       // Apply auth changes
       if (enablingAuth) {
-        await auth.enableAuth(authPassword);
+        await auth.enableAuth(authPassword, currentPassword || undefined);
+        setCurrentPassword("");
         setAuthPassword("");
         setAuthPasswordConfirm("");
       } else if (changingPassword) {
@@ -488,6 +490,22 @@ export function LocalAccessSettings() {
                 }}
                 tabIndex={-1}
               />
+              {!auth.authEnabled && (
+                <div className="settings-item">
+                  <div className="settings-item-info">
+                    <strong>Current Password (if re-enabling)</strong>
+                    <p>Required only if this server already had a password</p>
+                  </div>
+                  <input
+                    type="password"
+                    className="settings-input"
+                    value={currentPassword}
+                    onChange={(e) => setCurrentPassword(e.target.value)}
+                    autoComplete="current-password"
+                    placeholder="Current password"
+                  />
+                </div>
+              )}
               <div className="settings-item">
                 <div className="settings-item-info">
                   <strong>Password</strong>
@@ -528,8 +546,8 @@ export function LocalAccessSettings() {
               )}
               {!auth.authEnabled && (
                 <p className="form-hint">
-                  If you forget your password, restart with{" "}
-                  <code>--auth-disable</code> to bypass auth.
+                  Forgot your password? Use{" "}
+                  <code>yepanywhere --setup-auth</code> to set a new one.
                 </p>
               )}
             </>

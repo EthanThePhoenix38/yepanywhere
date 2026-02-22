@@ -708,11 +708,11 @@ export const api = {
   // Auth API
   getAuthStatus: () => fetchJSON<AuthStatus>("/auth/status"),
 
-  /** Enable auth with a password (main way to enable from settings UI) */
-  enableAuth: (password: string) =>
+  /** Enable auth with a password (currentPassword required for existing accounts) */
+  enableAuth: (password: string, currentPassword?: string) =>
     fetchJSON<{ success: boolean }>("/auth/enable", {
       method: "POST",
-      body: JSON.stringify({ password }),
+      body: JSON.stringify({ password, currentPassword }),
     }),
 
   /** Disable auth (requires authenticated session) */

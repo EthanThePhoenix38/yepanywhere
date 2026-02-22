@@ -37,7 +37,7 @@ interface AuthContextValue {
   /** Logout current session */
   logout: () => Promise<void>;
   /** Enable auth with a password (from settings) */
-  enableAuth: (password: string) => Promise<void>;
+  enableAuth: (password: string, currentPassword?: string) => Promise<void>;
   /** Disable auth (requires authenticated session) */
   disableAuth: () => Promise<void>;
   /** Create initial account (setup mode only) - deprecated, use enableAuth */
@@ -137,13 +137,29 @@ export function AuthProvider({ children }: AuthProviderProps) {
     navigate("/login");
   }, [navigate]);
 
-  const enableAuth = useCallback(async (password: string) => {
-    await api.enableAuth(password);
-    setAuthEnabled(true);
-    setIsAuthenticated(false);
-    setIsSetupMode(false);
-    // The useEffect will redirect to /login with { from: location.pathname }
-  }, []);
+  const enableAuth = useCallback(
+    async (password: string, currentPassword?: string) => {
+      try {
+        await api.enableAuth(password, currentPassword);
+      } catch (error) {
+        const authError = error as Error & { status?: number };
+        if (!currentPassword || authError.status !== 401) {
+          throw error;
+        }
+
+        // Re-enable flow: account exists while auth is currently disabled.
+        // Create a session using the current password, then retry /enable.
+        await api.login(currentPassword);
+        await api.enableAuth(password, currentPassword);
+      }
+
+      setAuthEnabled(true);
+      setIsAuthenticated(false);
+      setIsSetupMode(false);
+      // The useEffect will redirect to /login with { from: location.pathname }
+    },
+    [],
+  );
 
   const disableAuth = useCallback(async () => {
     await api.disableAuth();

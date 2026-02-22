@@ -85,7 +85,7 @@ OPTIONS:
                         Use 0.0.0.0 to bind all interfaces
   --open                Open the dashboard in your default browser on startup
   --auth-disable        Disable authentication (bypass auth even if enabled in settings)
-                        Use this to recover if you forget your password
+                        Emergency recovery mode; re-enable auth after fixing config
 
 SETUP OPTIONS (for headless installation):
   --setup-auth <password>
@@ -127,11 +127,11 @@ EXAMPLES:
   # Use development profile (separate data directory)
   YEP_ANYWHERE_PROFILE=dev yepanywhere
 
-  # Bypass auth if you forgot your password
-  yepanywhere --auth-disable
-
-  # Headless setup: configure local auth
+  # Reset local auth password (headless recovery)
   yepanywhere --setup-auth "mypassword123"
+
+  # Emergency auth bypass (temporary)
+  yepanywhere --auth-disable
 
   # Headless setup: configure remote access
   yepanywhere --setup-remote-access --username myserver --password "secretpass123"

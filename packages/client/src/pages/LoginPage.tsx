@@ -147,9 +147,9 @@ export function LoginPage() {
 
         {!isSetupMode && (
           <p className="login-recovery-hint">
-            Forgot your password? Restart the server with{" "}
-            <code>--auth-disable</code> to bypass authentication, then disable
-            or reset auth in Settings.
+            Forgot your password? Run{" "}
+            <code>yepanywhere --setup-auth "your-new-password"</code> to reset
+            it.
           </p>
         )}
       </div>

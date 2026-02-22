@@ -16,6 +16,7 @@ export interface AuthRoutesDeps {
 
 interface SetupBody {
   password: string;
+  currentPassword?: string;
 }
 
 interface LoginBody {
@@ -104,7 +105,9 @@ export function createAuthRoutes(deps: AuthRoutesDeps): Hono {
 
   /**
    * POST /api/auth/enable
-   * Enable auth with a password (main way to enable from settings UI)
+   * Enable auth with a password.
+   * - First-time setup (no account): unauthenticated.
+   * - Existing account: requires authenticated session + current password.
    */
   app.post("/enable", async (c) => {
     const body = await c.req.json<SetupBody>();
@@ -115,6 +118,27 @@ export function createAuthRoutes(deps: AuthRoutesDeps): Hono {
 
     if (body.password.length < 6) {
       return c.json({ error: "Password must be at least 6 characters" }, 400);
+    }
+
+    if (authService.hasAccount()) {
+      const sessionId = getCookie(c, SESSION_COOKIE_NAME);
+      if (!sessionId || !(await authService.validateSession(sessionId))) {
+        return c.json({ error: "Not authenticated" }, 401);
+      }
+
+      if (!body.currentPassword || typeof body.currentPassword !== "string") {
+        return c.json(
+          { error: "Current password is required for existing accounts" },
+          400,
+        );
+      }
+
+      const currentPasswordValid = await authService.verifyPassword(
+        body.currentPassword,
+      );
+      if (!currentPasswordValid) {
+        return c.json({ error: "Current password is incorrect" }, 401);
+      }
     }
 
     const success = await authService.enableAuth(body.password);
