@@ -32,6 +32,7 @@ import {
   encodeUploadChunkPayload,
   isBinaryData,
   isEncryptedEnvelope,
+  isSequencedEncryptedPayload,
   isSrpError,
   isSrpServerChallenge,
   isSrpServerVerify,
@@ -53,6 +54,7 @@ import {
   decryptBinaryEnvelope,
   decryptBinaryEnvelopeRaw,
   deriveSecretboxKey,
+  deriveTransportKey,
   encrypt,
   encryptBytesToBinaryEnvelope,
   encryptToBinaryEnvelope,
@@ -371,23 +373,31 @@ describe("Secure WebSocket Transport E2E", () => {
     // Derive session key
     const keyBuffer = bigIntToArrayBuffer(clientStep2.S);
     const rawKey = new Uint8Array(keyBuffer);
+    const baseSessionKey = deriveSecretboxKey(rawKey);
+    const transportSessionKey = verify.transportNonce
+      ? deriveTransportKey(baseSessionKey, verify.transportNonce)
+      : baseSessionKey;
 
     // Wait to ensure server has fully processed the handshake before
     // subsequent encrypted messages. This prevents a race condition where
     // the server's message queue hasn't finished processing the auth state.
     await new Promise((resolve) => setTimeout(resolve, 10));
 
-    return deriveSecretboxKey(rawKey);
+    return transportSessionKey;
   }
 
   /**
-   * Perform full SRP handshake and return both session key and sessionId.
+   * Perform full SRP handshake and return session keys + sessionId.
    */
   async function performSrpHandshakeWithSession(
     ws: WebSocket,
     username: string,
     password: string,
-  ): Promise<{ sessionKey: Uint8Array; sessionId: string }> {
+  ): Promise<{
+    sessionKey: Uint8Array;
+    baseSessionKey: Uint8Array;
+    sessionId: string;
+  }> {
     const clientSession = new SRPClientSession(SRP_ROUTINES);
     const clientStep1 = await clientSession.step1(username, password);
 
@@ -429,10 +439,13 @@ describe("Secure WebSocket Transport E2E", () => {
 
     const keyBuffer = bigIntToArrayBuffer(clientStep2.S);
     const rawKey = new Uint8Array(keyBuffer);
-    const sessionKey = deriveSecretboxKey(rawKey);
+    const baseSessionKey = deriveSecretboxKey(rawKey);
+    const sessionKey = verify.transportNonce
+      ? deriveTransportKey(baseSessionKey, verify.transportNonce)
+      : baseSessionKey;
 
     await new Promise((resolve) => setTimeout(resolve, 10));
-    return { sessionKey, sessionId: verify.sessionId };
+    return { sessionKey, baseSessionKey, sessionId: verify.sessionId };
   }
 
   /**
@@ -477,6 +490,23 @@ describe("Secure WebSocket Transport E2E", () => {
 
       ws.on("message", handler);
     });
+  }
+
+  /**
+   * Parse a decrypted transport payload and unwrap sequence metadata when present.
+   */
+  function parseDecryptedTransportMessage(
+    decrypted: string,
+  ): YepMessage | null {
+    try {
+      const parsed = JSON.parse(decrypted);
+      if (isSequencedEncryptedPayload(parsed)) {
+        return parsed.msg as YepMessage;
+      }
+      return parsed as YepMessage;
+    } catch {
+      return null;
+    }
   }
 
   /**
@@ -530,8 +560,12 @@ describe("Secure WebSocket Transport E2E", () => {
         }
 
         try {
-          const response = JSON.parse(decrypted) as YepMessage;
-          if (response.type === "response" && response.id === request.id) {
+          const response = parseDecryptedTransportMessage(decrypted);
+          if (
+            response &&
+            response.type === "response" &&
+            response.id === request.id
+          ) {
             clearTimeout(timeout);
             ws.off("message", handler);
             resolve(response);
@@ -552,6 +586,71 @@ describe("Secure WebSocket Transport E2E", () => {
         ciphertext,
       };
       ws.send(JSON.stringify(envelope));
+    });
+  }
+
+  /**
+   * Wait for a specific encrypted response ID. Returns null on timeout.
+   */
+  async function waitForEncryptedResponseById(
+    ws: WebSocket,
+    sessionKey: Uint8Array,
+    requestId: string,
+    timeoutMs = 1000,
+  ): Promise<RelayResponse | null> {
+    return new Promise((resolve) => {
+      const timeout = setTimeout(() => {
+        ws.off("message", handler);
+        resolve(null);
+      }, timeoutMs);
+
+      const handler = (data: WebSocket.RawData) => {
+        let decrypted: string | null = null;
+        const dataStr = data.toString();
+
+        try {
+          const msg = JSON.parse(dataStr);
+          if (isEncryptedEnvelope(msg)) {
+            decrypted = decrypt(msg.nonce, msg.ciphertext, sessionKey);
+          }
+        } catch {
+          // Not a JSON envelope
+        }
+
+        if (
+          !decrypted &&
+          (Buffer.isBuffer(data) || data instanceof ArrayBuffer)
+        ) {
+          const bytes =
+            data instanceof ArrayBuffer ? new Uint8Array(data) : data;
+          try {
+            decrypted = decryptBinaryEnvelope(bytes, sessionKey);
+          } catch {
+            return;
+          }
+        }
+
+        if (!decrypted) {
+          return;
+        }
+
+        try {
+          const response = parseDecryptedTransportMessage(decrypted);
+          if (
+            response &&
+            response.type === "response" &&
+            response.id === requestId
+          ) {
+            clearTimeout(timeout);
+            ws.off("message", handler);
+            resolve(response);
+          }
+        } catch {
+          // Ignore non-JSON payloads
+        }
+      };
+
+      ws.on("message", handler);
     });
   }
 
@@ -700,11 +799,8 @@ describe("Secure WebSocket Transport E2E", () => {
   describe("Session Resume Nonce Challenge", () => {
     it("should resume session with server-issued nonce challenge", async () => {
       const ws1 = await connectWebSocket();
-      const { sessionKey, sessionId } = await performSrpHandshakeWithSession(
-        ws1,
-        TEST_USERNAME,
-        TEST_PASSWORD,
-      );
+      const { baseSessionKey, sessionId } =
+        await performSrpHandshakeWithSession(ws1, TEST_USERNAME, TEST_PASSWORD);
       await closeWebSocket(ws1);
 
       const ws2 = await connectWebSocket();
@@ -731,7 +827,7 @@ describe("Secure WebSocket Transport E2E", () => {
           sessionId,
           challenge: challenge.nonce,
         });
-        const { nonce, ciphertext } = encrypt(proofData, sessionKey);
+        const { nonce, ciphertext } = encrypt(proofData, baseSessionKey);
         const resume: SrpSessionResume = {
           type: "srp_resume",
           identity: TEST_USERNAME,
@@ -746,6 +842,9 @@ describe("Secure WebSocket Transport E2E", () => {
           5000,
         );
         expect(resumed.sessionId).toBe(sessionId);
+        const resumedSessionKey = resumed.transportNonce
+          ? deriveTransportKey(baseSessionKey, resumed.transportNonce)
+          : baseSessionKey;
 
         const request: RelayRequest = {
           type: "request",
@@ -753,7 +852,11 @@ describe("Secure WebSocket Transport E2E", () => {
           method: "GET",
           path: "/health",
         };
-        const response = await sendEncryptedRequest(ws2, sessionKey, request);
+        const response = await sendEncryptedRequest(
+          ws2,
+          resumedSessionKey,
+          request,
+        );
         expect(response.status).toBe(200);
       } finally {
         await closeWebSocket(ws2);
@@ -762,11 +865,8 @@ describe("Secure WebSocket Transport E2E", () => {
 
     it("should reject replayed resume proof from a previous challenge", async () => {
       const ws1 = await connectWebSocket();
-      const { sessionKey, sessionId } = await performSrpHandshakeWithSession(
-        ws1,
-        TEST_USERNAME,
-        TEST_PASSWORD,
-      );
+      const { baseSessionKey, sessionId } =
+        await performSrpHandshakeWithSession(ws1, TEST_USERNAME, TEST_PASSWORD);
       await closeWebSocket(ws1);
 
       // First resume attempt (valid) to produce a replayable captured proof.
@@ -794,7 +894,7 @@ describe("Secure WebSocket Transport E2E", () => {
           sessionId,
           challenge: challenge1.nonce,
         });
-        const { nonce, ciphertext } = encrypt(proofData1, sessionKey);
+        const { nonce, ciphertext } = encrypt(proofData1, baseSessionKey);
         capturedProof = JSON.stringify({ nonce, ciphertext });
 
         const resume1: SrpSessionResume = {
@@ -848,6 +948,231 @@ describe("Secure WebSocket Transport E2E", () => {
           { allowSrpSessionInvalid: true },
         );
         expect(invalid.reason).toBe("invalid_proof");
+      } finally {
+        await closeWebSocket(ws3);
+      }
+    }, 20000);
+
+    it("should reject replayed resume proof on the same connection after successful resume", async () => {
+      const ws1 = await connectWebSocket();
+      const { baseSessionKey, sessionId } =
+        await performSrpHandshakeWithSession(ws1, TEST_USERNAME, TEST_PASSWORD);
+      await closeWebSocket(ws1);
+
+      const ws2 = await connectWebSocket();
+      try {
+        const resumeInit: SrpSessionResumeInit = {
+          type: "srp_resume_init",
+          identity: TEST_USERNAME,
+          sessionId,
+        };
+        ws2.send(JSON.stringify(resumeInit));
+
+        const challenge = await waitForMessage<SrpSessionResumeChallenge>(
+          ws2,
+          (msg): msg is SrpSessionResumeChallenge =>
+            typeof msg === "object" &&
+            msg !== null &&
+            (msg as { type?: string }).type === "srp_resume_challenge",
+          5000,
+        );
+
+        const proofData = JSON.stringify({
+          timestamp: Date.now(),
+          sessionId,
+          challenge: challenge.nonce,
+        });
+        const { nonce, ciphertext } = encrypt(proofData, baseSessionKey);
+        const resume: SrpSessionResume = {
+          type: "srp_resume",
+          identity: TEST_USERNAME,
+          sessionId,
+          proof: JSON.stringify({ nonce, ciphertext }),
+        };
+
+        ws2.send(JSON.stringify(resume));
+        const resumed = await waitForMessage<SrpSessionResumed>(
+          ws2,
+          (msg): msg is SrpSessionResumed => isSrpSessionResumed(msg),
+          5000,
+        );
+
+        // Replay the same proof on the same socket after challenge is consumed.
+        ws2.send(JSON.stringify(resume));
+        const invalid = await waitForMessage<SrpSessionInvalid>(
+          ws2,
+          (msg): msg is SrpSessionInvalid => isSrpSessionInvalid(msg),
+          5000,
+          { allowSrpSessionInvalid: true },
+        );
+        expect(invalid.reason).toBe("invalid_proof");
+
+        const resumedSessionKey = resumed.transportNonce
+          ? deriveTransportKey(baseSessionKey, resumed.transportNonce)
+          : baseSessionKey;
+        const request: RelayRequest = {
+          type: "request",
+          id: randomUUID(),
+          method: "GET",
+          path: "/health",
+        };
+        const response = await sendEncryptedRequest(
+          ws2,
+          resumedSessionKey,
+          request,
+        );
+        expect(response.status).toBe(200);
+      } finally {
+        await closeWebSocket(ws2);
+      }
+    }, 20000);
+
+    it("should reject replayed encrypted request captured before reconnect", async () => {
+      const ws1 = await connectWebSocket();
+      const {
+        sessionKey: initialSessionKey,
+        baseSessionKey,
+        sessionId,
+      } = await performSrpHandshakeWithSession(
+        ws1,
+        TEST_USERNAME,
+        TEST_PASSWORD,
+      );
+
+      const replayedRequest: RelayRequest = {
+        type: "request",
+        id: randomUUID(),
+        method: "GET",
+        path: "/health",
+      };
+      const replayPlaintext = JSON.stringify(replayedRequest);
+      const replayedPayload = encrypt(replayPlaintext, initialSessionKey);
+      const replayedEnvelope: EncryptedEnvelope = {
+        type: "encrypted",
+        nonce: replayedPayload.nonce,
+        ciphertext: replayedPayload.ciphertext,
+      };
+
+      ws1.send(JSON.stringify(replayedEnvelope));
+      const firstResponse = await waitForEncryptedResponseById(
+        ws1,
+        initialSessionKey,
+        replayedRequest.id,
+        5000,
+      );
+      expect(firstResponse).not.toBeNull();
+      expect(firstResponse?.status).toBe(200);
+      await closeWebSocket(ws1);
+
+      const ws2 = await connectWebSocket();
+      try {
+        const resumeInit: SrpSessionResumeInit = {
+          type: "srp_resume_init",
+          identity: TEST_USERNAME,
+          sessionId,
+        };
+        ws2.send(JSON.stringify(resumeInit));
+        const challenge = await waitForMessage<SrpSessionResumeChallenge>(
+          ws2,
+          (msg): msg is SrpSessionResumeChallenge =>
+            typeof msg === "object" &&
+            msg !== null &&
+            (msg as { type?: string }).type === "srp_resume_challenge",
+          5000,
+        );
+
+        const proofData = JSON.stringify({
+          timestamp: Date.now(),
+          sessionId,
+          challenge: challenge.nonce,
+        });
+        const { nonce, ciphertext } = encrypt(proofData, baseSessionKey);
+        const resume: SrpSessionResume = {
+          type: "srp_resume",
+          identity: TEST_USERNAME,
+          sessionId,
+          proof: JSON.stringify({ nonce, ciphertext }),
+        };
+        ws2.send(JSON.stringify(resume));
+
+        const resumed = await waitForMessage<SrpSessionResumed>(
+          ws2,
+          (msg): msg is SrpSessionResumed => isSrpSessionResumed(msg),
+          5000,
+        );
+        const resumedSessionKey = resumed.transportNonce
+          ? deriveTransportKey(baseSessionKey, resumed.transportNonce)
+          : baseSessionKey;
+
+        // Replay ciphertext captured on a different connection: should fail
+        // decryption and close the socket.
+        const closePromise = new Promise<{ code: number; reason: string }>(
+          (resolve) => {
+            ws2.once("close", (code, reason) => {
+              resolve({ code, reason: reason.toString() });
+            });
+          },
+        );
+        ws2.send(JSON.stringify(replayedEnvelope));
+        const closeResult = await closePromise;
+        expect(closeResult.code).toBe(4004);
+        expect(closeResult.reason).toBe("Decryption failed");
+      } finally {
+        await closeWebSocket(ws2);
+      }
+
+      // Reconnect again and verify fresh resume traffic works as expected.
+      const ws3 = await connectWebSocket();
+      try {
+        const resumeInit: SrpSessionResumeInit = {
+          type: "srp_resume_init",
+          identity: TEST_USERNAME,
+          sessionId,
+        };
+        ws3.send(JSON.stringify(resumeInit));
+        const challenge = await waitForMessage<SrpSessionResumeChallenge>(
+          ws3,
+          (msg): msg is SrpSessionResumeChallenge =>
+            typeof msg === "object" &&
+            msg !== null &&
+            (msg as { type?: string }).type === "srp_resume_challenge",
+          5000,
+        );
+
+        const proofData = JSON.stringify({
+          timestamp: Date.now(),
+          sessionId,
+          challenge: challenge.nonce,
+        });
+        const { nonce, ciphertext } = encrypt(proofData, baseSessionKey);
+        const resume: SrpSessionResume = {
+          type: "srp_resume",
+          identity: TEST_USERNAME,
+          sessionId,
+          proof: JSON.stringify({ nonce, ciphertext }),
+        };
+        ws3.send(JSON.stringify(resume));
+
+        const resumed = await waitForMessage<SrpSessionResumed>(
+          ws3,
+          (msg): msg is SrpSessionResumed => isSrpSessionResumed(msg),
+          5000,
+        );
+        const resumedSessionKey = resumed.transportNonce
+          ? deriveTransportKey(baseSessionKey, resumed.transportNonce)
+          : baseSessionKey;
+        const request: RelayRequest = {
+          type: "request",
+          id: randomUUID(),
+          method: "GET",
+          path: "/health",
+        };
+        const response = await sendEncryptedRequest(
+          ws3,
+          resumedSessionKey,
+          request,
+        );
+        expect(response.status).toBe(200);
       } finally {
         await closeWebSocket(ws3);
       }
@@ -1012,7 +1337,8 @@ describe("Secure WebSocket Transport E2E", () => {
           if (!decrypted) return;
 
           try {
-            const event = JSON.parse(decrypted) as YepMessage;
+            const event = parseDecryptedTransportMessage(decrypted);
+            if (!event) return;
             if (
               event.type === "event" &&
               event.subscriptionId === subscriptionId
@@ -1077,8 +1403,12 @@ describe("Secure WebSocket Transport E2E", () => {
               return;
             }
 
-            const response = JSON.parse(decrypted) as YepMessage;
-            if (response.type === "response" && response.id === request.id) {
+            const response = parseDecryptedTransportMessage(decrypted);
+            if (
+              response &&
+              response.type === "response" &&
+              response.id === request.id
+            ) {
               clearTimeout(timeout);
               ws.off("message", handler);
               resolve(response);
@@ -1184,7 +1514,8 @@ describe("Secure WebSocket Transport E2E", () => {
             const decrypted = decryptBinaryEnvelope(bytes, sessionKey);
             if (!decrypted) return;
 
-            const event = JSON.parse(decrypted) as YepMessage;
+            const event = parseDecryptedTransportMessage(decrypted);
+            if (!event) return;
             if (
               event.type === "event" &&
               event.subscriptionId === subscriptionId
@@ -1276,7 +1607,8 @@ describe("Secure WebSocket Transport E2E", () => {
               if (!decrypted) return;
 
               try {
-                const response = JSON.parse(decrypted) as YepMessage;
+                const response = parseDecryptedTransportMessage(decrypted);
+                if (!response) return;
                 if (
                   response.type === "response" &&
                   response.id === request1.id
@@ -1375,7 +1707,8 @@ describe("Secure WebSocket Transport E2E", () => {
           if (!decrypted) return;
 
           try {
-            const msg = JSON.parse(decrypted) as YepMessage;
+            const msg = parseDecryptedTransportMessage(decrypted);
+            if (!msg) return;
             if (
               (msg.type === "upload_progress" ||
                 msg.type === "upload_complete" ||

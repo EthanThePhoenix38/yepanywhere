@@ -11,7 +11,11 @@ import type {
   SrpSessionResumeInit,
   SrpSessionResumed,
 } from "@yep-anywhere/shared";
-import { SrpServerSession, deriveSecretboxKey } from "../crypto/index.js";
+import {
+  SrpServerSession,
+  deriveSecretboxKey,
+  deriveTransportKey,
+} from "../crypto/index.js";
 import type {
   RemoteAccessService,
   RemoteSessionService,
@@ -251,6 +255,11 @@ function startSrpHandshakeTimeout(
 
 export function cleanupSrpConnectionState(connState: ConnectionState): void {
   cleanupSrpHandshakeState(connState);
+  connState.sessionKey = null;
+  connState.baseSessionKey = null;
+  connState.usingLegacyTrafficKey = false;
+  connState.nextOutboundSeq = 0;
+  connState.lastInboundSeq = null;
 }
 
 /**
@@ -403,11 +412,17 @@ export async function handleSrpResume(
       return;
     }
 
-    connState.sessionKey = Buffer.from(session.sessionKey, "base64");
+    const baseSessionKey = Buffer.from(session.sessionKey, "base64");
+    const transportNonce = pendingChallenge.nonce;
+    connState.baseSessionKey = baseSessionKey;
+    connState.sessionKey = deriveTransportKey(baseSessionKey, transportNonce);
+    connState.usingLegacyTrafficKey = false;
     connState.authState = "authenticated";
     connState.requiresEncryptedMessages = true;
     connState.username = session.username;
     connState.sessionId = session.sessionId;
+    connState.nextOutboundSeq = 0;
+    connState.lastInboundSeq = null;
 
     // Update lastConnectedAt to track active connection time
     await remoteSessionService.updateLastConnected(session.sessionId);
@@ -415,6 +430,7 @@ export async function handleSrpResume(
     sendSrpMessage(ws, {
       type: "srp_resumed",
       sessionId: session.sessionId,
+      transportNonce,
     });
 
     console.log(
@@ -586,10 +602,16 @@ export async function handleSrpProof(
     if (!rawKey) {
       throw new Error("No session key after successful proof");
     }
-    connState.sessionKey = deriveSecretboxKey(rawKey);
+    const baseSessionKey = deriveSecretboxKey(rawKey);
+    const transportNonce = randomBytes(24).toString("base64");
+    connState.baseSessionKey = baseSessionKey;
+    connState.sessionKey = deriveTransportKey(baseSessionKey, transportNonce);
+    connState.usingLegacyTrafficKey = false;
     connState.authState = "authenticated";
     connState.requiresEncryptedMessages = true;
     connState.pendingResumeChallenge = null;
+    connState.nextOutboundSeq = 0;
+    connState.lastInboundSeq = null;
     resetFailedProofPenalty(connState.srpLimiter);
     if (connState.username) {
       resetFailedProofPenalty(
@@ -606,7 +628,7 @@ export async function handleSrpProof(
     if (remoteSessionService && connState.username) {
       sessionId = await remoteSessionService.createSession(
         connState.username,
-        connState.sessionKey,
+        baseSessionKey,
         {
           browserProfileId: connState.browserProfileId ?? undefined,
           userAgent: connState.originMetadata?.userAgent,
@@ -621,6 +643,7 @@ export async function handleSrpProof(
       type: "srp_verify",
       M2: result.M2,
       sessionId,
+      transportNonce,
     };
     sendSrpMessage(ws, verify);
 

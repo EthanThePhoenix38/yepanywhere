@@ -20,5 +20,11 @@ export {
 } from "./srp-types.js";
 
 // Encryption types
-export type { EncryptedEnvelope } from "./encryption-types.js";
-export { isEncryptedEnvelope } from "./encryption-types.js";
+export type {
+  EncryptedEnvelope,
+  SequencedEncryptedPayload,
+} from "./encryption-types.js";
+export {
+  isEncryptedEnvelope,
+  isSequencedEncryptedPayload,
+} from "./encryption-types.js";

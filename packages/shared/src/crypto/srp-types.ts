@@ -46,6 +46,11 @@ export interface SrpServerVerify {
   M2: string;
   /** Session ID for session resumption (optional, set if session service available) */
   sessionId?: string;
+  /**
+   * Server-issued per-connection nonce used to derive the traffic key from the
+   * SRP/session key. Present on modern servers.
+   */
+  transportNonce?: string;
 }
 
 /** SRP error codes */
@@ -92,6 +97,11 @@ export interface SrpSessionResumed {
   type: "srp_resumed";
   /** Session ID that was resumed */
   sessionId: string;
+  /**
+   * Server-issued per-connection nonce used to derive the traffic key from the
+   * persisted session key.
+   */
+  transportNonce?: string;
 }
 
 /** Reasons a session cannot be resumed */

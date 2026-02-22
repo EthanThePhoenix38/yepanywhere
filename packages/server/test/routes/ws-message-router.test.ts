@@ -1,6 +1,9 @@
 import { BinaryFormat } from "@yep-anywhere/shared";
 import { describe, expect, it, vi } from "vitest";
-import { encryptToBinaryEnvelopeWithCompression } from "../../src/crypto/index.js";
+import {
+  deriveTransportKey,
+  encryptToBinaryEnvelopeWithCompression,
+} from "../../src/crypto/index.js";
 import {
   decodeFrameToParsedMessage,
   routeClientMessageSafely,
@@ -73,7 +76,7 @@ describe("WebSocket Message Router", () => {
     const ws = createMockWs();
     const deps = createDecodeDeps();
     const envelope = encryptToBinaryEnvelopeWithCompression(
-      JSON.stringify({ type: "ping", id: "p3" }),
+      JSON.stringify({ seq: 0, msg: { type: "ping", id: "p3" } }),
       connState.sessionKey,
       false,
     );
@@ -93,6 +96,89 @@ describe("WebSocket Message Router", () => {
       type: "ping",
       id: "p3",
     });
+  });
+
+  it("rejects replayed encrypted binary payload sequence", async () => {
+    const connState = createConnectionState();
+    connState.authState = "authenticated";
+    connState.sessionKey = new Uint8Array(32).fill(3);
+    const ws = createMockWs();
+    const deps = createDecodeDeps();
+
+    const e0 = encryptToBinaryEnvelopeWithCompression(
+      JSON.stringify({ seq: 0, msg: { type: "ping", id: "p3" } }),
+      connState.sessionKey,
+      false,
+    );
+    const e1 = encryptToBinaryEnvelopeWithCompression(
+      JSON.stringify({ seq: 1, msg: { type: "ping", id: "p4" } }),
+      connState.sessionKey,
+      false,
+    );
+
+    await decodeFrameToParsedMessage(
+      ws,
+      e0,
+      { isBinary: true },
+      connState,
+      true,
+      deps,
+    );
+    await decodeFrameToParsedMessage(
+      ws,
+      e1,
+      { isBinary: true },
+      connState,
+      true,
+      deps,
+    );
+    await decodeFrameToParsedMessage(
+      ws,
+      e0,
+      { isBinary: true },
+      connState,
+      true,
+      deps,
+    );
+
+    expect(deps.routeClientMessage).toHaveBeenCalledTimes(2);
+    expect(ws.close).toHaveBeenCalledWith(4004, "Replay detected");
+  });
+
+  it("accepts legacy base-key encrypted binary envelope and downgrades connection key mode", async () => {
+    const connState = createConnectionState();
+    connState.authState = "authenticated";
+    connState.baseSessionKey = new Uint8Array(32).fill(6);
+    connState.sessionKey = deriveTransportKey(
+      connState.baseSessionKey,
+      Buffer.from(new Uint8Array(24).fill(4)).toString("base64"),
+    );
+    const ws = createMockWs();
+    const deps = createDecodeDeps();
+    const envelope = encryptToBinaryEnvelopeWithCompression(
+      JSON.stringify({
+        type: "client_capabilities",
+        formats: [1, 2, 3],
+      }),
+      connState.baseSessionKey,
+      false,
+    );
+
+    const parsed = await decodeFrameToParsedMessage(
+      ws,
+      envelope,
+      { isBinary: true },
+      connState,
+      true,
+      deps,
+    );
+
+    expect(parsed).toBeNull();
+    expect(connState.usingLegacyTrafficKey).toBe(true);
+    expect(connState.sessionKey).toEqual(connState.baseSessionKey);
+    expect(deps.routeClientMessage).not.toHaveBeenCalled();
+    expect(connState.supportedFormats).toEqual(new Set([1, 2, 3]));
+    expect(ws.close).not.toHaveBeenCalled();
   });
 
   it("closes unknown plaintext binary formats with code 4002", async () => {

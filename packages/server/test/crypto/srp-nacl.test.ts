@@ -14,6 +14,7 @@ import {
   decryptBinaryEnvelope,
   decryptBinaryEnvelopeRaw,
   deriveSecretboxKey,
+  deriveTransportKey,
   encrypt,
   encryptBytesToBinaryEnvelope,
   encryptToBinaryEnvelope,
@@ -138,6 +139,46 @@ describe("NaCl Encryption", () => {
       const key1 = deriveSecretboxKey(srpKey1);
       const key2 = deriveSecretboxKey(srpKey2);
       expect(key1).not.toEqual(key2);
+    });
+  });
+
+  describe("deriveTransportKey", () => {
+    it("produces a 32-byte key", () => {
+      const baseKey = generateRandomKey();
+      const nonce = Buffer.from(
+        new Uint8Array(NONCE_LENGTH).fill(0x11),
+      ).toString("base64");
+      const key = deriveTransportKey(baseKey, nonce);
+      expect(key.length).toBe(KEY_LENGTH);
+    });
+
+    it("is deterministic for same base key + nonce", () => {
+      const baseKey = generateRandomKey();
+      const nonce = Buffer.from(
+        new Uint8Array(NONCE_LENGTH).fill(0x22),
+      ).toString("base64");
+      const key1 = deriveTransportKey(baseKey, nonce);
+      const key2 = deriveTransportKey(baseKey, nonce);
+      expect(key1).toEqual(key2);
+    });
+
+    it("changes when nonce changes", () => {
+      const baseKey = generateRandomKey();
+      const nonce1 = Buffer.from(
+        new Uint8Array(NONCE_LENGTH).fill(0x33),
+      ).toString("base64");
+      const nonce2 = Buffer.from(
+        new Uint8Array(NONCE_LENGTH).fill(0x44),
+      ).toString("base64");
+      const key1 = deriveTransportKey(baseKey, nonce1);
+      const key2 = deriveTransportKey(baseKey, nonce2);
+      expect(key1).not.toEqual(key2);
+    });
+
+    it("throws for invalid nonce length", () => {
+      const baseKey = generateRandomKey();
+      const shortNonce = Buffer.from(new Uint8Array(8)).toString("base64");
+      expect(() => deriveTransportKey(baseKey, shortNonce)).toThrow();
     });
   });
 });

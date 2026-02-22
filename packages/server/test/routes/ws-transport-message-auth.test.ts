@@ -1,6 +1,6 @@
 import { MIN_BINARY_ENVELOPE_LENGTH } from "@yep-anywhere/shared";
 import { describe, expect, it, vi } from "vitest";
-import { encrypt } from "../../src/crypto/index.js";
+import { deriveTransportKey, encrypt } from "../../src/crypto/index.js";
 import { createConnectionState } from "../../src/routes/ws-relay-handlers.js";
 import {
   isBinaryEncryptedEnvelope,
@@ -79,13 +79,84 @@ describe("WebSocket Transport Message Auth Helpers", () => {
     connState.sessionKey = new Uint8Array(32).fill(7);
     connState.requiresEncryptedMessages = true;
     const ws = createMockWs();
-    const plaintext = JSON.stringify({ type: "ping", id: "p3" });
+    const plaintext = JSON.stringify({
+      seq: 0,
+      msg: { type: "ping", id: "p3" },
+    });
     const { nonce, ciphertext } = encrypt(plaintext, connState.sessionKey);
     const envelope = { type: "encrypted", nonce, ciphertext };
 
     const msg = parseApplicationClientMessage(ws, connState, true, envelope);
 
     expect(msg).toEqual({ type: "ping", id: "p3" });
+    expect(ws.close).not.toHaveBeenCalled();
+  });
+
+  it("rejects replayed encrypted JSON sequence", () => {
+    const connState = createConnectionState();
+    connState.authState = "authenticated";
+    connState.sessionKey = new Uint8Array(32).fill(7);
+    connState.requiresEncryptedMessages = true;
+    const ws = createMockWs();
+
+    const p0 = JSON.stringify({ seq: 0, msg: { type: "ping", id: "p3" } });
+    const p1 = JSON.stringify({ seq: 1, msg: { type: "ping", id: "p4" } });
+    const e0 = encrypt(p0, connState.sessionKey);
+    const e1 = encrypt(p1, connState.sessionKey);
+
+    expect(
+      parseApplicationClientMessage(ws, connState, true, {
+        type: "encrypted",
+        nonce: e0.nonce,
+        ciphertext: e0.ciphertext,
+      }),
+    ).toEqual({ type: "ping", id: "p3" });
+
+    expect(
+      parseApplicationClientMessage(ws, connState, true, {
+        type: "encrypted",
+        nonce: e1.nonce,
+        ciphertext: e1.ciphertext,
+      }),
+    ).toEqual({ type: "ping", id: "p4" });
+
+    expect(
+      parseApplicationClientMessage(ws, connState, true, {
+        type: "encrypted",
+        nonce: e0.nonce,
+        ciphertext: e0.ciphertext,
+      }),
+    ).toBeNull();
+    expect(ws.close).toHaveBeenCalledWith(4004, "Replay detected");
+  });
+
+  it("accepts legacy base-key encrypted envelope and downgrades connection key mode", () => {
+    const connState = createConnectionState();
+    connState.authState = "authenticated";
+    connState.baseSessionKey = new Uint8Array(32).fill(9);
+    connState.sessionKey = deriveTransportKey(
+      connState.baseSessionKey,
+      Buffer.from(new Uint8Array(24).fill(3)).toString("base64"),
+    );
+    connState.requiresEncryptedMessages = true;
+    const ws = createMockWs();
+
+    // Simulate an older client that still encrypts using the long-lived base key.
+    const plaintext = JSON.stringify({
+      type: "client_capabilities",
+      formats: [1, 2, 3],
+    });
+    const envelope = encrypt(plaintext, connState.baseSessionKey);
+
+    const msg = parseApplicationClientMessage(ws, connState, true, {
+      type: "encrypted",
+      nonce: envelope.nonce,
+      ciphertext: envelope.ciphertext,
+    });
+
+    expect(msg).toEqual({ type: "client_capabilities", formats: [1, 2, 3] });
+    expect(connState.usingLegacyTrafficKey).toBe(true);
+    expect(connState.sessionKey).toEqual(connState.baseSessionKey);
     expect(ws.close).not.toHaveBeenCalled();
   });
 });

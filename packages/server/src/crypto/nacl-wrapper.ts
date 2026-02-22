@@ -94,6 +94,32 @@ export function deriveSecretboxKey(srpSessionKey: Uint8Array): Uint8Array {
 }
 
 /**
+ * Derive a per-connection traffic key from a long-lived base key plus a
+ * server-issued nonce. This prevents ciphertext replay across reconnect/resume
+ * boundaries because each connection gets a distinct encryption key.
+ */
+export function deriveTransportKey(
+  baseKey: Uint8Array,
+  transportNonceBase64: string,
+): Uint8Array {
+  if (baseKey.length !== KEY_LENGTH) {
+    throw new Error(`Key must be ${KEY_LENGTH} bytes, got ${baseKey.length}`);
+  }
+
+  const nonce = Buffer.from(transportNonceBase64, "base64");
+  if (nonce.length !== NONCE_LENGTH) {
+    throw new Error(
+      `Transport nonce must decode to ${NONCE_LENGTH} bytes, got ${nonce.length}`,
+    );
+  }
+
+  // Domain-separated hash: H("yep-transport-v1" || baseKey || nonce)[0..31]
+  const label = Buffer.from("yep-transport-v1", "utf8");
+  const material = Buffer.concat([label, Buffer.from(baseKey), nonce]);
+  return nacl.hash(material).slice(0, KEY_LENGTH);
+}
+
+/**
  * Generate a random 32-byte key for testing.
  */
 export function generateRandomKey(): Uint8Array {

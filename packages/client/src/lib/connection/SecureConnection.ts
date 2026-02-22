@@ -28,6 +28,7 @@ import {
   isEncryptedEnvelope,
   isRelayClientConnected,
   isRelayClientError,
+  isSequencedEncryptedPayload,
   isSrpError,
   isSrpServerChallenge,
   isSrpServerVerify,
@@ -42,6 +43,7 @@ import {
   decrypt,
   decryptBinaryEnvelopeWithDecompression,
   deriveSecretboxKey,
+  deriveTransportKey,
   encrypt,
   encryptBytesToBinaryEnvelope,
   encryptToBinaryEnvelope,
@@ -100,6 +102,8 @@ export class SecureConnection implements Connection {
   private connectionState: ConnectionState = "disconnected";
   private connectionPromise: Promise<void> | null = null;
   private protocol: RelayProtocol;
+  private nextOutboundSeq = 0;
+  private lastInboundSeq: number | null = null;
 
   // Credentials for authentication
   private username: string;
@@ -429,12 +433,21 @@ export class SecureConnection implements Connection {
           reject(new Error("No stored session for resumption"));
           return;
         }
-        this.sessionKey = Uint8Array.from(
+        const baseSessionKey = Uint8Array.from(
           atob(this.storedSession.sessionKey),
           (c) => c.charCodeAt(0),
         );
+        if (!msg.transportNonce) {
+          console.warn(
+            "[SecureConnection] Missing transport nonce on resume; using legacy traffic key",
+          );
+        }
+        this.sessionKey = msg.transportNonce
+          ? deriveTransportKey(baseSessionKey, msg.transportNonce)
+          : baseSessionKey;
         this.sessionId = msg.sessionId;
         this.connectionState = "authenticated";
+        this.resetSequenceState();
 
         if (this.ws) {
           this.ws.onmessage = (event) => this.handleMessage(event.data);
@@ -527,6 +540,7 @@ export class SecureConnection implements Connection {
     this.ws = null;
     this.sessionKey = null;
     this.srpSession = null;
+    this.resetSequenceState();
 
     const closeError = new WebSocketCloseError(event.code, event.reason);
 
@@ -915,13 +929,22 @@ export class SecureConnection implements Connection {
         reject(new Error("No session key"));
         return;
       }
-      this.sessionKey = deriveSecretboxKey(rawKey);
+      const baseSessionKey = deriveSecretboxKey(rawKey);
+      if (!msg.transportNonce) {
+        console.warn(
+          "[SecureConnection] Missing transport nonce on verify; using legacy traffic key",
+        );
+      }
+      this.sessionKey = msg.transportNonce
+        ? deriveTransportKey(baseSessionKey, msg.transportNonce)
+        : baseSessionKey;
       this.sessionId = msg.sessionId ?? null;
       this.connectionState = "authenticated";
+      this.resetSequenceState();
 
-      if (this.sessionKey && this.sessionId) {
+      if (this.sessionId) {
         const sessionKeyBase64 = btoa(
-          Array.from(this.sessionKey)
+          Array.from(baseSessionKey)
             .map((b) => String.fromCharCode(b))
             .join(""),
         );
@@ -999,7 +1022,22 @@ export class SecureConnection implements Connection {
 
     let msg: YepMessage;
     try {
-      msg = JSON.parse(decrypted) as YepMessage;
+      const payload = JSON.parse(decrypted);
+      if (!isSequencedEncryptedPayload(payload)) {
+        console.warn("[SecureConnection] Missing/invalid encrypted sequence");
+        this.ws?.close(4004, "Invalid sequence");
+        return;
+      }
+
+      if (this.lastInboundSeq !== null && payload.seq <= this.lastInboundSeq) {
+        console.warn(
+          `[SecureConnection] Replay/old sequence rejected: seq=${payload.seq}, last=${this.lastInboundSeq}`,
+        );
+        this.ws?.close(4004, "Replay detected");
+        return;
+      }
+      this.lastInboundSeq = payload.seq;
+      msg = payload.msg as YepMessage;
     } catch {
       console.warn(
         "[SecureConnection] Failed to parse decrypted message:",
@@ -1022,9 +1060,18 @@ export class SecureConnection implements Connection {
       throw new Error("Not authenticated");
     }
 
-    const plaintext = JSON.stringify(msg);
+    const plaintext = JSON.stringify({
+      seq: this.nextOutboundSeq,
+      msg,
+    });
+    this.nextOutboundSeq += 1;
     const envelope = encryptToBinaryEnvelope(plaintext, this.sessionKey);
     this.ws.send(envelope);
+  }
+
+  private resetSequenceState(): void {
+    this.nextOutboundSeq = 0;
+    this.lastInboundSeq = null;
   }
 
   /**

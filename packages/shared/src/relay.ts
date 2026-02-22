@@ -277,8 +277,14 @@ export {
 } from "./crypto/srp-types.js";
 
 // Re-export encryption types
-export type { EncryptedEnvelope } from "./crypto/encryption-types.js";
-export { isEncryptedEnvelope } from "./crypto/encryption-types.js";
+export type {
+  EncryptedEnvelope,
+  SequencedEncryptedPayload,
+} from "./crypto/encryption-types.js";
+export {
+  isEncryptedEnvelope,
+  isSequencedEncryptedPayload,
+} from "./crypto/encryption-types.js";
 
 /** Connection state for secure WebSocket */
 export type SecureConnectionState =

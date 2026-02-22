@@ -110,6 +110,10 @@ export interface ConnectionState {
   srpSession: SrpServerSession | null;
   /** Derived secretbox key (32 bytes) for encryption */
   sessionKey: Uint8Array | null;
+  /** Long-lived base key derived from SRP/session key (for compatibility fallback) */
+  baseSessionKey: Uint8Array | null;
+  /** Whether this connection has fallen back to legacy base-key traffic mode */
+  usingLegacyTrafficKey: boolean;
   /** Authentication state */
   authState: ConnectionAuthState;
   /** Admission policy for this connection (distinct from SRP transport key state). */
@@ -142,6 +146,10 @@ export interface ConnectionState {
   } | null;
   /** SRP rate-limit and handshake timeout state */
   srpLimiter: SrpConnectionLimiterState;
+  /** Next sequence number for encrypted messages sent to the peer */
+  nextOutboundSeq: number;
+  /** Last accepted inbound encrypted sequence from the peer */
+  lastInboundSeq: number | null;
 }
 
 /** Tracks an active upload over WebSocket relay */
@@ -209,6 +217,8 @@ export function createConnectionState(): ConnectionState {
   return {
     srpSession: null,
     sessionKey: null,
+    baseSessionKey: null,
+    usingLegacyTrafficKey: false,
     authState: "unauthenticated",
     connectionPolicy: "srp_required",
     requiresEncryptedMessages: false,
@@ -221,6 +231,8 @@ export function createConnectionState(): ConnectionState {
     originMetadata: null,
     pendingResumeChallenge: null,
     srpLimiter: createInitialSrpLimiterState(),
+    nextOutboundSeq: 0,
+    lastInboundSeq: null,
   };
 }
 
@@ -241,7 +253,9 @@ export function createSendFn(
   return (msg: YepMessage) => {
     try {
       if (hasEstablishedSrpTransport(connState)) {
-        const plaintext = JSON.stringify(msg);
+        const seq = connState.nextOutboundSeq;
+        connState.nextOutboundSeq += 1;
+        const plaintext = JSON.stringify({ seq, msg });
 
         if (connState.useBinaryEncrypted) {
           // Phase 1/3: Binary encrypted envelope with optional compression

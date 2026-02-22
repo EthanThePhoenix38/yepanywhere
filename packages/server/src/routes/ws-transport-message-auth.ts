@@ -2,6 +2,7 @@ import type { RemoteClientMessage } from "@yep-anywhere/shared";
 import {
   MIN_BINARY_ENVELOPE_LENGTH,
   isEncryptedEnvelope,
+  isSequencedEncryptedPayload,
 } from "@yep-anywhere/shared";
 import { decrypt } from "../crypto/index.js";
 import type { ConnectionState, WSAdapter } from "./ws-relay-handlers.js";
@@ -72,6 +73,96 @@ export function rejectPlaintextBinaryWhenEncryptedRequired(
   return false;
 }
 
+function validateInboundSequence(
+  ws: WSAdapter,
+  connState: ConnectionState,
+  seq: number,
+): boolean {
+  const last = connState.lastInboundSeq;
+  if (last === null && seq !== 0) {
+    console.warn(
+      `[WS Relay] Invalid initial encrypted sequence: expected 0, got ${seq}`,
+    );
+    ws.close(4004, "Invalid sequence");
+    return false;
+  }
+  if (last !== null && seq <= last) {
+    console.warn(
+      `[WS Relay] Replay/old encrypted sequence rejected: seq=${seq}, last=${last}`,
+    );
+    ws.close(4004, "Replay detected");
+    return false;
+  }
+  connState.lastInboundSeq = seq;
+  return true;
+}
+
+export function unwrapSequencedClientMessage(
+  ws: WSAdapter,
+  connState: ConnectionState,
+  parsed: unknown,
+): RemoteClientMessage | null {
+  if (!isSequencedEncryptedPayload(parsed)) {
+    // Backward compatibility: allow legacy encrypted payloads with no sequence
+    // only until this connection has established sequenced traffic.
+    if (connState.lastInboundSeq !== null) {
+      console.warn(
+        "[WS Relay] Missing encrypted sequence wrapper after sequenced traffic started",
+      );
+      ws.close(4004, "Invalid sequence");
+      return null;
+    }
+    return parsed as RemoteClientMessage;
+  }
+
+  if (!validateInboundSequence(ws, connState, parsed.seq)) {
+    return null;
+  }
+
+  return parsed.msg as RemoteClientMessage;
+}
+
+function decryptJsonEnvelopeWithTrafficKeyFallback(
+  parsed: { nonce: string; ciphertext: string },
+  connState: ConnectionState,
+): string | null {
+  const activeSessionKey = connState.sessionKey;
+  if (!activeSessionKey) {
+    return null;
+  }
+
+  const decrypted = decrypt(parsed.nonce, parsed.ciphertext, activeSessionKey);
+  if (decrypted) {
+    return decrypted;
+  }
+
+  if (
+    !connState.baseSessionKey ||
+    connState.usingLegacyTrafficKey ||
+    connState.sessionKey === connState.baseSessionKey
+  ) {
+    return null;
+  }
+
+  const legacyDecrypted = decrypt(
+    parsed.nonce,
+    parsed.ciphertext,
+    connState.baseSessionKey,
+  );
+  if (!legacyDecrypted) {
+    return null;
+  }
+
+  console.warn(
+    "[WS Relay] Client is using legacy traffic key; consider refreshing/updating the remote client",
+  );
+  connState.sessionKey = connState.baseSessionKey;
+  connState.usingLegacyTrafficKey = true;
+  connState.nextOutboundSeq = 0;
+  connState.lastInboundSeq = null;
+  return legacyDecrypted;
+}
+
 /**
  * Parse an application-level message after SRP control messages are ruled out.
  * Handles legacy JSON encrypted envelopes and plaintext policy checks.
@@ -92,10 +183,9 @@ export function parseApplicationClientMessage(
       return null;
     }
 
-    const decrypted = decrypt(
-      parsed.nonce,
-      parsed.ciphertext,
-      connState.sessionKey,
+    const decrypted = decryptJsonEnvelopeWithTrafficKeyFallback(
+      parsed,
+      connState,
     );
     if (!decrypted) {
       console.warn("[WS Relay] Failed to decrypt message");
@@ -104,7 +194,8 @@ export function parseApplicationClientMessage(
     }
 
     try {
-      return JSON.parse(decrypted) as RemoteClientMessage;
+      const parsedDecrypted = JSON.parse(decrypted);
+      return unwrapSequencedClientMessage(ws, connState, parsedDecrypted);
     } catch {
       console.warn("[WS Relay] Failed to parse decrypted message");
       ws.close(4004, "Decryption failed");

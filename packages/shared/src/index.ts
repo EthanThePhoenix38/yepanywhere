@@ -312,6 +312,7 @@ export type {
   SrpSessionInvalidReason,
   // Encryption types
   EncryptedEnvelope,
+  SequencedEncryptedPayload,
   // Connection state
   SecureConnectionState,
   // Client capabilities (Phase 3)
@@ -336,6 +337,7 @@ export {
   isSrpSessionInvalid,
   // Encryption type guard
   isEncryptedEnvelope,
+  isSequencedEncryptedPayload,
   // Client capabilities type guard
   isClientCapabilities,
 } from "./relay.js";

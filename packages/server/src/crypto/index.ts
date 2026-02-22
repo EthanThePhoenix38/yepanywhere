@@ -6,6 +6,7 @@ export {
   encrypt,
   decrypt,
   deriveSecretboxKey,
+  deriveTransportKey,
   generateRandomKey,
   // Binary envelope format (Phase 1)
   encryptToBinaryEnvelope,
