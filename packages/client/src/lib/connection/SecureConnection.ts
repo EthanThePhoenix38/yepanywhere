@@ -83,6 +83,14 @@ export interface StoredSession {
   sessionKey: string;
 }
 
+function uint8ToBase64(bytes: Uint8Array): string {
+  let binary = "";
+  for (const byte of bytes) {
+    binary += String.fromCharCode(byte);
+  }
+  return btoa(binary);
+}
+
 /**
  * Secure connection to yepanywhere server using SRP + NaCl encryption.
  *
@@ -104,6 +112,7 @@ export class SecureConnection implements Connection {
   private protocol: RelayProtocol;
   private nextOutboundSeq = 0;
   private lastInboundSeq: number | null = null;
+  private useLegacyProtocolMode = false;
 
   // Credentials for authentication
   private username: string;
@@ -146,6 +155,16 @@ export class SecureConnection implements Connection {
       {
         sendMessage: (msg) => this.send(msg),
         sendUploadChunk: (id, offset, chunk) => {
+          if (this.useLegacyProtocolMode) {
+            this.send({
+              type: "upload_chunk",
+              uploadId: id,
+              offset,
+              data: uint8ToBase64(chunk),
+            });
+            return;
+          }
+
           const payload = encodeUploadChunkPayload(id, offset, chunk);
           if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
             throw new Error("WebSocket not connected");
@@ -442,6 +461,7 @@ export class SecureConnection implements Connection {
             "[SecureConnection] Missing transport nonce on resume; using legacy traffic key",
           );
         }
+        this.useLegacyProtocolMode = !msg.transportNonce;
         this.sessionKey = msg.transportNonce
           ? deriveTransportKey(baseSessionKey, msg.transportNonce)
           : baseSessionKey;
@@ -540,6 +560,7 @@ export class SecureConnection implements Connection {
     this.ws = null;
     this.sessionKey = null;
     this.srpSession = null;
+    this.useLegacyProtocolMode = false;
     this.resetSequenceState();
 
     const closeError = new WebSocketCloseError(event.code, event.reason);
@@ -935,6 +956,7 @@ export class SecureConnection implements Connection {
           "[SecureConnection] Missing transport nonce on verify; using legacy traffic key",
         );
       }
+      this.useLegacyProtocolMode = !msg.transportNonce;
       this.sessionKey = msg.transportNonce
         ? deriveTransportKey(baseSessionKey, msg.transportNonce)
         : baseSessionKey;
@@ -1023,21 +1045,26 @@ export class SecureConnection implements Connection {
     let msg: YepMessage;
     try {
       const payload = JSON.parse(decrypted);
-      if (!isSequencedEncryptedPayload(payload)) {
+      if (isSequencedEncryptedPayload(payload)) {
+        if (
+          this.lastInboundSeq !== null &&
+          payload.seq <= this.lastInboundSeq
+        ) {
+          console.warn(
+            `[SecureConnection] Replay/old sequence rejected: seq=${payload.seq}, last=${this.lastInboundSeq}`,
+          );
+          this.ws?.close(4004, "Replay detected");
+          return;
+        }
+        this.lastInboundSeq = payload.seq;
+        msg = payload.msg as YepMessage;
+      } else if (this.useLegacyProtocolMode) {
+        msg = payload as YepMessage;
+      } else {
         console.warn("[SecureConnection] Missing/invalid encrypted sequence");
         this.ws?.close(4004, "Invalid sequence");
         return;
       }
-
-      if (this.lastInboundSeq !== null && payload.seq <= this.lastInboundSeq) {
-        console.warn(
-          `[SecureConnection] Replay/old sequence rejected: seq=${payload.seq}, last=${this.lastInboundSeq}`,
-        );
-        this.ws?.close(4004, "Replay detected");
-        return;
-      }
-      this.lastInboundSeq = payload.seq;
-      msg = payload.msg as YepMessage;
     } catch {
       console.warn(
         "[SecureConnection] Failed to parse decrypted message:",
@@ -1060,10 +1087,14 @@ export class SecureConnection implements Connection {
       throw new Error("Not authenticated");
     }
 
-    const plaintext = JSON.stringify({
-      seq: this.nextOutboundSeq,
-      msg,
-    });
+    if (this.useLegacyProtocolMode) {
+      const plaintext = JSON.stringify(msg);
+      const { nonce, ciphertext } = encrypt(plaintext, this.sessionKey);
+      this.ws.send(JSON.stringify({ type: "encrypted", nonce, ciphertext }));
+      return;
+    }
+
+    const plaintext = JSON.stringify({ seq: this.nextOutboundSeq, msg });
     this.nextOutboundSeq += 1;
     const envelope = encryptToBinaryEnvelope(plaintext, this.sessionKey);
     this.ws.send(envelope);
@@ -1079,6 +1110,13 @@ export class SecureConnection implements Connection {
    * Called immediately after SRP authentication completes.
    */
   private sendCapabilities(): void {
+    if (this.useLegacyProtocolMode) {
+      console.log(
+        "[SecureConnection] Skipping capabilities for legacy server protocol",
+      );
+      return;
+    }
+
     const formats: number[] = [BinaryFormat.JSON, BinaryFormat.BINARY_UPLOAD];
 
     if (isCompressionSupported()) {
@@ -1163,6 +1201,7 @@ export class SecureConnection implements Connection {
 
     this.sessionKey = null;
     this.srpSession = null;
+    this.useLegacyProtocolMode = false;
     this.connectionState = "disconnected";
 
     if (this.ws) {
@@ -1197,6 +1236,7 @@ export class SecureConnection implements Connection {
     // Reset connection state but keep session info for resumption
     this.connectionState = "disconnected";
     this.connectionPromise = null;
+    this.useLegacyProtocolMode = false;
 
     await this.ensureConnected();
     console.log(
