@@ -17,6 +17,7 @@ Official apps from AI providers:
 
 | Tool | Type | Agents | Key Differentiator |
 |------|------|--------|-------------------|
+| [AionUi](aionui.md) | Desktop + WebUI + Telegram | 17 (ACP) | Messaging platform bots, cron scheduling, Zed ACP bridges |
 | [emdash](emdash.md) | Desktop app | 20+ | Multi-agent orchestration, git worktrees |
 | [Conductor](conductor.md) | macOS app | Claude, Codex | Git worktree isolation |
 | [HAPI](hapi.md) | Web + CLI | Claude, Codex, Gemini, OpenCode | CLI-wrapper architecture, terminal page |
@@ -66,7 +67,8 @@ Features competitors have that we should consider:
 - **Git worktree creation** per session (emdash, Conductor, HAPI)
 - **Working tree diff viewer** (most competitors)
 - **Diff commenting** (Claude Desktop)
-- **Scheduling/automations** (Codex App)
+- **Scheduling/automations** (Codex App, AionUi)
+- **Messaging platform bots** as mobile proxy (AionUi — Telegram/Lark/DingTalk)
 
 ## Last Updated
 
