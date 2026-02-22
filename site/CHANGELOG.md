@@ -6,6 +6,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [site-v1.5.1] - 2026-02-22
+
+### Fixed
+- Fix send racing ahead of in-flight file uploads
+- Improve pending tool render and tighten settings copy
+
 ## [site-v1.5.0] - 2026-02-22
 
 ### Security
