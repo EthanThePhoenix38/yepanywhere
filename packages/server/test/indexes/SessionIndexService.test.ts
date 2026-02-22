@@ -287,6 +287,53 @@ describe("SessionIndexService", () => {
       expect(result1.length).toBe(3);
       expect(result2.length).toBe(3);
       expect(result3.length).toBe(3);
+      expect(service.getDebugStats().requests).toBe(1);
+    });
+  });
+
+  describe("fast path", () => {
+    it("serves cached summaries between validations and refreshes on invalidation", async () => {
+      const fastService = new SessionIndexService({
+        dataDir,
+        projectsDir,
+        fullValidationIntervalMs: 60000,
+      });
+      await fastService.initialize();
+
+      await createSession("session-1", "Original content");
+
+      const first = await fastService.getSessionsWithCache(
+        sessionDir,
+        projectId,
+        reader,
+      );
+      expect(first[0]?.title).toBe("Original content");
+
+      // Update file content without invalidating.
+      await new Promise((resolve) => setTimeout(resolve, 10));
+      const updatedJsonl = JSON.stringify({
+        type: "user",
+        message: { content: "Updated content" },
+        uuid: "msg-updated",
+        timestamp: new Date().toISOString(),
+      });
+      await writeFile(join(sessionDir, "session-1.jsonl"), `${updatedJsonl}\n`);
+
+      // Fast path should still serve cached summary until invalidated.
+      const second = await fastService.getSessionsWithCache(
+        sessionDir,
+        projectId,
+        reader,
+      );
+      expect(second[0]?.title).toBe("Original content");
+
+      fastService.invalidateSession(sessionDir, "session-1");
+      const third = await fastService.getSessionsWithCache(
+        sessionDir,
+        projectId,
+        reader,
+      );
+      expect(third[0]?.title).toBe("Updated content");
     });
   });
 

@@ -43,6 +43,11 @@ export interface Config {
    * Helps recover from missed fs.watch events on macOS. 0 disables it.
    */
   codexWatchPeriodicRescanMs: number;
+  /**
+   * Session index full validation interval (ms).
+   * 0 = validate every request (legacy behavior).
+   */
+  sessionIndexFullValidationMs: number;
   /** Idle timeout in milliseconds before process cleanup */
   idleTimeoutMs: number;
   /** Default permission mode for new sessions */
@@ -131,6 +136,10 @@ export function loadConfig(): Config {
       defaultCodexWatchPeriodicRescanMs,
     ),
   );
+  const sessionIndexFullValidationMs = Math.max(
+    0,
+    parseIntOrDefault(process.env.SESSION_INDEX_FULL_VALIDATION_MS, 30000),
+  );
 
   return {
     dataDir,
@@ -139,6 +148,7 @@ export function loadConfig(): Config {
     geminiSessionsDir,
     codexSessionsDir,
     codexWatchPeriodicRescanMs,
+    sessionIndexFullValidationMs,
     idleTimeoutMs: parseIntOrDefault(process.env.IDLE_TIMEOUT, 5 * 60) * 1000,
     defaultPermissionMode: parsePermissionMode(process.env.PERMISSION_MODE),
     port: parseIntOrDefault(process.env.PORT, 3400),

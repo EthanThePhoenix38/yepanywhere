@@ -304,6 +304,8 @@ const projectMetadataService = new ProjectMetadataService({
 const sessionIndexService = new SessionIndexService({
   projectsDir: config.claudeProjectsDir,
   dataDir: path.join(config.dataDir, "indexes"),
+  fullValidationIntervalMs: config.sessionIndexFullValidationMs,
+  eventBus,
 });
 const pushService = new PushService({ dataDir: config.dataDir });
 const browserProfileService = new BrowserProfileService({

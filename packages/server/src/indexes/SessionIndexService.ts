@@ -17,9 +17,11 @@ import {
 import { getLogger } from "../logging/logger.js";
 import type { ISessionReader } from "../sessions/types.js";
 import type { SessionSummary } from "../supervisor/types.js";
+import type { EventBus, FileChangeEvent } from "../watcher/index.js";
 import type { ISessionIndexService } from "./types.js";
 
 const logger = getLogger();
+const LOG_CACHE_PERF = process.env.SESSION_INDEX_LOG_PERF === "true";
 
 export interface CachedSessionSummary {
   title: string | null;
@@ -53,6 +55,13 @@ export interface SessionIndexServiceOptions {
   projectsDir?: string;
   /** Max number of projects to keep in memory cache (default: 100) */
   maxCacheSize?: number;
+  /**
+   * Interval in ms between full directory validations.
+   * 0 disables fast-path and validates every request.
+   */
+  fullValidationIntervalMs?: number;
+  /** Optional event bus for watcher-driven invalidation. */
+  eventBus?: EventBus;
 }
 
 /**
@@ -69,6 +78,23 @@ export class SessionIndexService implements ISessionIndexService {
   private savePromises: Map<string, Promise<void>> = new Map();
   private pendingSaves: Set<string> = new Set();
   private maxCacheSize: number;
+  private fullValidationIntervalMs: number;
+  private lastFullValidationAt: Map<string, number> = new Map();
+  private dirtyDirs: Set<string> = new Set();
+  private dirtySessionsByDir: Map<string, Set<string>> = new Map();
+  private inFlightSessionLoads: Map<string, Promise<SessionSummary[]>> =
+    new Map();
+  private inFlightTitleLoads: Map<string, Promise<string | null>> = new Map();
+  private cacheStats = {
+    requests: 0,
+    fastHits: 0,
+    incrementalRuns: 0,
+    fullScans: 0,
+    statCalls: 0,
+    parseCalls: 0,
+    totalDurationMs: 0,
+  };
+  private unsubscribeEventBus: (() => void) | null = null;
 
   constructor(options: SessionIndexServiceOptions = {}) {
     const home = process.env.HOME ?? process.env.USERPROFILE ?? ".";
@@ -77,6 +103,17 @@ export class SessionIndexService implements ISessionIndexService {
     this.projectsDir =
       options.projectsDir ?? path.join(home, ".claude", "projects");
     this.maxCacheSize = options.maxCacheSize ?? 10000;
+    this.fullValidationIntervalMs = Math.max(
+      0,
+      options.fullValidationIntervalMs ?? 0,
+    );
+
+    if (options.eventBus) {
+      this.unsubscribeEventBus = options.eventBus.subscribe((event) => {
+        if (event.type !== "file-change") return;
+        this.handleFileChange(event);
+      });
+    }
   }
 
   /**
@@ -230,28 +267,246 @@ export class SessionIndexService implements ISessionIndexService {
     }
   }
 
+  private getLoadKey(sessionDir: string, projectId: UrlProjectId): string {
+    return `${sessionDir}::${projectId}`;
+  }
+
+  private getTitleLoadKey(
+    sessionDir: string,
+    projectId: UrlProjectId,
+    sessionId: string,
+  ): string {
+    return `${sessionDir}::${projectId}::${sessionId}`;
+  }
+
+  private markSessionDirty(sessionDir: string, sessionId: string): void {
+    const current = this.dirtySessionsByDir.get(sessionDir) ?? new Set();
+    current.add(sessionId);
+    this.dirtySessionsByDir.set(sessionDir, current);
+  }
+
+  private markDirDirty(sessionDir: string): void {
+    this.dirtyDirs.add(sessionDir);
+  }
+
+  private clearDirDirtyState(sessionDir: string): void {
+    this.dirtyDirs.delete(sessionDir);
+    this.dirtySessionsByDir.delete(sessionDir);
+  }
+
+  private buildSummariesFromIndex(
+    index: SessionIndexState,
+    projectId: UrlProjectId,
+  ): SessionSummary[] {
+    const summaries: SessionSummary[] = [];
+
+    for (const [sessionId, cached] of Object.entries(index.sessions)) {
+      if (cached.isEmpty) continue;
+      summaries.push({
+        id: sessionId,
+        projectId,
+        title: cached.title,
+        fullTitle: cached.fullTitle,
+        createdAt: cached.createdAt,
+        updatedAt: cached.updatedAt,
+        messageCount: cached.messageCount,
+        ownership: { owner: "none" },
+        contextUsage: cached.contextUsage,
+        provider: cached.provider ?? DEFAULT_PROVIDER,
+      });
+    }
+
+    summaries.sort(
+      (a, b) =>
+        new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime(),
+    );
+
+    return summaries;
+  }
+
+  private toCachedSummary(
+    summary: SessionSummary,
+    mtime: number,
+    size: number,
+  ): CachedSessionSummary {
+    return {
+      title: summary.title,
+      fullTitle: summary.fullTitle,
+      createdAt: summary.createdAt,
+      updatedAt: summary.updatedAt,
+      messageCount: summary.messageCount,
+      contextUsage: summary.contextUsage,
+      indexedBytes: size,
+      fileMtime: mtime,
+      provider: summary.provider,
+    };
+  }
+
+  private toEmptyCachedSummary(
+    mtime: number,
+    size: number,
+  ): CachedSessionSummary {
+    const now = new Date().toISOString();
+    return {
+      title: null,
+      fullTitle: null,
+      createdAt: now,
+      updatedAt: now,
+      messageCount: 0,
+      indexedBytes: size,
+      fileMtime: mtime,
+      isEmpty: true,
+      provider: DEFAULT_PROVIDER,
+    };
+  }
+
+  private recordCallStats(
+    mode: "fast" | "incremental" | "full",
+    durationMs: number,
+    statCalls: number,
+    parseCalls: number,
+    sessionDir: string,
+  ): void {
+    this.cacheStats.requests += 1;
+    this.cacheStats.statCalls += statCalls;
+    this.cacheStats.parseCalls += parseCalls;
+    this.cacheStats.totalDurationMs += durationMs;
+
+    if (mode === "fast") this.cacheStats.fastHits += 1;
+    if (mode === "incremental") this.cacheStats.incrementalRuns += 1;
+    if (mode === "full") this.cacheStats.fullScans += 1;
+
+    if (LOG_CACHE_PERF || durationMs >= 250) {
+      logger.info(
+        `[SessionIndexService] mode=${mode} dir=${sessionDir} durationMs=${durationMs} statCalls=${statCalls} parseCalls=${parseCalls}`,
+      );
+    }
+  }
+
   /**
-   * Get sessions using the cache, only re-parsing files that have changed.
-   * This is the main entry point for listing sessions with caching.
+   * Handle watcher events for claude session files so requests can avoid full rescans.
    */
-  async getSessionsWithCache(
+  private handleFileChange(event: FileChangeEvent): void {
+    if (event.provider !== "claude" || event.fileType !== "session") {
+      return;
+    }
+
+    const fileName = path.basename(event.relativePath);
+    if (!fileName.endsWith(".jsonl")) return;
+    const sessionId = fileName.slice(0, -6);
+    const relativeDir = path.dirname(event.relativePath);
+    const sessionDir =
+      relativeDir === "."
+        ? this.projectsDir
+        : path.join(this.projectsDir, relativeDir);
+
+    this.markSessionDirty(sessionDir, sessionId);
+
+    // Directory creates/deletes require full readdir reconciliation.
+    if (event.changeType === "create" || event.changeType === "delete") {
+      this.markDirDirty(sessionDir);
+    }
+  }
+
+  private async applyIncrementalDirtyUpdates(
     sessionDir: string,
     projectId: UrlProjectId,
     reader: ISessionReader,
-  ): Promise<SessionSummary[]> {
-    const index = await this.loadIndex(sessionDir, projectId);
+    index: SessionIndexState,
+  ): Promise<{ indexChanged: boolean; statCalls: number; parseCalls: number }> {
+    const dirty = this.dirtySessionsByDir.get(sessionDir);
+    if (!dirty || dirty.size === 0) {
+      return { indexChanged: false, statCalls: 0, parseCalls: 0 };
+    }
+
+    let indexChanged = false;
+    let statCalls = 0;
+    let parseCalls = 0;
+
+    for (const sessionId of Array.from(dirty)) {
+      const cached = index.sessions[sessionId];
+
+      if (cached) {
+        statCalls += 1;
+        const changed = await reader.getSessionSummaryIfChanged(
+          sessionId,
+          projectId,
+          cached.fileMtime,
+          cached.indexedBytes,
+        );
+        if (!changed) continue;
+        parseCalls += 1;
+        index.sessions[sessionId] = this.toCachedSummary(
+          changed.summary,
+          changed.mtime,
+          changed.size,
+        );
+        indexChanged = true;
+        continue;
+      }
+
+      parseCalls += 1;
+      const summary = await reader.getSessionSummary(sessionId, projectId);
+      const filePath = path.join(sessionDir, `${sessionId}.jsonl`);
+
+      if (summary) {
+        try {
+          const stats = await fs.stat(filePath);
+          statCalls += 1;
+          index.sessions[sessionId] = this.toCachedSummary(
+            summary,
+            stats.mtimeMs,
+            stats.size,
+          );
+          indexChanged = true;
+        } catch {
+          // Ignore race where file disappeared after read.
+        }
+        continue;
+      }
+
+      try {
+        const stats = await fs.stat(filePath);
+        statCalls += 1;
+        index.sessions[sessionId] = this.toEmptyCachedSummary(
+          stats.mtimeMs,
+          stats.size,
+        );
+        indexChanged = true;
+      } catch {
+        if (index.sessions[sessionId]) {
+          delete index.sessions[sessionId];
+          indexChanged = true;
+        }
+      }
+    }
+
+    this.dirtySessionsByDir.delete(sessionDir);
+    return { indexChanged, statCalls, parseCalls };
+  }
+
+  private async runFullValidation(
+    sessionDir: string,
+    projectId: UrlProjectId,
+    reader: ISessionReader,
+    index: SessionIndexState,
+  ): Promise<{
+    summaries: SessionSummary[];
+    statCalls: number;
+    parseCalls: number;
+  }> {
     const summaries: SessionSummary[] = [];
     const seenSessionIds = new Set<string>();
     let indexChanged = false;
+    let statCalls = 0;
+    let parseCalls = 0;
 
     try {
       const files = await fs.readdir(sessionDir);
-      // Filter out agent-* files (internal subagent warmup sessions)
       const jsonlFiles = files.filter(
         (f) => f.endsWith(".jsonl") && !f.startsWith("agent-"),
       );
 
-      // Stat files in batches for cache invalidation
       const STAT_BATCH = 100;
       const allStats: (Stats | null)[] = new Array(jsonlFiles.length);
       for (let b = 0; b < jsonlFiles.length; b += STAT_BATCH) {
@@ -261,12 +516,12 @@ export class SessionIndexService implements ISessionIndexService {
             .slice(b, end)
             .map((f) => fs.stat(path.join(sessionDir, f)).catch(() => null)),
         );
+        statCalls += batch.length;
         for (let j = 0; j < batch.length; j++) {
           allStats[b + j] = batch[j] ?? null;
         }
       }
 
-      // Collect cache misses to parse sequentially (parsing is heavier)
       const cacheMisses: {
         sessionId: string;
         mtime: number;
@@ -292,7 +547,6 @@ export class SessionIndexService implements ISessionIndexService {
           cached.indexedBytes === size
         ) {
           if (cached.isEmpty) continue;
-
           summaries.push({
             id: sessionId,
             projectId,
@@ -310,41 +564,23 @@ export class SessionIndexService implements ISessionIndexService {
         }
       }
 
-      // Parse cache misses sequentially (file I/O heavy)
       for (const { sessionId, mtime, size } of cacheMisses) {
-        logger.debug(`[SessionIndexService] Cache MISS for ${sessionId}`);
+        parseCalls += 1;
         const summary = await reader.getSessionSummary(sessionId, projectId);
         if (summary) {
           summaries.push(summary);
-          index.sessions[sessionId] = {
-            title: summary.title,
-            fullTitle: summary.fullTitle,
-            createdAt: summary.createdAt,
-            updatedAt: summary.updatedAt,
-            messageCount: summary.messageCount,
-            contextUsage: summary.contextUsage,
-            indexedBytes: size,
-            fileMtime: mtime,
-            provider: summary.provider,
-          };
+          index.sessions[sessionId] = this.toCachedSummary(
+            summary,
+            mtime,
+            size,
+          );
           indexChanged = true;
         } else {
-          index.sessions[sessionId] = {
-            title: null,
-            fullTitle: null,
-            createdAt: new Date().toISOString(),
-            updatedAt: new Date().toISOString(),
-            messageCount: 0,
-            indexedBytes: size,
-            fileMtime: mtime,
-            isEmpty: true,
-            provider: DEFAULT_PROVIDER,
-          };
+          index.sessions[sessionId] = this.toEmptyCachedSummary(mtime, size);
           indexChanged = true;
         }
       }
 
-      // Remove deleted sessions from cache
       for (const sessionId of Object.keys(index.sessions)) {
         if (!seenSessionIds.has(sessionId)) {
           delete index.sessions[sessionId];
@@ -352,22 +588,141 @@ export class SessionIndexService implements ISessionIndexService {
         }
       }
 
-      // Save index if it changed
       if (indexChanged) {
         await this.saveIndex(sessionDir);
       }
+
+      summaries.sort(
+        (a, b) =>
+          new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime(),
+      );
+      this.lastFullValidationAt.set(sessionDir, Date.now());
+      this.clearDirDirtyState(sessionDir);
+
+      return { summaries, statCalls, parseCalls };
     } catch {
-      // Directory doesn't exist or not readable
-      return [];
+      return { summaries: [], statCalls, parseCalls };
+    }
+  }
+
+  getDebugStats(): {
+    requests: number;
+    fastHits: number;
+    incrementalRuns: number;
+    fullScans: number;
+    statCalls: number;
+    parseCalls: number;
+    avgDurationMs: number;
+    dirtyDirCount: number;
+    dirtySessionCount: number;
+  } {
+    const dirtySessionCount = Array.from(
+      this.dirtySessionsByDir.values(),
+    ).reduce((sum, set) => sum + set.size, 0);
+
+    return {
+      ...this.cacheStats,
+      avgDurationMs:
+        this.cacheStats.requests > 0
+          ? this.cacheStats.totalDurationMs / this.cacheStats.requests
+          : 0,
+      dirtyDirCount: this.dirtyDirs.size,
+      dirtySessionCount,
+    };
+  }
+
+  /**
+   * Get sessions using the cache, only re-parsing files that have changed.
+   * This is the main entry point for listing sessions with caching.
+   */
+  async getSessionsWithCache(
+    sessionDir: string,
+    projectId: UrlProjectId,
+    reader: ISessionReader,
+  ): Promise<SessionSummary[]> {
+    const loadKey = this.getLoadKey(sessionDir, projectId);
+    const inFlight = this.inFlightSessionLoads.get(loadKey);
+    if (inFlight) {
+      return inFlight;
     }
 
-    // Sort by updatedAt descending
-    summaries.sort(
-      (a, b) =>
-        new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime(),
+    const promise = this.getSessionsWithCacheInternal(
+      sessionDir,
+      projectId,
+      reader,
     );
+    this.inFlightSessionLoads.set(loadKey, promise);
 
-    return summaries;
+    try {
+      return await promise;
+    } finally {
+      if (this.inFlightSessionLoads.get(loadKey) === promise) {
+        this.inFlightSessionLoads.delete(loadKey);
+      }
+    }
+  }
+
+  private async getSessionsWithCacheInternal(
+    sessionDir: string,
+    projectId: UrlProjectId,
+    reader: ISessionReader,
+  ): Promise<SessionSummary[]> {
+    const start = Date.now();
+    const index = await this.loadIndex(sessionDir, projectId);
+    const now = Date.now();
+    const lastFullValidation = this.lastFullValidationAt.get(sessionDir) ?? 0;
+    const hasDirDirty = this.dirtyDirs.has(sessionDir);
+    const dirtySessions = this.dirtySessionsByDir.get(sessionDir);
+    const hasDirtySessions = Boolean(dirtySessions && dirtySessions.size > 0);
+
+    const fullValidationDue =
+      this.fullValidationIntervalMs <= 0 ||
+      lastFullValidation === 0 ||
+      now - lastFullValidation >= this.fullValidationIntervalMs;
+
+    // Fast path: no dirty signals and recent full validation.
+    if (!fullValidationDue && !hasDirDirty && !hasDirtySessions) {
+      const summaries = this.buildSummariesFromIndex(index, projectId);
+      this.recordCallStats("fast", Date.now() - start, 0, 0, sessionDir);
+      return summaries;
+    }
+
+    // Incremental path: only specific sessions are dirty.
+    if (!fullValidationDue && !hasDirDirty && hasDirtySessions) {
+      const incremental = await this.applyIncrementalDirtyUpdates(
+        sessionDir,
+        projectId,
+        reader,
+        index,
+      );
+      if (incremental.indexChanged) {
+        await this.saveIndex(sessionDir);
+      }
+      const summaries = this.buildSummariesFromIndex(index, projectId);
+      this.recordCallStats(
+        "incremental",
+        Date.now() - start,
+        incremental.statCalls,
+        incremental.parseCalls,
+        sessionDir,
+      );
+      return summaries;
+    }
+
+    const full = await this.runFullValidation(
+      sessionDir,
+      projectId,
+      reader,
+      index,
+    );
+    this.recordCallStats(
+      "full",
+      Date.now() - start,
+      full.statCalls,
+      full.parseCalls,
+      sessionDir,
+    );
+    return full.summaries;
   }
 
   /**
@@ -375,6 +730,7 @@ export class SessionIndexService implements ISessionIndexService {
    * Call this when you know a session file has been modified.
    */
   invalidateSession(sessionDir: string, sessionId: string): void {
+    this.markSessionDirty(sessionDir, sessionId);
     const index = this.indexCache.get(sessionDir);
     if (index) {
       delete index.sessions[sessionId];
@@ -386,6 +742,8 @@ export class SessionIndexService implements ISessionIndexService {
    */
   clearCache(sessionDir: string): void {
     this.indexCache.delete(sessionDir);
+    this.clearDirDirtyState(sessionDir);
+    this.lastFullValidationAt.delete(sessionDir);
   }
 
   /**
@@ -405,6 +763,32 @@ export class SessionIndexService implements ISessionIndexService {
     sessionId: string,
     reader: ISessionReader,
   ): Promise<string | null> {
+    const loadKey = this.getTitleLoadKey(sessionDir, projectId, sessionId);
+    const inFlight = this.inFlightTitleLoads.get(loadKey);
+    if (inFlight) return inFlight;
+
+    const promise = this.getSessionTitleInternal(
+      sessionDir,
+      projectId,
+      sessionId,
+      reader,
+    );
+    this.inFlightTitleLoads.set(loadKey, promise);
+    try {
+      return await promise;
+    } finally {
+      if (this.inFlightTitleLoads.get(loadKey) === promise) {
+        this.inFlightTitleLoads.delete(loadKey);
+      }
+    }
+  }
+
+  private async getSessionTitleInternal(
+    sessionDir: string,
+    projectId: UrlProjectId,
+    sessionId: string,
+    reader: ISessionReader,
+  ): Promise<string | null> {
     const index = await this.loadIndex(sessionDir, projectId);
     const cached = index.sessions[sessionId];
     const filePath = path.join(sessionDir, `${sessionId}.jsonl`);
@@ -414,54 +798,33 @@ export class SessionIndexService implements ISessionIndexService {
       const mtime = stats.mtimeMs;
       const size = stats.size;
 
-      // Check if cache is valid
       if (
         cached &&
         cached.fileMtime === mtime &&
         cached.indexedBytes === size
       ) {
-        // Return null for empty sessions
-        if (cached.isEmpty) {
-          return null;
-        }
+        if (cached.isEmpty) return null;
         return cached.title;
       }
 
-      // Cache miss - parse the file
       const summary = await reader.getSessionSummary(sessionId, projectId);
       if (summary) {
-        // Update cache
-        index.sessions[sessionId] = {
-          title: summary.title,
-          fullTitle: summary.fullTitle,
-          createdAt: summary.createdAt,
-          updatedAt: summary.updatedAt,
-          messageCount: summary.messageCount,
-          contextUsage: summary.contextUsage,
-          indexedBytes: size,
-          fileMtime: mtime,
-          provider: summary.provider,
-        };
+        index.sessions[sessionId] = this.toCachedSummary(summary, mtime, size);
         await this.saveIndex(sessionDir);
         return summary.title;
       }
-      // Empty session - cache it to avoid re-parsing
-      index.sessions[sessionId] = {
-        title: null,
-        fullTitle: null,
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-        messageCount: 0,
-        indexedBytes: size,
-        fileMtime: mtime,
-        isEmpty: true,
-        provider: DEFAULT_PROVIDER,
-      };
+
+      index.sessions[sessionId] = this.toEmptyCachedSummary(mtime, size);
       await this.saveIndex(sessionDir);
     } catch {
       // File error - return null
     }
 
     return null;
+  }
+
+  dispose(): void {
+    this.unsubscribeEventBus?.();
+    this.unsubscribeEventBus = null;
   }
 }
