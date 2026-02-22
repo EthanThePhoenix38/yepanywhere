@@ -82,8 +82,8 @@ export function ConnectedAppContent({ children }: { children: ReactNode }) {
           <div className="host-offline-modal-content">
             <p className="host-offline-message">
               The server on <strong>{currentRelayUsername}</strong> needs to be
-              updated for improved session resume security. Resume won't work
-              until then, but you can still log in normally.
+              updated for improved session resume security. Until then, you'll
+              need to log in again after refreshing or reconnecting.
             </p>
             <p className="host-offline-detail">
               <code>npm update -g yepanywhere</code>

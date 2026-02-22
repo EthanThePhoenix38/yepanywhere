@@ -64,7 +64,7 @@ function getErrorMessage(error: AutoResumeError): string {
         : "Could not establish a connection to the host.";
 
     case "resume_incompatible":
-      return "The server needs to be updated for improved session resume security. Resume won't work until then, but you can still log in normally.";
+      return "The server needs to be updated for improved session resume security. Until then, you'll need to log in again after refreshing or reconnecting.";
 
     default:
       return "An unexpected error occurred while trying to reconnect.";
