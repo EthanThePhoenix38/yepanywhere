@@ -44,6 +44,7 @@ const MARKDOWN_SANITIZE_OPTIONS = {
     code: ["class"],
     img: ["src", "alt", "title"],
     input: ["type", "checked", "disabled"],
+    ol: ["start"],
     td: ["align"],
     th: ["align"],
   },

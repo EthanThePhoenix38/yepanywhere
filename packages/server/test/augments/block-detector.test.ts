@@ -725,6 +725,153 @@ code
     });
   });
 
+  describe("loose lists (blank lines between items)", () => {
+    it("keeps numbered loose list as a single block", () => {
+      const detector = new BlockDetector();
+      const blocks = detector.feed(
+        "1. First item\n\n2. Second item\n\nSome paragraph\n\n",
+      );
+
+      expect(blocks).toHaveLength(2);
+      expect(blocks[0]).toMatchObject({
+        type: "list",
+        content: "1. First item\n\n2. Second item",
+      });
+      expect(blocks[1]).toMatchObject({
+        type: "paragraph",
+        content: "Some paragraph",
+      });
+    });
+
+    it("keeps bullet loose list as a single block", () => {
+      const detector = new BlockDetector();
+      const blocks = detector.feed(
+        "- First item\n\n- Second item\n\nSome paragraph\n\n",
+      );
+
+      expect(blocks).toHaveLength(2);
+      expect(blocks[0]).toMatchObject({
+        type: "list",
+        content: "- First item\n\n- Second item",
+      });
+      expect(blocks[1]).toMatchObject({
+        type: "paragraph",
+        content: "Some paragraph",
+      });
+    });
+
+    it("handles three loose numbered items", () => {
+      const detector = new BlockDetector();
+      const blocks = detector.feed(
+        "1. A\n\n2. B\n\n3. C\n\nDone.\n\n",
+      );
+
+      expect(blocks).toHaveLength(2);
+      expect(blocks[0]).toMatchObject({
+        type: "list",
+        content: "1. A\n\n2. B\n\n3. C",
+      });
+      expect(blocks[1]).toMatchObject({
+        type: "paragraph",
+        content: "Done.",
+      });
+    });
+
+    it("loose list ending at end of buffer finalizes via flush", () => {
+      const detector = new BlockDetector();
+      const blocks = detector.feed("1. A\n\n2. B\n\n");
+
+      // The \n\n at end triggers finalization with all items
+      expect(blocks).toHaveLength(1);
+      expect(blocks[0]).toMatchObject({
+        type: "list",
+        content: "1. A\n\n2. B",
+      });
+    });
+
+    it("does not merge different list types across blank line", () => {
+      const detector = new BlockDetector();
+      const blocks = detector.feed("1. Numbered\n\n- Bullet\n\n");
+
+      // Numbered list ends when bullet list starts (different type)
+      expect(blocks).toHaveLength(2);
+      expect(blocks[0]).toMatchObject({
+        type: "list",
+        content: "1. Numbered",
+      });
+      expect(blocks[1]).toMatchObject({
+        type: "list",
+        content: "- Bullet",
+      });
+    });
+
+    it("loose list followed by heading", () => {
+      const detector = new BlockDetector();
+      const blocks = detector.feed(
+        "1. First\n\n2. Second\n\n# Heading\n",
+      );
+
+      expect(blocks).toHaveLength(2);
+      expect(blocks[0]).toMatchObject({
+        type: "list",
+        content: "1. First\n\n2. Second",
+      });
+      expect(blocks[1]).toMatchObject({
+        type: "heading",
+        content: "# Heading",
+      });
+    });
+
+    it("whole-string feed merges loose list; char-by-char splits (streaming limitation)", () => {
+      const input = "1. First\n\n2. Second\n\nParagraph\n\n";
+
+      // Whole string: loose list is kept as one block
+      const wholeDetector = new BlockDetector();
+      const wholeBlocks = [
+        ...wholeDetector.feed(input),
+        ...wholeDetector.flush(),
+      ];
+      expect(wholeBlocks).toHaveLength(2);
+      expect(wholeBlocks[0]).toMatchObject({
+        type: "list",
+        content: "1. First\n\n2. Second",
+      });
+
+      // Char-by-char: \n\n hits end of buffer before next item arrives,
+      // so the list is finalized early (streaming can't look ahead).
+      // The start attribute on <ol> ensures correct numbering.
+      const charDetector = new BlockDetector();
+      const charBlocks: CompletedBlock[] = [];
+      for (const char of input) {
+        charBlocks.push(...charDetector.feed(char));
+      }
+      charBlocks.push(...charDetector.flush());
+      expect(charBlocks).toHaveLength(3);
+      expect(charBlocks[0]).toMatchObject({ type: "list", content: "1. First" });
+      expect(charBlocks[1]).toMatchObject({ type: "list", content: "2. Second" });
+      expect(charBlocks[2]).toMatchObject({ type: "paragraph", content: "Paragraph" });
+    });
+
+    it("handles long multi-paragraph list items", () => {
+      const detector = new BlockDetector();
+      const input =
+        "1. **Log output** — save sent content to `state/outputs.jsonl` with `{ts, content}` entries. Easiest place to hook this is in `send-cli.ts`.\n\n" +
+        "2. **Feed previous outputs back** — in `buildScheduleMessage()` in `scheduler.ts`, read the last 2-3 entries from that schedule's history.\n\n" +
+        "The cleanest approach:\n\n";
+
+      const blocks = detector.feed(input);
+
+      expect(blocks).toHaveLength(2);
+      expect(blocks[0]).toMatchObject({ type: "list" });
+      expect(blocks[0]?.content).toContain("1. **Log output**");
+      expect(blocks[0]?.content).toContain("2. **Feed previous outputs back**");
+      expect(blocks[1]).toMatchObject({
+        type: "paragraph",
+        content: "The cleanest approach:",
+      });
+    });
+  });
+
   describe("special markdown patterns", () => {
     it("handles setext-style heading indicators as HR", () => {
       // Note: we're treating --- as HR, not as setext heading underline

@@ -406,28 +406,68 @@ export class BlockDetector {
     if (this.state.kind !== "list") return null;
 
     const { listType, startOffset } = this.state;
+    const listItemPattern =
+      listType === "numbered" ? /^\d+\.\s/ : /^[-*]\s/;
 
-    // Check for double newline (list end)
-    const doubleNewlineIdx = this.buffer.indexOf("\n\n");
-    if (doubleNewlineIdx !== -1) {
-      const content = this.buffer.slice(0, doubleNewlineIdx).trim();
+    // Scan for double-newline sequences that might end the list.
+    // A blank line between list items makes it a "loose list" — still one list.
+    // The list only ends at a \n\n NOT followed by another same-type list item.
+    let searchFrom = 0;
+    while (true) {
+      const dnIdx = this.buffer.indexOf("\n\n", searchFrom);
+      if (dnIdx === -1) break;
+
+      // Skip additional blank lines after the \n\n
+      let afterIdx = dnIdx + 2;
+      while (this.buffer[afterIdx] === "\n") afterIdx++;
+
+      const rest = this.buffer.slice(afterIdx);
+      if (rest === "") {
+        // \n\n at end of buffer — finalize with all content seen so far.
+        // (Streaming: we can't look ahead, but we include earlier loose items.)
+        const content = this.buffer.slice(0, dnIdx).trim();
+        if (content) {
+          const block: CompletedBlock = {
+            type: "list",
+            content,
+            startOffset,
+            endOffset: this.offset + dnIdx,
+          };
+          this.consumeChars(afterIdx);
+          this.state = { kind: "none" };
+          return block;
+        }
+        this.consumeChars(afterIdx);
+        this.state = { kind: "none" };
+        return null;
+      }
+
+      const nextLine = rest.split("\n")[0] || "";
+      if (listItemPattern.test(nextLine)) {
+        // Loose list — another item follows the blank line. Keep going.
+        searchFrom = afterIdx;
+        continue;
+      }
+
+      // List truly ends here — what follows is not a same-type list item
+      const content = this.buffer.slice(0, dnIdx).trim();
       if (content) {
         const block: CompletedBlock = {
           type: "list",
           content,
           startOffset,
-          endOffset: this.offset + doubleNewlineIdx,
+          endOffset: this.offset + dnIdx,
         };
-        this.consumeChars(doubleNewlineIdx + 2);
+        this.consumeChars(afterIdx);
         this.state = { kind: "none" };
         return block;
       }
-      this.consumeChars(doubleNewlineIdx + 2);
+      this.consumeChars(afterIdx);
       this.state = { kind: "none" };
       return null;
     }
 
-    // Check for a different block type starting
+    // Check for a different block type starting on a subsequent line
     const lines = this.buffer.split("\n");
     if (lines.length < 2) {
       return null;
@@ -439,13 +479,8 @@ export class BlockDetector {
       const isCompleteLine = i < lines.length - 1 || this.buffer.endsWith("\n");
 
       // List continues if line starts with list marker or is indented continuation or empty
-      const isBulletContinuation =
-        listType === "bullet" &&
-        (/^[-*]\s/.test(line) || /^\s+\S/.test(line) || line === "");
-      const isNumberedContinuation =
-        listType === "numbered" &&
-        (/^\d+\.\s/.test(line) || /^\s+\S/.test(line) || line === "");
-      const isContinuation = isBulletContinuation || isNumberedContinuation;
+      const isContinuation =
+        listItemPattern.test(line) || /^\s+\S/.test(line) || line === "";
 
       if (isCompleteLine && !isContinuation && this.isBlockStart(line)) {
         const endIdx = this.findLineStartIndex(i);
