@@ -190,12 +190,16 @@ function TaskInline({
   const liveContent = agentId ? context?.agentContent[agentId] : undefined;
 
   // Determine if task is running
-  // If we have a terminal result status, it's definitely not running
+  // The outer `status` prop (from tool_result) is the ground truth:
+  // - "pending" = tool_use sent, no result yet (task may be running)
+  // - "complete"/"error"/"aborted" = tool_result received, task is done
+  // Only check liveContent when status is "pending" (no result yet)
   const hasTerminalResult =
     result?.status === "completed" || result?.status === "failed";
   const isRunning =
     !hasTerminalResult &&
-    (status === "pending" || liveContent?.status === "running");
+    status === "pending" &&
+    (liveContent?.status === "running" || !liveContent?.status);
 
   // Always start collapsed - users can expand if they want to see details
   const [isExpanded, setIsExpanded] = useState(false);
