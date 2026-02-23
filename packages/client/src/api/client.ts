@@ -737,6 +737,30 @@ export const api = {
   getGitStatus: (projectId: string) =>
     fetchJSON<GitStatusInfo>(`/projects/${projectId}/git`),
 
+  getGitDiff: (
+    projectId: string,
+    params: {
+      path: string;
+      staged: boolean;
+      status: string;
+      fullContext?: boolean;
+    },
+  ) =>
+    fetchJSON<{
+      diffHtml: string;
+      structuredPatch: Array<{
+        oldStart: number;
+        oldLines: number;
+        newStart: number;
+        newLines: number;
+        lines: string[];
+      }>;
+      markdownHtml?: string;
+    }>(`/projects/${projectId}/git/diff`, {
+      method: "POST",
+      body: JSON.stringify(params),
+    }),
+
   // Inbox API
   getInbox: (projectId?: string) =>
     fetchJSON<InboxResponse>(

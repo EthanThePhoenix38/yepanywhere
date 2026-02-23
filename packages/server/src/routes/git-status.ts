@@ -1,11 +1,16 @@
 import { execFile } from "node:child_process";
+import { readFile } from "node:fs/promises";
+import { extname, resolve } from "node:path";
 import { promisify } from "node:util";
 import {
   type GitFileChange,
   type GitStatusInfo,
+  type PatchHunk,
   isUrlProjectId,
 } from "@yep-anywhere/shared";
 import { Hono } from "hono";
+import { computeEditAugment } from "../augments/edit-augments.js";
+import { renderMarkdownToHtml } from "../augments/markdown-augments.js";
 import type { ProjectScanner } from "../projects/scanner.js";
 
 const execFileAsync = promisify(execFile);
@@ -50,7 +55,144 @@ export function createGitStatusRoutes(deps: GitStatusDeps): Hono {
     }
   });
 
+  /**
+   * POST /:projectId/git/diff
+   * Get syntax-highlighted diff for a specific file.
+   * Body: { path, staged, status, fullContext? }
+   */
+  routes.post("/:projectId/git/diff", async (c) => {
+    const projectId = c.req.param("projectId");
+
+    if (!isUrlProjectId(projectId)) {
+      return c.json({ error: "Invalid project ID format" }, 400);
+    }
+
+    const project = await deps.scanner.getProject(projectId);
+    if (!project) {
+      return c.json({ error: "Project not found" }, 404);
+    }
+
+    let body: {
+      path: string;
+      staged: boolean;
+      status: string;
+      fullContext?: boolean;
+    };
+    try {
+      body = await c.req.json();
+    } catch {
+      return c.json({ error: "Invalid JSON body" }, 400);
+    }
+
+    const { path, staged, status, fullContext } = body;
+    if (!path || typeof staged !== "boolean" || !status) {
+      return c.json(
+        { error: "Missing required fields: path, staged, status" },
+        400,
+      );
+    }
+
+    try {
+      const { oldContent, newContent } = await getFileVersions(
+        project.path,
+        path,
+        staged,
+        status,
+      );
+
+      const contextLines = fullContext ? 999999 : 3;
+      const augment = await computeEditAugment(
+        "git-diff",
+        { file_path: path, old_string: oldContent, new_string: newContent },
+        contextLines,
+      );
+
+      const result: {
+        diffHtml: string;
+        structuredPatch: PatchHunk[];
+        markdownHtml?: string;
+      } = {
+        diffHtml: augment.diffHtml,
+        structuredPatch: augment.structuredPatch,
+      };
+
+      // Render markdown preview for .md files
+      const ext = extname(path).toLowerCase();
+      if ((ext === ".md" || ext === ".markdown") && newContent) {
+        try {
+          result.markdownHtml = await renderMarkdownToHtml(newContent);
+        } catch {
+          // Ignore markdown rendering errors
+        }
+      }
+
+      return c.json(result);
+    } catch (err) {
+      const message =
+        err instanceof Error ? err.message : "Failed to compute diff";
+      return c.json({ error: message }, 500);
+    }
+  });
+
   return routes;
+}
+
+/**
+ * Get old and new file content for computing a diff.
+ * Handles all git status codes (M, A, D, ?, R, etc.).
+ */
+async function getFileVersions(
+  cwd: string,
+  path: string,
+  staged: boolean,
+  status: string,
+): Promise<{ oldContent: string; newContent: string }> {
+  // Untracked: entire file is new
+  if (status === "?") {
+    const content = await readFile(resolve(cwd, path), "utf-8");
+    return { oldContent: "", newContent: content };
+  }
+
+  // Added (staged): new file in index
+  if (status === "A") {
+    if (staged) {
+      const { stdout } = await runGit(cwd, ["show", `:${path}`]);
+      return { oldContent: "", newContent: stdout };
+    }
+    // Unstaged add shouldn't normally happen, but handle it
+    const content = await readFile(resolve(cwd, path), "utf-8");
+    return { oldContent: "", newContent: content };
+  }
+
+  // Deleted
+  if (status === "D") {
+    const ref = staged ? `HEAD:${path}` : `:${path}`;
+    const { stdout } = await runGit(cwd, ["show", ref]);
+    return { oldContent: stdout, newContent: "" };
+  }
+
+  // Modified or other statuses
+  if (staged) {
+    // Staged: compare HEAD to index
+    const [oldResult, newResult] = await Promise.all([
+      runGit(cwd, ["show", `HEAD:${path}`]).catch(() => ({
+        stdout: "",
+        stderr: "",
+      })),
+      runGit(cwd, ["show", `:${path}`]),
+    ]);
+    return { oldContent: oldResult.stdout, newContent: newResult.stdout };
+  }
+
+  // Unstaged: compare index to working tree
+  const [oldResult, newContent] = await Promise.all([
+    runGit(cwd, ["show", `:${path}`]).catch(() => ({
+      stdout: "",
+      stderr: "",
+    })),
+    readFile(resolve(cwd, path), "utf-8").catch(() => ""),
+  ]);
+  return { oldContent: oldResult.stdout, newContent };
 }
 
 async function runGit(

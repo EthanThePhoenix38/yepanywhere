@@ -7896,8 +7896,42 @@ a.sidebar-nav-item {
   min-width: 0;
 }
 
+.git-file-item-clickable {
+  cursor: pointer;
+  transition: background-color 0.15s ease;
+}
+
+.git-file-item-clickable:hover {
+  background: var(--bg-hover);
+}
+
+.git-file-item-clickable:active {
+  background: var(--bg-active, var(--bg-hover));
+}
+
 .git-file-item:last-child {
   border-bottom: none;
+}
+
+.git-diff-loading,
+.git-diff-error {
+  padding: var(--space-4);
+  text-align: center;
+  color: var(--text-muted);
+}
+
+.git-diff-error {
+  color: var(--error-color);
+}
+
+.diff-context-buttons {
+  display: flex;
+  gap: 0.25rem;
+}
+
+.diff-context-toggle.active {
+  background: var(--accent-color);
+  color: var(--bg-primary);
 }
 
 .git-status-badge {
