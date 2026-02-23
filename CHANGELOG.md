@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.3] - 2026-02-23
+
+### Added
+- Source Control page with git working tree status
+- File diff viewer: click any file to see syntax-highlighted diff with full context toggle and markdown preview
+- Session sharing via Cloudflare Worker + R2
+
+### Fixed
+- Fix denied subagent showing spinner instead of error state
+- Fix remote client redirect loop on git-status page
+- Fix DAG selecting stale pre-compaction branch over post-compaction one
+
 ## [0.4.2] - 2026-02-22
 
 ### Added
