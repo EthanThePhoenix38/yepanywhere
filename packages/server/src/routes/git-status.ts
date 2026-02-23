@@ -351,16 +351,18 @@ async function getGitStatus(projectPath: string): Promise<GitStatusInfo> {
         });
       }
     }
-    // Untracked: "? path"
+    // Untracked: "? path" (skip directories — they end with /)
     else if (line.startsWith("? ")) {
       const path = line.slice(2);
-      files.push({
-        path,
-        status: "?",
-        staged: false,
-        linesAdded: null,
-        linesDeleted: null,
-      });
+      if (!path.endsWith("/")) {
+        files.push({
+          path,
+          status: "?",
+          staged: false,
+          linesAdded: null,
+          linesDeleted: null,
+        });
+      }
     }
     // Unmerged: "u XY sub m1 m2 m3 mW h1 h2 h3 path"
     else if (line.startsWith("u ")) {

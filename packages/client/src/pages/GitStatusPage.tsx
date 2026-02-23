@@ -221,18 +221,11 @@ function GitFileItem({
   file: GitFileChange;
   onClick: (file: GitFileChange) => void;
 }) {
-  // Binary files (null line counts for non-untracked) can't show diffs
-  const isBinary =
-    file.status !== "?" &&
-    file.status !== "A" &&
-    file.linesAdded === null &&
-    file.linesDeleted === null;
-
   return (
     // biome-ignore lint/a11y/useKeyWithClickEvents: keyboard nav not needed for file list
     <li
-      className={`git-file-item ${isBinary ? "" : "git-file-item-clickable"}`}
-      onClick={isBinary ? undefined : () => onClick(file)}
+      className="git-file-item git-file-item-clickable"
+      onClick={() => onClick(file)}
     >
       <span
         className={`git-status-badge git-status-${file.status.toLowerCase()}`}
