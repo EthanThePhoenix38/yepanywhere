@@ -135,8 +135,7 @@ The website (landing pages + remote relay client at `/remote`) is deployed separ
 Quick reference:
 ```bash
 # Update site/CHANGELOG.md first, then:
-git tag site-v1.1.0
-git push origin site-v1.1.0
+scripts/release-website.sh 1.5.3
 ```
 
 ## Server Logs
