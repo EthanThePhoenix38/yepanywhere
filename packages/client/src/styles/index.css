@@ -2692,6 +2692,40 @@ a.sidebar-nav-item {
 }
 
 /* ==========================================================================
+   Load Older Messages - Pagination button for long sessions
+   ========================================================================== */
+
+.load-older-messages {
+  display: flex;
+  justify-content: center;
+  padding: 12px 16px 4px;
+}
+
+.load-older-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 16px;
+  background: var(--bg-tertiary, #2a2a2a);
+  border: 1px solid var(--border-color, #333);
+  border-radius: 16px;
+  color: var(--text-muted);
+  font-size: var(--font-size-sm);
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+
+.load-older-button:hover:not(:disabled) {
+  background: var(--bg-hover, #333);
+  color: var(--text-primary);
+}
+
+.load-older-button:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+/* ==========================================================================
    System Messages - Context compaction notifications
    ========================================================================== */
 

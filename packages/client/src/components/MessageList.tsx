@@ -76,6 +76,12 @@ interface Props {
   markdownAugments?: Record<string, MarkdownAugment>;
   /** Active tool approval - prevents matching orphaned tool from showing as interrupted */
   activeToolApproval?: ActiveToolApproval;
+  /** Whether there are older messages not yet loaded */
+  hasOlderMessages?: boolean;
+  /** Whether older messages are currently being loaded */
+  loadingOlder?: boolean;
+  /** Callback to load the next chunk of older messages */
+  onLoadOlderMessages?: () => void;
 }
 
 export const MessageList = memo(function MessageList({
@@ -90,6 +96,9 @@ export const MessageList = memo(function MessageList({
   onCancelDeferred,
   markdownAugments,
   activeToolApproval,
+  hasOlderMessages = false,
+  loadingOlder = false,
+  onLoadOlderMessages,
 }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
   const shouldAutoScrollRef = useRef(true);
@@ -144,6 +153,33 @@ export const MessageList = memo(function MessageList({
   const toggleThinkingExpanded = useCallback(() => {
     setThinkingExpanded((prev) => !prev);
   }, []);
+
+  // Load older messages with scroll position preservation
+  const handleLoadOlder = useCallback(() => {
+    if (!onLoadOlderMessages) return;
+    const container = containerRef.current?.parentElement;
+    if (!container) {
+      onLoadOlderMessages();
+      return;
+    }
+    // Capture scroll state before prepending older messages
+    const scrollHeightBefore = container.scrollHeight;
+    const scrollTopBefore = container.scrollTop;
+    onLoadOlderMessages();
+    // Restore scroll position after React re-renders with prepended messages
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        const scrollHeightAfter = container.scrollHeight;
+        const heightDelta = scrollHeightAfter - scrollHeightBefore;
+        isProgrammaticScrollRef.current = true;
+        container.scrollTop = scrollTopBefore + heightDelta;
+        lastHeightRef.current = container.scrollHeight;
+        requestAnimationFrame(() => {
+          isProgrammaticScrollRef.current = false;
+        });
+      });
+    });
+  }, [onLoadOlderMessages]);
 
   // Track scroll position to determine if user is near bottom.
   // Ignore programmatic scrolls - only user-initiated scrolls should affect auto-scroll state.
@@ -230,6 +266,24 @@ export const MessageList = memo(function MessageList({
 
   return (
     <div className="message-list" ref={containerRef}>
+      {hasOlderMessages && (
+        <div className="load-older-messages">
+          <button
+            type="button"
+            className="load-older-button"
+            onClick={handleLoadOlder}
+            disabled={loadingOlder}
+          >
+            {loadingOlder ? (
+              <>
+                <span className="spinning">&#x21BB;</span> Loading...
+              </>
+            ) : (
+              "Load older messages"
+            )}
+          </button>
+        </div>
+      )}
       {turnGroups.map((group) => {
         if (group.isUserPrompt) {
           // User prompts render directly without timeline wrapper

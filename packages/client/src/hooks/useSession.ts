@@ -232,6 +232,9 @@ export function useSession(
     setMessages,
     fetchNewMessages,
     fetchSessionMetadata,
+    pagination,
+    loadingOlder,
+    loadOlderMessages,
   } = useSessionMessages({
     projectId,
     sessionId,
@@ -1067,5 +1070,8 @@ export function useSession(
     slashCommands, // Available slash commands from init message
     sessionTools, // Available tools from init message
     mcpServers, // Available MCP servers from init message
+    pagination, // Compact-boundary pagination metadata
+    loadingOlder, // Whether older messages are being loaded
+    loadOlderMessages, // Load next chunk of older messages
   };
 }

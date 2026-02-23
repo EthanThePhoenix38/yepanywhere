@@ -23,6 +23,15 @@ import type {
   SessionSummary,
 } from "../types";
 
+/** Pagination metadata for compact-boundary-based session loading */
+export interface PaginationInfo {
+  hasOlderMessages: boolean;
+  totalMessageCount: number;
+  returnedMessageCount: number;
+  truncatedBeforeMessageId?: string;
+  totalCompactions: number;
+}
+
 /**
  * An item in the inbox representing a session that may need attention.
  */
@@ -345,14 +354,22 @@ export const api = {
     projectId: string,
     sessionId: string,
     afterMessageId?: string,
+    options?: { tailCompactions?: number; beforeMessageId?: string },
   ) => {
-    const params = afterMessageId ? `?afterMessageId=${afterMessageId}` : "";
+    const params = new URLSearchParams();
+    if (afterMessageId) params.set("afterMessageId", afterMessageId);
+    if (options?.tailCompactions !== undefined)
+      params.set("tailCompactions", String(options.tailCompactions));
+    if (options?.beforeMessageId)
+      params.set("beforeMessageId", options.beforeMessageId);
+    const qs = params.toString();
     return fetchJSON<{
       session: Session;
       messages: Message[];
       ownership: SessionStatus;
       pendingInputRequest?: InputRequest | null;
-    }>(`/projects/${projectId}/sessions/${sessionId}${params}`);
+      pagination?: PaginationInfo;
+    }>(`/projects/${projectId}/sessions/${sessionId}${qs ? `?${qs}` : ""}`);
   },
 
   /**

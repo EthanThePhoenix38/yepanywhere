@@ -137,6 +137,9 @@ function SessionPageContent({
     slashCommands,
     sessionTools,
     mcpServers,
+    pagination,
+    loadingOlder,
+    loadOlderMessages,
   } = useSession(
     projectId,
     sessionId,
@@ -1028,6 +1031,9 @@ function SessionPageContent({
                   }
                   markdownAugments={markdownAugments}
                   activeToolApproval={activeToolApproval}
+                  hasOlderMessages={pagination?.hasOlderMessages}
+                  loadingOlder={loadingOlder}
+                  onLoadOlderMessages={loadOlderMessages}
                 />
               </AgentContentProvider>
             </SessionMetadataProvider>

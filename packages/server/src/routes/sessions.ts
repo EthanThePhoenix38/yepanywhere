@@ -41,6 +41,10 @@ import { CodexSessionReader } from "../sessions/codex-reader.js";
 import { cloneClaudeSession } from "../sessions/fork.js";
 import { GeminiSessionReader } from "../sessions/gemini-reader.js";
 import { normalizeSession } from "../sessions/normalization.js";
+import {
+  type PaginationInfo,
+  sliceAtCompactBoundaries,
+} from "../sessions/pagination.js";
 import type { ISessionReader } from "../sessions/types.js";
 import type { ExternalSessionTracker } from "../supervisor/ExternalSessionTracker.js";
 import type { Process } from "../supervisor/Process.js";
@@ -697,11 +701,20 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
   });
 
   // GET /api/projects/:projectId/sessions/:sessionId - Get session detail
-  // Optional query param: ?afterMessageId=<id> for incremental fetching
+  // Optional query params:
+  //   ?afterMessageId=<id> - incremental forward-fetch (append new messages)
+  //   ?tailCompactions=<n> - return only last N compact boundaries worth of messages
+  //   ?beforeMessageId=<id> - cursor for loading older chunks (used with tailCompactions)
   routes.get("/projects/:projectId/sessions/:sessionId", async (c) => {
     const projectId = c.req.param("projectId");
     const sessionId = c.req.param("sessionId");
     const afterMessageId = c.req.query("afterMessageId");
+    const tailCompactionsParam = c.req.query("tailCompactions");
+    const beforeMessageId = c.req.query("beforeMessageId");
+    const tailCompactions =
+      tailCompactionsParam !== undefined
+        ? Number.parseInt(tailCompactionsParam, 10)
+        : undefined;
 
     // Validate projectId format at API boundary
     if (!isUrlProjectId(projectId)) {
@@ -790,7 +803,7 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
       }
     }
 
-    const session = loadedSession ? normalizeSession(loadedSession) : null;
+    let session = loadedSession ? normalizeSession(loadedSession) : null;
 
     // Determine the session ownership
     const ownership = process
@@ -867,6 +880,25 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
       ? deps.notificationService.hasUnread(sessionId, session.updatedAt)
       : undefined;
 
+    // Apply compact-boundary pagination if requested (BEFORE expensive augmentation)
+    // tailCompactions slices to last N compact boundaries; skip when afterMessageId is
+    // present since that's a different use case (incremental forward-fetch)
+    let paginationInfo: PaginationInfo | undefined;
+    if (
+      tailCompactions !== undefined &&
+      !Number.isNaN(tailCompactions) &&
+      tailCompactions > 0 &&
+      !afterMessageId
+    ) {
+      const sliced = sliceAtCompactBoundaries(
+        session.messages,
+        tailCompactions,
+        beforeMessageId,
+      );
+      session = { ...session, messages: sliced.messages };
+      paginationInfo = sliced.pagination;
+    }
+
     // Embed Edit augment data directly into tool_use inputs
     // This adds _structuredPatch and _diffHtml to the input
     await augmentEditInputs(session.messages);
@@ -898,6 +930,7 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
       messages: session.messages,
       ownership,
       pendingInputRequest,
+      ...(paginationInfo && { pagination: paginationInfo }),
     });
   });
 

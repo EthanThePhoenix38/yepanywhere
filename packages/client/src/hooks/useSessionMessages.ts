@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { api } from "../api/client";
+import { type PaginationInfo, api } from "../api/client";
 import {
   getMessageId,
   mergeJSONLMessages,
@@ -71,6 +71,12 @@ export interface UseSessionMessagesResult {
   fetchNewMessages: () => Promise<void>;
   /** Fetch session metadata only */
   fetchSessionMetadata: () => Promise<void>;
+  /** Pagination info from compact-boundary-based loading */
+  pagination: PaginationInfo | undefined;
+  /** Whether older messages are being loaded */
+  loadingOlder: boolean;
+  /** Load the next chunk of older messages */
+  loadOlderMessages: () => Promise<void>;
 }
 
 /**
@@ -95,6 +101,8 @@ export function useSessionMessages(
   );
   const [loading, setLoading] = useState(true);
   const [session, setSession] = useState<Session | null>(null);
+  const [pagination, setPagination] = useState<PaginationInfo | undefined>();
+  const [loadingOlder, setLoadingOlder] = useState(false);
 
   // Buffering: queue stream messages until initial load completes
   const streamBufferRef = useRef<
@@ -173,9 +181,10 @@ export function useSessionMessages(
     setAgentContent({});
 
     api
-      .getSession(projectId, sessionId)
+      .getSession(projectId, sessionId, undefined, { tailCompactions: 2 })
       .then((data) => {
         setSession(data.session);
+        setPagination(data.pagination);
         providerRef.current = data.session.provider;
 
         // Tag messages from JSONL as authoritative
@@ -332,6 +341,32 @@ export function useSessionMessages(
     }
   }, [projectId, sessionId]);
 
+  // Load older messages (previous chunk before the current truncation point)
+  const loadOlderMessages = useCallback(async () => {
+    if (!pagination?.hasOlderMessages || !pagination.truncatedBeforeMessageId) {
+      return;
+    }
+    setLoadingOlder(true);
+    try {
+      const data = await api.getSession(projectId, sessionId, undefined, {
+        tailCompactions: 2,
+        beforeMessageId: pagination.truncatedBeforeMessageId,
+      });
+      setMessages((prev) => {
+        const taggedOlder = data.messages.map((m) => ({
+          ...m,
+          _source: "jsonl" as const,
+        }));
+        return [...taggedOlder, ...prev];
+      });
+      setPagination(data.pagination);
+    } catch {
+      // Silent fail for loading older messages
+    } finally {
+      setLoadingOlder(false);
+    }
+  }, [projectId, sessionId, pagination]);
+
   // Fetch session metadata only
   const fetchSessionMetadata = useCallback(async () => {
     try {
@@ -363,5 +398,8 @@ export function useSessionMessages(
     setMessages,
     fetchNewMessages,
     fetchSessionMetadata,
+    pagination,
+    loadingOlder,
+    loadOlderMessages,
   };
 }
