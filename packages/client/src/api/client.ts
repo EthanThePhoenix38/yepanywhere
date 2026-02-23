@@ -880,6 +880,15 @@ export const api = {
       `/settings/remote-executors/${encodeURIComponent(host)}/test`,
       { method: "POST" },
     ),
+
+  // Sharing API
+  getSharingStatus: () => fetchJSON<{ configured: boolean }>("/sharing/status"),
+
+  shareSession: (html: string, title?: string) =>
+    fetchJSON<{ url: string }>("/sharing/upload", {
+      method: "POST",
+      body: JSON.stringify({ html, title }),
+    }),
 };
 
 /** Result of testing an SSH connection to a remote executor */

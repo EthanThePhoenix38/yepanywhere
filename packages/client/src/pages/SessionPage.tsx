@@ -174,6 +174,15 @@ function SessionPageContent({
   }, []);
   const { showToast } = useToastContext();
 
+  // Sharing: check if configured (hidden unless sharing.json exists on server)
+  const [sharingConfigured, setSharingConfigured] = useState(false);
+  useEffect(() => {
+    api
+      .getSharingStatus()
+      .then((res) => setSharingConfigured(res.configured))
+      .catch(() => {});
+  }, []);
+
   // Connection for uploads (uses WebSocket when enabled)
   const connection = useConnection();
 
@@ -794,6 +803,21 @@ function SessionPageContent({
     }
   };
 
+  const handleShare = useCallback(async () => {
+    try {
+      const { snapshotSession } = await import(
+        "../lib/sharing/snapshotSession"
+      );
+      const html = snapshotSession(displayTitle);
+      const result = await api.shareSession(html, displayTitle);
+      await navigator.clipboard.writeText(result.url);
+      showToast("Link copied to clipboard", "success");
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Share failed";
+      showToast(msg, "error");
+    }
+  }, [displayTitle, showToast]);
+
   if (error) return <div className="error">Error: {error.message}</div>;
 
   // Sidebar icon component
@@ -942,6 +966,8 @@ function SessionPageContent({
                       );
                     }}
                     onTerminate={handleTerminate}
+                    sharingConfigured={sharingConfigured}
+                    onShare={handleShare}
                     useFixedPositioning
                     useEllipsisIcon
                   />

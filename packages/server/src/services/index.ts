@@ -36,3 +36,9 @@ export {
   type ServerSettingsServiceOptions,
   DEFAULT_SERVER_SETTINGS,
 } from "./ServerSettingsService.js";
+
+export {
+  SharingService,
+  type SharingConfig,
+  type SharingServiceOptions,
+} from "./SharingService.js";

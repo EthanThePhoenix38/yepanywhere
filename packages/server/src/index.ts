@@ -54,6 +54,7 @@ import {
   NetworkBindingService,
   RelayClientService,
   ServerSettingsService,
+  SharingService,
 } from "./services/index.js";
 import { ClaudeSessionReader } from "./sessions/reader.js";
 import { UploadManager } from "./uploads/manager.js";
@@ -340,6 +341,9 @@ const connectedBrowsersService = new ConnectedBrowsersService(eventBus);
 const serverSettingsService = new ServerSettingsService({
   dataDir: config.dataDir,
 });
+const sharingService = new SharingService({
+  dataDir: config.dataDir,
+});
 
 async function startServer() {
   let tlsOptions: { key: Buffer; cert: Buffer } | undefined;
@@ -371,6 +375,7 @@ async function startServer() {
   await authService.initialize();
   await remoteAccessService.initialize();
   await serverSettingsService.initialize();
+  await sharingService.initialize();
   await remoteSessionService.setDiskPersistenceEnabled(
     serverSettingsService.getSetting("persistRemoteSessionsToDisk"),
   );
@@ -462,6 +467,7 @@ async function startServer() {
     connectedBrowsers: connectedBrowsersService,
     browserProfileService,
     serverSettingsService,
+    sharingService,
   });
 
   const focusedSessionWatchManager = new FocusedSessionWatchManager({

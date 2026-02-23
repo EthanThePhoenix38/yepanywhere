@@ -54,6 +54,7 @@ import { createServerAdminRoutes } from "./routes/server-admin.js";
 import { createServerInfoRoutes } from "./routes/server-info.js";
 import { createSessionsRoutes } from "./routes/sessions.js";
 import { createSettingsRoutes } from "./routes/settings.js";
+import { createSharingRoutes } from "./routes/sharing.js";
 
 import { type UploadDeps, createUploadRoutes } from "./routes/upload.js";
 import { version } from "./routes/version.js";
@@ -67,6 +68,7 @@ import type { ConnectedBrowsersService } from "./services/ConnectedBrowsersServi
 import type { NetworkBindingService } from "./services/NetworkBindingService.js";
 import type { RelayClientService } from "./services/RelayClientService.js";
 import type { ServerSettingsService } from "./services/ServerSettingsService.js";
+import type { SharingService } from "./services/SharingService.js";
 import { CodexSessionReader } from "./sessions/codex-reader.js";
 import { GeminiSessionReader } from "./sessions/gemini-reader.js";
 import { OpenCodeSessionReader } from "./sessions/opencode-reader.js";
@@ -158,6 +160,8 @@ export interface AppOptions {
   browserProfileService?: BrowserProfileService;
   /** ServerSettingsService for server-wide settings */
   serverSettingsService?: ServerSettingsService;
+  /** SharingService for session sharing */
+  sharingService?: SharingService;
 }
 
 export interface AppResult {
@@ -552,6 +556,14 @@ export function createApp(options: AppOptions): AppResult {
               options.remoteSessionService?.setDiskPersistenceEnabled(enabled)
           : undefined,
       }),
+    );
+  }
+
+  // Sharing routes (session snapshot sharing via Worker)
+  if (options.sharingService) {
+    app.route(
+      "/api/sharing",
+      createSharingRoutes({ sharingService: options.sharingService }),
     );
   }
 
