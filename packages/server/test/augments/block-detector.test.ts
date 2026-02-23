@@ -762,9 +762,7 @@ code
 
     it("handles three loose numbered items", () => {
       const detector = new BlockDetector();
-      const blocks = detector.feed(
-        "1. A\n\n2. B\n\n3. C\n\nDone.\n\n",
-      );
+      const blocks = detector.feed("1. A\n\n2. B\n\n3. C\n\nDone.\n\n");
 
       expect(blocks).toHaveLength(2);
       expect(blocks[0]).toMatchObject({
@@ -807,9 +805,7 @@ code
 
     it("loose list followed by heading", () => {
       const detector = new BlockDetector();
-      const blocks = detector.feed(
-        "1. First\n\n2. Second\n\n# Heading\n",
-      );
+      const blocks = detector.feed("1. First\n\n2. Second\n\n# Heading\n");
 
       expect(blocks).toHaveLength(2);
       expect(blocks[0]).toMatchObject({
@@ -847,9 +843,18 @@ code
       }
       charBlocks.push(...charDetector.flush());
       expect(charBlocks).toHaveLength(3);
-      expect(charBlocks[0]).toMatchObject({ type: "list", content: "1. First" });
-      expect(charBlocks[1]).toMatchObject({ type: "list", content: "2. Second" });
-      expect(charBlocks[2]).toMatchObject({ type: "paragraph", content: "Paragraph" });
+      expect(charBlocks[0]).toMatchObject({
+        type: "list",
+        content: "1. First",
+      });
+      expect(charBlocks[1]).toMatchObject({
+        type: "list",
+        content: "2. Second",
+      });
+      expect(charBlocks[2]).toMatchObject({
+        type: "paragraph",
+        content: "Paragraph",
+      });
     });
 
     it("handles long multi-paragraph list items", () => {

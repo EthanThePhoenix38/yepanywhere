@@ -406,8 +406,7 @@ export class BlockDetector {
     if (this.state.kind !== "list") return null;
 
     const { listType, startOffset } = this.state;
-    const listItemPattern =
-      listType === "numbered" ? /^\d+\.\s/ : /^[-*]\s/;
+    const listItemPattern = listType === "numbered" ? /^\d+\.\s/ : /^[-*]\s/;
 
     // Scan for double-newline sequences that might end the list.
     // A blank line between list items makes it a "loose list" — still one list.
