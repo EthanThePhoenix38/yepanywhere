@@ -41,6 +41,7 @@ import { ProjectsPage } from "./pages/ProjectsPage";
 import { RelayConnectionGate } from "./pages/RelayConnectionGate";
 import { RelayLoginPage } from "./pages/RelayLoginPage";
 import { SessionPage } from "./pages/SessionPage";
+import { GitStatusPage } from "./pages/GitStatusPage";
 import { SettingsLayout } from "./pages/settings";
 import "./styles/index.css";
 
@@ -61,12 +62,13 @@ const APP_ROUTES = (
   <>
     <Route index element={<Navigate to="projects" replace />} />
 
-    {/* Main pages with NavigationLayout for persistent sidebar */}
+    {/* IMPORTANT: Keep routes in sync with main.tsx — adding a route here? Add it there too! */}
     <Route element={<NavigationLayout />}>
       <Route path="projects" element={<ProjectsPage />} />
       <Route path="sessions" element={<GlobalSessionsPage />} />
       <Route path="agents" element={<AgentsPage />} />
       <Route path="inbox" element={<InboxPage />} />
+      <Route path="git-status" element={<GitStatusPage />} />
       <Route path="settings" element={<SettingsLayout />} />
       <Route path="settings/:category" element={<SettingsLayout />} />
       <Route path="new-session" element={<NewSessionPage />} />
@@ -80,8 +82,8 @@ const APP_ROUTES = (
     <Route path="projects/:projectId/file" element={<FilePage />} />
     <Route path="activity" element={<ActivityPage />} />
 
-    {/* Catch-all redirect to projects */}
-    <Route path="*" element={<Navigate to="projects" replace />} />
+    {/* Catch-all redirect to projects (must use ../ to escape splat route's relative resolution) */}
+    <Route path="*" element={<Navigate to="../projects" replace />} />
   </>
 );
 

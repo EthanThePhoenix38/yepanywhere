@@ -48,7 +48,7 @@ createRoot(rootElement).render(
             <Route path="/" element={<Navigate to="/projects" replace />} />
             {/* Login page (no layout wrapper) */}
             <Route path="/login" element={<LoginPage />} />
-            {/* All pages share NavigationLayout for persistent sidebar */}
+            {/* IMPORTANT: Keep routes in sync with remote-main.tsx — adding a route here? Add it there too! */}
             <Route element={<NavigationLayout />}>
               <Route path="/projects" element={<ProjectsPage />} />
               <Route path="/sessions" element={<GlobalSessionsPage />} />
