@@ -132,10 +132,15 @@ export interface VersionInfo {
   updateAvailable: boolean;
   /** Session resume protocol version supported by this server. */
   resumeProtocolVersion: number;
+  /** Feature capabilities supported by this server. Used by clients to show/hide UI. */
+  capabilities: string[];
 }
 
 /** Resume protocol version with nonce challenge + proof binding. */
 const RESUME_PROTOCOL_VERSION = 2;
+
+/** Feature capabilities advertised to clients for UI gating. */
+const SERVER_CAPABILITIES = ["git-status"];
 
 export const version = new Hono();
 
@@ -153,6 +158,7 @@ version.get("/", async (c) => {
     latest,
     updateAvailable,
     resumeProtocolVersion: RESUME_PROTOCOL_VERSION,
+    capabilities: SERVER_CAPABILITIES,
   };
 
   return c.json(info);

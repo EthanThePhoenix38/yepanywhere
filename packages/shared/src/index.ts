@@ -41,6 +41,8 @@ export {
   DEFAULT_PROVIDER,
 } from "./types.js";
 
+export type { GitStatusInfo, GitFileChange } from "./git-status.js";
+
 export {
   orderByParentChain,
   needsReorder,

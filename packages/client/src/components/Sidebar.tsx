@@ -6,6 +6,7 @@ import { useGlobalSessions } from "../hooks/useGlobalSessions";
 import { useNeedsAttentionBadge } from "../hooks/useNeedsAttentionBadge";
 import { useRecentProjects } from "../hooks/useRecentProjects";
 import { useRemoteBasePath } from "../hooks/useRemoteBasePath";
+import { useVersion } from "../hooks/useVersion";
 import { getSessionDisplayTitle, toUrlProjectId } from "../utils";
 import { AgentsNavItem } from "./AgentsNavItem";
 import { SessionListItem } from "./SessionListItem";
@@ -77,6 +78,10 @@ export function Sidebar({
     });
 
   const sessionsLoading = globalLoading || starredLoading;
+
+  // Server capabilities for feature gating
+  const { version: versionInfo } = useVersion();
+  const capabilities = versionInfo?.capabilities ?? [];
 
   // Global inbox count
   const inboxCount = useNeedsAttentionBadge();
@@ -359,6 +364,15 @@ export function Sidebar({
               onClick={onNavigate}
               basePath={basePath}
             />
+            {capabilities.includes("git-status") && (
+              <SidebarNavItem
+                to="/git-status"
+                icon={SidebarIcons.sourceControl}
+                label="Source Control"
+                onClick={onNavigate}
+                basePath={basePath}
+              />
+            )}
             <AgentsNavItem onClick={onNavigate} basePath={basePath} />
             <SidebarNavItem
               to="/settings"

@@ -41,6 +41,7 @@ import { createConnectionsRoutes } from "./routes/connections.js";
 import { createDebugStreamingRoutes } from "./routes/debug-streaming.js";
 import { createDevRoutes } from "./routes/dev.js";
 import { createFilesRoutes } from "./routes/files.js";
+import { createGitStatusRoutes } from "./routes/git-status.js";
 import { createGlobalSessionsRoutes } from "./routes/global-sessions.js";
 import { health } from "./routes/health.js";
 import { createInboxRoutes } from "./routes/inbox.js";
@@ -527,6 +528,9 @@ export function createApp(options: AppOptions): AppResult {
 
   // Files routes (file browser)
   app.route("/api/projects", createFilesRoutes({ scanner }));
+
+  // Git status routes
+  app.route("/api/projects", createGitStatusRoutes({ scanner }));
 
   // Recents routes (recently visited sessions)
   if (options.recentsService) {

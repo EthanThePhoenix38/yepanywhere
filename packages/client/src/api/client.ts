@@ -4,6 +4,7 @@ import type {
   ConnectionsResponse,
   EnrichedRecentEntry,
   FileContentResponse,
+  GitStatusInfo,
   PendingInputType,
   ProviderInfo,
   ProviderName,
@@ -252,6 +253,8 @@ export interface VersionInfo {
   updateAvailable: boolean;
   /** Session resume protocol version supported by server (undefined on older servers). */
   resumeProtocolVersion?: number;
+  /** Feature capabilities supported by the server. Undefined on older servers. */
+  capabilities?: string[];
 }
 
 export interface ServerInfo {
@@ -729,6 +732,10 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ filePath, oldString, newString, originalFile }),
     }),
+
+  // Git status API
+  getGitStatus: (projectId: string) =>
+    fetchJSON<GitStatusInfo>(`/projects/${projectId}/git`),
 
   // Inbox API
   getInbox: (projectId?: string) =>

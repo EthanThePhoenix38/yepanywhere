@@ -13,6 +13,7 @@ import { NavigationLayout } from "./layouts";
 import { ActivityPage } from "./pages/ActivityPage";
 import { AgentsPage } from "./pages/AgentsPage";
 import { FilePage } from "./pages/FilePage";
+import { GitStatusPage } from "./pages/GitStatusPage";
 import { GlobalSessionsPage } from "./pages/GlobalSessionsPage";
 import { InboxPage } from "./pages/InboxPage";
 import { LoginPage } from "./pages/LoginPage";
@@ -60,6 +61,7 @@ createRoot(rootElement).render(
                 path="/projects/:projectId"
                 element={<Navigate to="/sessions" replace />}
               />
+              <Route path="/git-status" element={<GitStatusPage />} />
               <Route path="/new-session" element={<NewSessionPage />} />
               <Route
                 path="/projects/:projectId/sessions/:sessionId"
