@@ -394,6 +394,75 @@ describe("buildDag with compaction", () => {
     expect(result.tip?.uuid).toBe("b");
   });
 
+  it("prefers post-compaction branch over longer pre-compaction branch when logicalParentUuid is broken", () => {
+    // Real-world scenario: long pre-compaction history, compact boundary with
+    // unresolvable logicalParentUuid, shorter post-compaction continuation.
+    // The post-compaction branch should win because its tip is more recent.
+    const t = (m: number) => `2025-01-01T00:${String(m).padStart(2, "0")}:00Z`;
+    const messages: RawSessionMessage[] = [
+      { type: "user", uuid: "pre-1", parentUuid: null, timestamp: t(0) },
+      {
+        type: "assistant",
+        uuid: "pre-2",
+        parentUuid: "pre-1",
+        timestamp: t(1),
+      },
+      { type: "user", uuid: "pre-3", parentUuid: "pre-2", timestamp: t(2) },
+      {
+        type: "assistant",
+        uuid: "pre-4",
+        parentUuid: "pre-3",
+        timestamp: t(3),
+      },
+      { type: "user", uuid: "pre-5", parentUuid: "pre-4", timestamp: t(4) },
+      {
+        type: "assistant",
+        uuid: "pre-6",
+        parentUuid: "pre-5",
+        timestamp: t(5),
+      },
+      { type: "user", uuid: "pre-7", parentUuid: "pre-6", timestamp: t(6) },
+      {
+        type: "assistant",
+        uuid: "pre-8",
+        parentUuid: "pre-7",
+        timestamp: t(7),
+      },
+      // Compact boundary - logicalParentUuid doesn't exist in file
+      {
+        type: "system",
+        subtype: "compact_boundary",
+        uuid: "compact-1",
+        parentUuid: null,
+        logicalParentUuid: "nonexistent",
+        timestamp: t(8),
+      },
+      // Short post-compaction continuation (more recent timestamps)
+      {
+        type: "user",
+        uuid: "post-1",
+        parentUuid: "compact-1",
+        timestamp: t(9),
+      },
+      {
+        type: "assistant",
+        uuid: "post-2",
+        parentUuid: "post-1",
+        timestamp: t(10),
+      },
+    ];
+
+    const result = buildDag(messages);
+
+    // Post-compaction branch should be selected (not the longer pre-compaction branch)
+    expect(result.tip?.uuid).toBe("post-2");
+    expect(result.activeBranch.map((n) => n.uuid)).toEqual([
+      "compact-1",
+      "post-1",
+      "post-2",
+    ]);
+  });
+
   it("includes compact_boundary in activeBranchUuids", () => {
     const messages: RawSessionMessage[] = [
       { type: "user", uuid: "a", parentUuid: null },

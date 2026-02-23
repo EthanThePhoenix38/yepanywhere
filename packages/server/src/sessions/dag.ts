@@ -87,6 +87,13 @@ function walkBranchLength(
   return conversationCount;
 }
 
+/** Extract ISO timestamp string from a DagNode, or empty string if missing */
+function getTipTimestamp(node: DagNode): string {
+  return "timestamp" in node.raw && typeof node.raw.timestamp === "string"
+    ? node.raw.timestamp
+    : "";
+}
+
 /**
  * Build a DAG from raw JSONL messages and find the active conversation branch.
  *
@@ -142,11 +149,17 @@ export function buildDag(messages: ClaudeSessionEntry[]): DagResult {
     }
   }
 
-  // Select the "active" tip: longest branch wins, tiebreaker is latest lineIndex
-  // This ensures we show the most complete conversation, not just the most recent append
+  // Select the "active" tip: most recent timestamp wins, tiebreaker is branch length.
+  // Timestamp-first ensures post-compaction branches beat stale pre-compaction ones
+  // even when compacted-away history makes the old branch appear longer.
   const selectedTip =
     tipsWithLength.length > 0
       ? tipsWithLength.reduce((best, current) => {
+          const bestTs = getTipTimestamp(best.node);
+          const currentTs = getTipTimestamp(current.node);
+          if (currentTs > bestTs) return current;
+          if (currentTs < bestTs) return best;
+          // Same timestamp: prefer longer branch, then latest lineIndex
           if (current.length > best.length) return current;
           if (
             current.length === best.length &&
