@@ -3,10 +3,13 @@ import { copyFile, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import type { UrlProjectId } from "@yep-anywhere/shared";
+import type { ClaudeSessionEntry, UrlProjectId } from "@yep-anywhere/shared";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { normalizeSession } from "../../src/sessions/normalization.js";
-import { SessionReader } from "../../src/sessions/reader.js";
+import {
+  SessionReader,
+  computeCompactionOverhead,
+} from "../../src/sessions/reader.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const fixturesDir = join(__dirname, "..", "fixtures", "agents");
@@ -728,6 +731,236 @@ describe("SessionReader", () => {
         toolUseId: "tool-use-later",
         agentId: "later",
       });
+    });
+  });
+
+  describe("context usage with compaction", () => {
+    /** Helper to create an assistant message with usage data */
+    function assistantMsg(
+      uuid: string,
+      parentUuid: string | null,
+      inputTokens: number,
+      cacheRead = 0,
+      cacheCreate = 0,
+    ) {
+      return JSON.stringify({
+        type: "assistant",
+        uuid,
+        parentUuid,
+        message: {
+          content: [{ type: "text", text: "response" }],
+          model: "claude-opus-4-5-20251101",
+          usage: {
+            input_tokens: inputTokens,
+            cache_read_input_tokens: cacheRead,
+            cache_creation_input_tokens: cacheCreate,
+            output_tokens: 100,
+          },
+        },
+        timestamp: new Date().toISOString(),
+      });
+    }
+
+    /** Helper to create a user message */
+    function userMsg(uuid: string, parentUuid: string | null) {
+      return JSON.stringify({
+        type: "user",
+        uuid,
+        parentUuid,
+        message: { content: "question" },
+        timestamp: new Date().toISOString(),
+      });
+    }
+
+    /** Helper to create a compact_boundary entry */
+    function compactBoundary(
+      uuid: string,
+      logicalParentUuid: string,
+      preTokens: number,
+    ) {
+      return JSON.stringify({
+        type: "system",
+        subtype: "compact_boundary",
+        uuid,
+        parentUuid: null,
+        logicalParentUuid,
+        content: "Conversation compacted",
+        compactMetadata: { trigger: "auto", preTokens },
+        timestamp: new Date().toISOString(),
+      });
+    }
+
+    /** Helper to create a compact summary user message */
+    function compactSummary(uuid: string, parentUuid: string) {
+      return JSON.stringify({
+        type: "user",
+        uuid,
+        parentUuid,
+        isCompactSummary: true,
+        isVisibleInTranscriptOnly: true,
+        message: { content: "Summary of previous conversation..." },
+        timestamp: new Date().toISOString(),
+      });
+    }
+
+    it("reports correct percentage without compaction", async () => {
+      const sessionId = "ctx-no-compact";
+      const jsonl = [
+        userMsg("u1", null),
+        // 80K tokens out of 200K = 40%
+        assistantMsg("a1", "u1", 1, 60000, 20000),
+      ].join("\n");
+      await writeFile(join(testDir, `${sessionId}.jsonl`), `${jsonl}\n`);
+
+      const summary = await reader.getSessionSummary(
+        sessionId,
+        "test-project" as UrlProjectId,
+      );
+      expect(summary?.contextUsage?.percentage).toBe(40);
+      expect(summary?.contextUsage?.inputTokens).toBe(80001);
+    });
+
+    it("adjusts percentage after single compaction using preTokens overhead", async () => {
+      const sessionId = "ctx-single-compact";
+      // Pre-compaction: assistant at 160K tokens
+      // Compaction triggers at preTokens=167K (overhead = 167K - 160K = 7K)
+      // Post-compaction: assistant at 50K tokens
+      // Adjusted: 50K + 7K = 57K → 29%
+      const jsonl = [
+        userMsg("u1", null),
+        assistantMsg("a1", "u1", 1, 150000, 10000), // 160001 tokens
+        compactBoundary("cb1", "a1", 167000),
+        compactSummary("summary1", "cb1"),
+        assistantMsg("a2", "summary1", 1, 40000, 10000), // 50001 tokens raw
+      ].join("\n");
+      await writeFile(join(testDir, `${sessionId}.jsonl`), `${jsonl}\n`);
+
+      const summary = await reader.getSessionSummary(
+        sessionId,
+        "test-project" as UrlProjectId,
+      );
+      // overhead = 167000 - 160001 = 6999
+      // adjusted = 50001 + 6999 = 57000
+      // percentage = round(57000 / 200000 * 100) = 28%
+      expect(summary?.contextUsage?.inputTokens).toBe(57000);
+      expect(summary?.contextUsage?.percentage).toBe(28);
+    });
+
+    it("adjusts percentage after multiple compactions", async () => {
+      const sessionId = "ctx-multi-compact";
+      // First compaction: assistant at 160K, preTokens=167K (overhead=7K)
+      // After first compaction: assistant grows to 89K
+      // Second compaction: preTokens=168K (new overhead = 168K - 89K = 79K)
+      // After second compaction: assistant at 50K
+      // Adjusted: 50K + 79K = 129K → 65%
+      const t = () => new Date().toISOString();
+      const jsonl = [
+        userMsg("u1", null),
+        assistantMsg("a1", "u1", 1, 150000, 10000), // 160001
+        compactBoundary("cb1", "a1", 167000),
+        compactSummary("s1", "cb1"),
+        assistantMsg("a2", "s1", 1, 79000, 10000), // 89001 raw
+        userMsg("u2", "a2"),
+        assistantMsg("a3", "u2", 1, 79000, 10000), // 89001
+        compactBoundary("cb2", "a3", 168000),
+        compactSummary("s2", "cb2"),
+        assistantMsg("a4", "s2", 1, 40000, 10000), // 50001 raw
+      ].join("\n");
+      await writeFile(join(testDir, `${sessionId}.jsonl`), `${jsonl}\n`);
+
+      const summary = await reader.getSessionSummary(
+        sessionId,
+        "test-project" as UrlProjectId,
+      );
+      // Uses LAST compaction: overhead = 168000 - 89001 = 78999
+      // adjusted = 50001 + 78999 = 129000
+      // percentage = round(129000 / 200000 * 100) = 65%
+      expect(summary?.contextUsage?.inputTokens).toBe(129000);
+      expect(summary?.contextUsage?.percentage).toBe(65);
+    });
+  });
+
+  describe("computeCompactionOverhead", () => {
+    function makeAssistant(
+      inputTokens: number,
+      cacheRead = 0,
+      cacheCreate = 0,
+    ): ClaudeSessionEntry {
+      return {
+        type: "assistant",
+        message: {
+          usage: {
+            input_tokens: inputTokens,
+            cache_read_input_tokens: cacheRead,
+            cache_creation_input_tokens: cacheCreate,
+          },
+        },
+      } as ClaudeSessionEntry;
+    }
+
+    function makeCompactBoundary(preTokens: number): ClaudeSessionEntry {
+      return {
+        type: "system",
+        subtype: "compact_boundary",
+        compactMetadata: { trigger: "auto", preTokens },
+      } as ClaudeSessionEntry;
+    }
+
+    it("returns 0 with no compaction", () => {
+      const messages: ClaudeSessionEntry[] = [
+        { type: "user" } as ClaudeSessionEntry,
+        makeAssistant(1, 50000, 10000),
+      ];
+      expect(computeCompactionOverhead(messages)).toBe(0);
+    });
+
+    it("computes overhead from last compaction", () => {
+      const messages = [
+        makeAssistant(1, 150000, 10000), // 160001 total
+        makeCompactBoundary(167000), // preTokens=167000
+        { type: "user" } as ClaudeSessionEntry,
+        makeAssistant(1, 40000, 10000), // post-compaction
+      ];
+      // overhead = 167000 - 160001 = 6999
+      expect(computeCompactionOverhead(messages)).toBe(6999);
+    });
+
+    it("uses only the LAST compaction boundary", () => {
+      const messages = [
+        makeAssistant(1, 150000, 10000), // 160001
+        makeCompactBoundary(167000), // first compaction
+        makeAssistant(1, 79000, 10000), // 89001 post-first
+        makeCompactBoundary(168000), // second compaction
+        makeAssistant(1, 40000, 10000), // post-second
+      ];
+      // Uses last compaction: overhead = 168000 - 89001 = 78999
+      expect(computeCompactionOverhead(messages)).toBe(78999);
+    });
+
+    it("returns 0 when compact_boundary has no compactMetadata", () => {
+      const messages = [
+        makeAssistant(1, 150000, 10000),
+        { type: "system", subtype: "compact_boundary" } as ClaudeSessionEntry, // no metadata
+        makeAssistant(1, 40000, 10000),
+      ];
+      expect(computeCompactionOverhead(messages)).toBe(0);
+    });
+
+    it("returns 0 when no assistant before compaction", () => {
+      const messages = [
+        makeCompactBoundary(167000),
+        makeAssistant(1, 40000, 10000),
+      ];
+      expect(computeCompactionOverhead(messages)).toBe(0);
+    });
+
+    it("clamps negative overhead to 0", () => {
+      const messages = [
+        makeAssistant(1, 170000, 10000), // 180001 > preTokens
+        makeCompactBoundary(167000),
+        makeAssistant(1, 40000, 10000),
+      ];
+      expect(computeCompactionOverhead(messages)).toBe(0);
     });
   });
 });

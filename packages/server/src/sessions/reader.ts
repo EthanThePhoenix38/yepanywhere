@@ -26,6 +26,7 @@ export type { GetSessionOptions, ISessionReader } from "./types.js";
 import {
   type ClaudeSessionEntry,
   getMessageContent,
+  isCompactBoundary,
   isConversationEntry,
 } from "@yep-anywhere/shared";
 import { buildDag, findOrphanedToolUses } from "./dag.js";
@@ -58,6 +59,85 @@ export interface AgentSession {
 export interface AgentMapping {
   toolUseId: string;
   agentId: string;
+}
+
+type UsageFields = {
+  input_tokens?: number;
+  cache_read_input_tokens?: number;
+  cache_creation_input_tokens?: number;
+};
+
+/**
+ * Get the total input tokens from a usage object.
+ * Total = fresh input + cached reads + cache creation.
+ */
+function getTotalInputTokens(usage: UsageFields): number {
+  return (
+    (usage.input_tokens ?? 0) +
+    (usage.cache_read_input_tokens ?? 0) +
+    (usage.cache_creation_input_tokens ?? 0)
+  );
+}
+
+/**
+ * Compute the token overhead hidden from API-reported usage after compaction.
+ *
+ * When the Claude SDK compacts context, it writes a compact_boundary entry with
+ * compactMetadata.preTokens — the actual context window fill level at compaction time.
+ * However, the Anthropic API's usage.input_tokens on subsequent assistant messages only
+ * reports the tokens actually sent (summary + new messages), which is much lower.
+ * The difference is "overhead" — system prompt, tool definitions, and other context
+ * the SDK tracks but the API doesn't include in usage.
+ *
+ * For sessions with compaction, we compute:
+ *   overhead = preTokens - lastPreCompactionAssistantTokens
+ *
+ * This overhead is then added to post-compaction usage to get accurate context fill.
+ *
+ * @param messages - All messages on the active branch (not just user/assistant)
+ * @returns Token overhead to add to API-reported input_tokens (0 if no compaction)
+ */
+export function computeCompactionOverhead(
+  messages: ClaudeSessionEntry[],
+): number {
+  // Find the last compact_boundary with compactMetadata
+  let lastCompactIdx = -1;
+  let preTokens = 0;
+
+  for (let i = messages.length - 1; i >= 0; i--) {
+    const msg = messages[i];
+    if (msg && isCompactBoundary(msg)) {
+      const metadata = (msg as { compactMetadata?: { preTokens?: number } })
+        .compactMetadata;
+      if (metadata?.preTokens) {
+        lastCompactIdx = i;
+        preTokens = metadata.preTokens;
+        break;
+      }
+    }
+  }
+
+  if (lastCompactIdx === -1) {
+    return 0; // No compaction, no overhead
+  }
+
+  // Find the last assistant message BEFORE the compaction boundary with non-zero usage
+  for (let i = lastCompactIdx - 1; i >= 0; i--) {
+    const msg = messages[i];
+    if (msg?.type === "assistant") {
+      const usage = (msg as { message?: { usage?: UsageFields } }).message
+        ?.usage;
+      if (usage) {
+        const lastPreCompactionTokens = getTotalInputTokens(usage);
+        if (lastPreCompactionTokens > 0) {
+          const overhead = preTokens - lastPreCompactionTokens;
+          return overhead > 0 ? overhead : 0;
+        }
+      }
+    }
+  }
+
+  return 0; // No pre-compaction assistant message found
 }
 
 /**
@@ -181,7 +261,7 @@ export class ClaudeSessionReader implements ISessionReader {
       const fullTitle = firstUserMessage?.trim() || null;
       const model = this.extractModel(conversationMessages);
       const contextUsage = this.extractContextUsage(
-        conversationMessages,
+        activeBranch.map((node) => node.raw),
         model,
       );
 
@@ -449,7 +529,12 @@ export class ClaudeSessionReader implements ISessionReader {
    * Extract context usage from the last assistant message.
    * Usage data is stored in message.usage with input_tokens, cache_read_input_tokens, etc.
    *
-   * @param messages - Conversation messages to search
+   * After compaction, the API's input_tokens only reflects tokens sent in the compacted
+   * request (summary + new messages), which is much less than the actual context window
+   * fill level. We use compactMetadata.preTokens from compact_boundary entries to compute
+   * the hidden overhead (system prompt, tools, etc.) and add it to post-compaction usage.
+   *
+   * @param messages - All active branch messages (including system entries for compaction detection)
    * @param model - Model ID for determining context window size
    */
   private extractContextUsage(
@@ -457,6 +542,12 @@ export class ClaudeSessionReader implements ISessionReader {
     model: string | undefined,
   ): ContextUsage | undefined {
     const contextWindowSize = getModelContextWindow(model);
+
+    // Compute token overhead from compaction metadata.
+    // After compaction, the API reports fewer input_tokens because old messages are
+    // compressed into a summary. But the SDK's actual context window fill is higher.
+    // compactMetadata.preTokens tells us the true fill level at compaction time.
+    const overhead = computeCompactionOverhead(messages);
 
     // Find the last assistant message (iterate backwards)
     for (let i = messages.length - 1; i >= 0; i--) {
@@ -473,15 +564,18 @@ export class ClaudeSessionReader implements ISessionReader {
 
         if (usage) {
           // Total input = fresh tokens + cached tokens + new cache creation
-          const inputTokens =
+          const rawInputTokens =
             (usage.input_tokens ?? 0) +
             (usage.cache_read_input_tokens ?? 0) +
             (usage.cache_creation_input_tokens ?? 0);
 
           // Skip messages with zero input tokens (incomplete streaming messages)
-          if (inputTokens === 0) {
+          if (rawInputTokens === 0) {
             continue;
           }
+
+          // Apply overhead correction for post-compaction messages
+          const inputTokens = rawInputTokens + overhead;
 
           const percentage = Math.round(
             (inputTokens / contextWindowSize) * 100,
