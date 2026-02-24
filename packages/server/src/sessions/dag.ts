@@ -81,10 +81,41 @@ function walkBranchLength(
       nextUuid = logicalParent;
     }
 
-    currentUuid = nextUuid;
+    // Fallback: if logicalParentUuid doesn't exist in this file, find previous node
+    if (nextUuid && !nodeMap.has(nextUuid) && logicalParent) {
+      const fallback = findFallbackParentByLineIndex(
+        node.lineIndex,
+        nodeMap,
+        visited,
+      );
+      currentUuid = fallback?.uuid ?? null;
+    } else {
+      currentUuid = nextUuid;
+    }
   }
 
   return conversationCount;
+}
+
+/**
+ * Find the node with the highest lineIndex below the given lineIndex.
+ * Used as fallback when a compact_boundary's logicalParentUuid doesn't exist
+ * in this session (e.g., references a message from a continued/parent session).
+ */
+function findFallbackParentByLineIndex(
+  beforeLineIndex: number,
+  nodeMap: Map<string, DagNode>,
+  excludeUuids: Set<string>,
+): DagNode | null {
+  let best: DagNode | null = null;
+  for (const node of nodeMap.values()) {
+    if (node.lineIndex >= beforeLineIndex) continue;
+    if (excludeUuids.has(node.uuid)) continue;
+    if (!best || node.lineIndex > best.lineIndex) {
+      best = node;
+    }
+  }
+  return best;
 }
 
 /** Extract ISO timestamp string from a DagNode, or empty string if missing */
@@ -205,7 +236,20 @@ export function buildDag(messages: ClaudeSessionEntry[]): DagResult {
       nextUuid = logicalParent;
     }
 
-    current = nextUuid ? (nodeMap.get(nextUuid) ?? null) : null;
+    let nextNode = nextUuid ? (nodeMap.get(nextUuid) ?? null) : null;
+
+    // Fallback: compact_boundary's logicalParentUuid references a message not in
+    // this file (e.g., from a continued/parent session). Find the most recent
+    // node before this boundary in file order to bridge the gap.
+    if (!nextNode && logicalParent && !nodeMap.has(logicalParent)) {
+      nextNode = findFallbackParentByLineIndex(
+        current.lineIndex,
+        nodeMap,
+        visited,
+      );
+    }
+
+    current = nextNode;
   }
 
   return {

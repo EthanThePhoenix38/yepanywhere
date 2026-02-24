@@ -373,7 +373,7 @@ describe("buildDag with compaction", () => {
     expect(result.tip?.uuid).toBe("b");
   });
 
-  it("handles compact_boundary with broken logicalParentUuid", () => {
+  it("bridges across compact_boundary with broken logicalParentUuid using file-order fallback", () => {
     const messages: RawSessionMessage[] = [
       { type: "user", uuid: "a", parentUuid: null },
       // Compact boundary pointing to non-existent message
@@ -389,15 +389,19 @@ describe("buildDag with compaction", () => {
 
     const result = buildDag(messages);
 
-    // Should stop at compact boundary since logicalParentUuid doesn't resolve
-    expect(result.activeBranch.map((n) => n.uuid)).toEqual(["compact-1", "b"]);
+    // Should bridge to "a" via file-order fallback since logicalParentUuid is broken
+    expect(result.activeBranch.map((n) => n.uuid)).toEqual([
+      "a",
+      "compact-1",
+      "b",
+    ]);
     expect(result.tip?.uuid).toBe("b");
   });
 
-  it("prefers post-compaction branch over longer pre-compaction branch when logicalParentUuid is broken", () => {
+  it("bridges across broken logicalParentUuid to include pre-compaction messages", () => {
     // Real-world scenario: long pre-compaction history, compact boundary with
     // unresolvable logicalParentUuid, shorter post-compaction continuation.
-    // The post-compaction branch should win because its tip is more recent.
+    // The DAG should bridge to the pre-compaction messages via file-order fallback.
     const t = (m: number) => `2025-01-01T00:${String(m).padStart(2, "0")}:00Z`;
     const messages: RawSessionMessage[] = [
       { type: "user", uuid: "pre-1", parentUuid: null, timestamp: t(0) },
@@ -454,12 +458,70 @@ describe("buildDag with compaction", () => {
 
     const result = buildDag(messages);
 
-    // Post-compaction branch should be selected (not the longer pre-compaction branch)
+    // Post-compaction tip should be selected, and the DAG should bridge back
+    // to pre-compaction messages through the file-order fallback
     expect(result.tip?.uuid).toBe("post-2");
     expect(result.activeBranch.map((n) => n.uuid)).toEqual([
+      "pre-1",
+      "pre-2",
+      "pre-3",
+      "pre-4",
+      "pre-5",
+      "pre-6",
+      "pre-7",
+      "pre-8",
       "compact-1",
       "post-1",
       "post-2",
+    ]);
+  });
+
+  it("bridges across multiple broken logicalParentUuids in chain", () => {
+    // Real-world scenario: session with 2 compact boundaries, both with
+    // unresolvable logicalParentUuids (continued from parent session)
+    const messages: RawSessionMessage[] = [
+      // Pre-compaction messages
+      { type: "user", uuid: "a", parentUuid: null },
+      { type: "assistant", uuid: "b", parentUuid: "a" },
+      { type: "user", uuid: "c", parentUuid: "b" },
+      // First compaction - logicalParentUuid broken
+      {
+        type: "system",
+        subtype: "compact_boundary",
+        uuid: "compact-1",
+        parentUuid: null,
+        logicalParentUuid: "nonexistent-1",
+      },
+      // Between compactions
+      { type: "user", uuid: "d", parentUuid: "compact-1" },
+      { type: "assistant", uuid: "e", parentUuid: "d" },
+      // Second compaction - logicalParentUuid also broken
+      {
+        type: "system",
+        subtype: "compact_boundary",
+        uuid: "compact-2",
+        parentUuid: null,
+        logicalParentUuid: "nonexistent-2",
+      },
+      // Post second compaction
+      { type: "user", uuid: "f", parentUuid: "compact-2" },
+      { type: "assistant", uuid: "g", parentUuid: "f" },
+    ];
+
+    const result = buildDag(messages);
+
+    // Should bridge all the way back through both broken boundaries
+    expect(result.tip?.uuid).toBe("g");
+    expect(result.activeBranch.map((n) => n.uuid)).toEqual([
+      "a",
+      "b",
+      "c",
+      "compact-1",
+      "d",
+      "e",
+      "compact-2",
+      "f",
+      "g",
     ]);
   });
 
