@@ -73,10 +73,10 @@ Note: Both instances share `~/.claude/projects/` (SDK-managed sessions).
 
 ## Browser Control
 
-Browser automation is provided by the assistant framework. See `~/code/assistant/skills/browser/SKILL.md` for the full CLI reference and workflow patterns.
+Browser automation is provided by claw-starter. See `~/code/claw-starter/README.md` for the full CLI reference and workflow patterns.
 
-- **Server:** `tsx ~/code/assistant/lib/browser/server.ts`
-- **CLI:** `tsx ~/code/assistant/lib/browser-cli.ts <command>`
+- **Server:** `tsx ~/code/claw-starter/lib/browser/server.ts`
+- **CLI:** `tsx ~/code/claw-starter/lib/browser-cli.ts <command>`
 
 ## After Editing Code
 
