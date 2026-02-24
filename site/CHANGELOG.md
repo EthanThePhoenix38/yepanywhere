@@ -6,6 +6,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [site-v1.5.4] - 2026-02-24
+
+### Added
+- Blog post: Claude Code Remote Control vs Yep Anywhere
+
 ## [site-v1.5.3] - 2026-02-23
 
 ### Added
