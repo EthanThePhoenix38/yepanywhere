@@ -6,6 +6,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [site-v1.5.15] - 2026-02-25
+
+### Fixed
+- Fix .html URLs serving blank page (remote SPA 404 fallback instead of actual page)
+- Switch Astro to `build.format: "file"` so pages output as .html files directly
+- Remove obsolete meta-refresh redirect stubs from public/
+
 ## [site-v1.5.14] - 2026-02-25
 
 ### Fixed
