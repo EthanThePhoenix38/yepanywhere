@@ -194,6 +194,73 @@
       font-style: italic;
     }
 
+    /* Comparison table */
+    .comparison-table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 24px 0;
+      font-size: 14px;
+    }
+
+    .comparison-table th,
+    .comparison-table td {
+      padding: 8px 12px;
+      border-bottom: 1px solid var(--border);
+      text-align: left;
+    }
+
+    .comparison-table th {
+      font-weight: 600;
+      color: var(--text-primary);
+      font-size: 13px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    .comparison-table th:not(:first-child) {
+      text-align: center;
+      width: 80px;
+    }
+
+    .comparison-table td:not(:first-child) {
+      text-align: center;
+    }
+
+    .comparison-table td:first-child {
+      color: var(--text-secondary);
+    }
+
+    .comparison-table tr.section-row td {
+      color: var(--text-primary);
+      font-weight: 600;
+      padding-top: 20px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .comparison-table .check {
+      color: var(--accent);
+    }
+
+    .comparison-table .cross {
+      color: #666;
+    }
+
+    .tldr {
+      background: var(--bg-secondary);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 20px 24px;
+      margin: 24px 0;
+    }
+
+    .tldr p {
+      margin-bottom: 8px;
+    }
+
+    .tldr p:last-child {
+      margin-bottom: 0;
+    }
+
     .cta-link {
       display: inline-block;
       color: var(--accent);
@@ -290,6 +357,60 @@
             <p>Anthropic just <a href="https://x.com/noahzweben/status/2026371260805271615">announced Remote Control</a> &mdash; a new Claude Code feature that lets you continue terminal sessions from your phone. We're thrilled. This is exactly the workflow we've been building for, and having Anthropic validate it with a first-party feature is a good sign for the category.</p>
 
             <p>If you like what Remote Control offers and want to take it further, <a href="https://yepanywhere.com">try Yep Anywhere</a>.</p>
+
+            <div class="tldr">
+              <p><strong>Yep Anywhere</strong> is a "remote desktop" into all your AI agent sessions &mdash; resume, create, and control everything.</p>
+              <p><strong>Claude Remote Control</strong> is "interact with any currently running Claude CLI session." No ability to create new ones or review past sessions.</p>
+            </div>
+
+            <table class="comparison-table">
+              <thead>
+                <tr>
+                  <th>Feature</th>
+                  <th>Yep</th>
+                  <th>RC</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr class="section-row"><td colspan="3">Session Management</td></tr>
+                <tr><td>Create sessions from phone</td><td class="check">&#10003;</td><td class="cross">&mdash;</td></tr>
+                <tr><td>Queue messages mid-turn</td><td class="check">&#10003;</td><td class="cross">&mdash;</td></tr>
+                <tr><td>Steering messages mid-turn</td><td class="check">&#10003;</td><td class="cross">&mdash;</td></tr>
+                <tr><td>Multi-session dashboard</td><td class="check">&#10003;</td><td class="cross">&mdash;</td></tr>
+                <tr><td>Session starring &amp; archiving</td><td class="check">&#10003;</td><td class="cross">&mdash;</td></tr>
+                <tr><td>Resume VS Code sessions</td><td class="check">&#10003;</td><td class="cross">&mdash;</td></tr>
+                <tr><td>Resume Claude Desktop sessions</td><td class="check">&#10003;</td><td class="cross">&mdash;</td></tr>
+                <tr><td>Session cloning / forking</td><td class="check">&#10003;</td><td class="cross">&mdash;</td></tr>
+                <tr class="section-row"><td colspan="3">Agent Control</td></tr>
+                <tr><td>Tool approvals from mobile</td><td class="check">&#10003;</td><td class="check">&#10003;</td></tr>
+                <tr><td>Bypass / YOLO mode</td><td class="check">&#10003;</td><td class="cross">&mdash;</td></tr>
+                <tr><td>Thinking / effort control</td><td class="check">&#10003;</td><td class="cross">&mdash;</td></tr>
+                <tr><td>Plan mode</td><td class="check">&#10003;</td><td class="check">&#10003;</td></tr>
+                <tr class="section-row"><td colspan="3">Providers</td></tr>
+                <tr><td>Claude Code</td><td class="check">&#10003;</td><td class="check">&#10003;</td></tr>
+                <tr><td>Codex / Codex-OSS</td><td class="check">&#10003;</td><td class="cross">&mdash;</td></tr>
+                <tr><td>Gemini / OpenCode</td><td class="check">&#10003;</td><td class="cross">&mdash;</td></tr>
+                <tr><td>Works with API keys (no subscription)</td><td class="check">&#10003;</td><td class="cross">&mdash;</td></tr>
+                <tr><td>Works with Max plans</td><td class="check">&#10003;</td><td class="check">&#10003;</td></tr>
+                <tr><td>Works with Pro plans</td><td class="check">&#10003;</td><td class="cross">&mdash;</td></tr>
+                <tr class="section-row"><td colspan="3">Mobile</td></tr>
+                <tr><td>Push notifications</td><td class="check">&#10003;</td><td class="check">&#10003;</td></tr>
+                <tr><td>Voice input</td><td class="check">&#10003;</td><td class="check">&#10003;</td></tr>
+                <tr><td>File uploads from phone</td><td class="check">&#10003;</td><td class="check">&#10003;</td></tr>
+                <tr><td>Native app integration</td><td class="cross">&mdash;</td><td class="check">&#10003;</td></tr>
+                <tr class="section-row"><td colspan="3">Connectivity</td></tr>
+                <tr><td>Self-hosted relay (E2E encrypted)</td><td class="check">&#10003;</td><td class="cross">&mdash;</td></tr>
+                <tr><td>Direct LAN / Tailscale</td><td class="check">&#10003;</td><td class="cross">&mdash;</td></tr>
+                <tr><td>Zero setup for existing users</td><td class="cross">&mdash;</td><td class="check">&#10003;</td></tr>
+                <tr><td>Auto-reconnect</td><td class="check">&#10003;</td><td class="check">&#10003;</td></tr>
+                <tr class="section-row"><td colspan="3">Visibility</td></tr>
+                <tr><td>Conversation history</td><td class="check">&#10003;</td><td class="check">&#10003;</td></tr>
+                <tr><td>Global activity stream</td><td class="check">&#10003;</td><td class="cross">&mdash;</td></tr>
+                <tr><td>Source control / diffs</td><td class="check">&#10003;</td><td class="cross">&mdash;</td></tr>
+                <tr class="section-row"><td colspan="3">Misc</td></tr>
+                <tr><td>MCP server access</td><td class="check">&#10003;</td><td class="check">&#10003;</td></tr>
+              </tbody>
+            </table>
 
             <h3>What Remote Control does</h3>
             <p>Run <code>claude remote-control</code> or type <code>/rc</code> in an existing session. Claude Code opens an outbound connection to Anthropic's servers. Open the session URL or scan a QR code on your phone &mdash; in a browser or the Claude iOS/Android app &mdash; and you're connected.</p>
