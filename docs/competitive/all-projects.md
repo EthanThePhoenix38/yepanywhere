@@ -60,6 +60,29 @@ These are LLM agent runtimes, not supervisors. They manage their own agent loops
 | **ZeroClaw** | <5MB RAM, single binary, 22+ providers | [zeroclaw-labs/zeroclaw](https://github.com/zeroclaw-labs/zeroclaw) | 16,000 |
 | **NanoClaw** | Container isolation (Docker/Apple Container) | [qwibitai/nanoclaw](https://github.com/qwibitai/nanoclaw) | 10,200 |
 
+## To Research
+
+Collected 2026-02-25 from Twitter threads after Anthropic's Remote Control announcement. Goal: research these and write an article about how the community loved building Claude Code wrappers/supervisors.
+
+| Name / URL | One-liner | Notes |
+|------------|-----------|-------|
+| [deivid11/tide-commander](https://github.com/deivid11/tide-commander) | Visual multi-agent orchestrator with RTS-inspired 3D battlefield, 2D canvas, and metrics dashboard | npm pkg, Claude Code + Codex, file explorer w/ git diffs, conversation history, permission controls, command palette. MIT. |
+| [egradman/extendo-cli](https://github.com/egradman/extendo-cli) | Human-in-the-loop decisions for AI agents via mobile push — structured UI cards (yes/no, choices, reviews) | iOS app (TestFlight), CLI sends decision artifacts to phone, agent blocks until human responds. Also captures ideas from Apple Watch. Self-host backend available. |
+| [remote-code.com/claude](https://remote-code.com/claude) | Mobile app for Claude Code on iPhone with gesture nav and git integration | Proprietary (Vanna.ai). Pairs via "Uplink" desktop app. TestFlight beta, no pricing yet. |
+| [comfortablynumb/claudito](https://github.com/comfortablynumb/claudito) | Web-based manager for multiple Claude Code agents with Ralph Loop iterative dev | npm pkg, Mermaid.js diagrams, MCP server config, auth with username/password. MIT. |
+| [kibbler.dev](https://kibbler.dev/) | Remote mobile control for Claude Code with voice commands and IDE plugins | Proprietary. $3.99/mo. mTLS tunnel, approval mode for diffs, VS Code + JetBrains plugins, multi-session. |
+| [cospec-ai/zane](https://github.com/cospec-ai/zane) | Phone remote for Codex CLI via Cloudflare Workers relay with passkey auth | Svelte web client, self-host on your own Cloudflare account. Push notifications, plan mode, diff review. Also has local mode (no Cloudflare). |
+| [remotecodetrol.ai](https://remotecodetrol.ai/) | Native iOS app for controlling Claude Code + Codex from iPhone with Quick Actions and Bots | Proprietary. mTLS, no cloud. Scheduled/webhook-triggered automated workflows. Multi-provider (Claude, Codex, Gemini). TestFlight beta. |
+| [ssv445/claude-wormhole](https://github.com/ssv445/claude-wormhole) | Access Claude Code sessions from any device via tmux + Next.js + Tailscale | PWA installable on iOS, push notifications, xterm.js WebSocket terminal. MIT. |
+| [rohitg00/tailclaude](https://github.com/rohitg00/tailclaude) | Claude Code web UI published to Tailscale tailnet with streaming, cost tracking, model switching | Powered by "iii engine". QR code pairing, touch-optimized, OTel tracing. Tailscale Funnel for public access. |
+| [mikeyobrien/rho](https://github.com/mikeyobrien/rho) | Always-on personal AI operator with persistent memory and proactive heartbeat check-ins | Not a Claude Code wrapper per se — more of an autonomous agent with memory. Web UI, Telegram, agent email. Built on pi coding agent. |
+| [touchgrass.sh](https://touchgrass.sh/) | CLI wrapper that pipes Claude Code / Codex / Pi / Kimi through Telegram for phone control | Open source, free. Zero config, 60-second setup, cross-platform. |
+| [sumansid/claude-app-server](https://github.com/sumansid/claude-app-server) | JSON-RPC 2.0 server wrapping Claude Code — the Claude equivalent of OpenAI's Codex app-server | npm pkg. stdio or WebSocket transport, QR code pairing, pair key auth, self-signed TLS. |
+| [afkdev.app](https://afkdev.app/) | Remote desktop app for controlling your Mac from iPhone/iPad via WebRTC | Not Claude-specific — general remote desktop. P2P, E2E encrypted, no account needed. Proprietary, iOS app on App Store. |
+| [beachviber.com](https://www.beachviber.com/) | Free PWA for remote-controlling Claude Code from phone with voice/image input and QR pairing | MIT (npm pkg), but GitHub repo not public. npm desktop agent (`@beachviber/agent`), cloud relay (encrypted pass-through), macOS/Win/Linux. Real-time streaming, tool approval workflow, multi-device. |
+
+Already listed above: emdash, claudecodeui.
+
 ## Last Updated
 
-2026-02-22
+2026-02-25
