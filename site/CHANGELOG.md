@@ -6,6 +6,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [site-v1.5.9] - 2026-02-25
+
+### Changed
+- Migrate website from plain HTML to Astro
+
+### Added
+- Subscription access approaches page
+
 ## [site-v1.5.8] - 2026-02-25
 
 ### Changed
