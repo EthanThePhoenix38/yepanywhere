@@ -89,6 +89,11 @@ pnpm test       # Unit tests
 pnpm test:e2e   # E2E tests (if UI changes)
 ```
 
+For site changes (marketing pages in `site/`):
+```bash
+cd site && npm run build   # Astro check + build (or: pnpm site:build from root)
+```
+
 Fix any errors before considering the task complete.
 
 ## Dependency Security Maintenance

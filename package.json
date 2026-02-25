@@ -24,7 +24,9 @@
     "test:e2e:sdk:local:quality": "pnpm --filter server test:e2e:local:quality",
     "lint": "biome check .",
     "format": "biome format --write .",
-    "prepare": "husky"
+    "prepare": "husky",
+    "site:dev": "cd site && npm run dev",
+    "site:build": "cd site && npm run build"
   },
   "devDependencies": {
     "@biomejs/biome": "^1.9.4",

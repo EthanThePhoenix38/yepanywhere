@@ -1,0 +1,42 @@
+---
+interface Props {
+  activePage?: string;
+}
+
+const { activePage } = Astro.props;
+---
+
+<header>
+  <div class="container header-content">
+    <a href="/" class="logo">
+      <img src="/branding/lockup-dark.svg" alt="yepanywhere">
+    </a>
+    <nav>
+      {activePage === 'home' ? (
+        <>
+          <a href="#screenshots">Screenshots</a>
+          <a href="#features">Features</a>
+          <a href="#install">Install</a>
+          <a href="#faq">FAQ</a>
+          <a href="/news">News</a>
+          <a href="https://github.com/kzahel/yepanywhere">GitHub</a>
+          <a href="/remote" style="color: var(--accent); font-weight: 500;">Log In</a>
+        </>
+      ) : activePage === 'privacy' ? (
+        <>
+          <a href="/">Home</a>
+          <a href="/news">News</a>
+          <a href="https://github.com/kzahel/yepanywhere">GitHub</a>
+        </>
+      ) : (
+        <>
+          <a href="/#screenshots">Screenshots</a>
+          <a href="/#features">Features</a>
+          <a href="/#install">Install</a>
+          <a href="/news" class={activePage === 'news' ? 'active' : ''}>News</a>
+          <a href="https://github.com/kzahel/yepanywhere">GitHub</a>
+        </>
+      )}
+    </nav>
+  </div>
+</header>

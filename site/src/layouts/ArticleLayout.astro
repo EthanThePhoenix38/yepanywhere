@@ -1,0 +1,57 @@
+---
+import Footer from "../components/Footer.astro";
+import Header from "../components/Header.astro";
+import BaseLayout from "./BaseLayout.astro";
+
+interface Props {
+  title: string;
+  description: string;
+  date: string;
+  canonicalPath?: string;
+  publishedTime?: string;
+  showPrivacyInFooter?: boolean;
+}
+
+const {
+  title,
+  description,
+  date,
+  canonicalPath,
+  publishedTime,
+  showPrivacyInFooter = true,
+} = Astro.props;
+---
+
+<BaseLayout
+  title={title}
+  description={description}
+  ogType="article"
+  canonicalPath={canonicalPath}
+  publishedTime={publishedTime}
+>
+  <Header />
+
+  <main>
+    <article>
+      <div class="article-header">
+        <div class="container">
+          <h1>{title}</h1>
+          <div class="article-meta">
+            <span>{date}</span>
+            <a href="/news">Back to News</a>
+          </div>
+        </div>
+      </div>
+
+      <div class="article-body">
+        <div class="container">
+          <div class="article-content">
+            <slot />
+          </div>
+        </div>
+      </div>
+    </article>
+  </main>
+
+  <Footer showPrivacy={showPrivacyInFooter} />
+</BaseLayout>
