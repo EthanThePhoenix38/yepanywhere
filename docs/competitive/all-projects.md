@@ -8,6 +8,7 @@ Everything in the AI coding agent supervisor/wrapper space, in one table. For de
 |------|-----------|------|---------|-----|-------|
 | **Codex App** | OpenAI's official desktop + cloud IDE for Codex agents | [openai.com](https://openai.com/index/introducing-the-codex-app/) | Proprietary | OpenAI | N/A |
 | **Claude Code Desktop** | Anthropic's official GUI for Claude Code (local + remote execution) | [code.claude.com](https://code.claude.com/docs/en/desktop) | Proprietary | Anthropic | N/A |
+| **Claude Code Remote Control** | Continue local CLI sessions from phone/browser via Anthropic's relay; `claude remote-control` or `/rc` | [docs](https://code.claude.com/docs/en/remote-control) | Proprietary | Anthropic | N/A |
 
 ## Funded / Major Third-Party
 
