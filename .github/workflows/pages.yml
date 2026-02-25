@@ -52,6 +52,10 @@ jobs:
         run: |
           mkdir -p deploy
           cp -r site/dist/* deploy/
+          # Remove Astro's .html redirect stubs — they cause infinite loops on GitHub Pages
+          # (GitHub Pages serves news.html for /news, which redirects to /news → loop)
+          find deploy -name '*.html' ! -name 'index.html' ! -name '404.html' \
+            -exec sh -c 'grep -q "http-equiv=\"refresh\"" "$1" && rm "$1"' _ {} \;
           cp -r packages/client/dist-remote deploy/remote
           # GitHub Pages needs index.html to serve the /remote/ directory
           cp deploy/remote/remote.html deploy/remote/index.html
