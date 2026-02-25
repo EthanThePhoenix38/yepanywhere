@@ -38,7 +38,7 @@ import { getProjectDirFromCwd, syncSessions } from "../sdk/session-sync.js";
 import type { PermissionMode, SDKMessage, UserMessage } from "../sdk/types.js";
 import type { ServerSettingsService } from "../services/ServerSettingsService.js";
 import { CodexSessionReader } from "../sessions/codex-reader.js";
-import { cloneClaudeSession } from "../sessions/fork.js";
+import { cloneClaudeSession, cloneCodexSession } from "../sessions/fork.js";
 import { GeminiSessionReader } from "../sessions/gemini-reader.js";
 import { normalizeSession } from "../sessions/normalization.js";
 import {
@@ -1664,10 +1664,11 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
       return c.json({ error: "Project not found" }, 404);
     }
 
-    // Only Claude sessions can be cloned for now
-    if (project.provider !== "claude") {
+    // Check provider supports cloning
+    const supportedProviders = ["claude", "codex", "codex-oss"];
+    if (!supportedProviders.includes(project.provider)) {
       return c.json(
-        { error: "Clone is only supported for Claude sessions" },
+        { error: `Clone is not supported for ${project.provider} sessions` },
         400,
       );
     }
@@ -1693,7 +1694,18 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
         projectId,
       );
 
-      const result = await cloneClaudeSession(sessionDir, sessionId);
+      let result: { newSessionId: string; entries: number };
+
+      if (project.provider === "codex" || project.provider === "codex-oss") {
+        // Codex sessions use date-based directories; resolve file path via reader
+        const filePath = await reader.getSessionFilePath?.(sessionId);
+        if (!filePath) {
+          return c.json({ error: "Session file not found" }, 404);
+        }
+        result = await cloneCodexSession(filePath);
+      } else {
+        result = await cloneClaudeSession(sessionDir, sessionId);
+      }
 
       // Build clone title: use provided title, or derive from original
       let cloneTitle = body.title;
@@ -1719,7 +1731,7 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
         sessionId: result.newSessionId,
         messageCount: result.entries,
         clonedFrom: sessionId,
-        provider: "claude",
+        provider: project.provider,
       });
     } catch (error) {
       const message =

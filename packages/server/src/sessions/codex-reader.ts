@@ -296,6 +296,11 @@ export class CodexSessionReader implements ISessionReader {
     return sessions;
   }
 
+  async getSessionFilePath(sessionId: string): Promise<string | null> {
+    const sessionFile = await this.findSessionFile(sessionId);
+    return sessionFile?.filePath ?? null;
+  }
+
   /**
    * Find a session file by ID.
    */

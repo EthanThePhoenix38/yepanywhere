@@ -88,4 +88,11 @@ export interface ISessionReader {
   getAgentSession(
     agentId: string,
   ): Promise<{ messages: Message[]; status: string } | null>;
+
+  /**
+   * Get the file path for a session by ID.
+   * Used for operations that need direct file access (e.g., cloning).
+   * Returns null if the session is not found.
+   */
+  getSessionFilePath?(sessionId: string): Promise<string | null>;
 }

@@ -3,7 +3,7 @@
  *
  * Supports cloning sessions across providers:
  * - Claude: JSONL with DAG structure (uuid/parentUuid)
- * - Codex: JSONL linear format (TODO)
+ * - Codex: JSONL linear format
  * - Gemini: JSON linear format (TODO)
  */
 
@@ -70,6 +70,61 @@ export async function cloneClaudeSession(
   });
 
   const targetPath = join(sessionDir, `${targetId}.jsonl`);
+  await writeFile(targetPath, `${transformedLines.join("\n")}\n`, "utf-8");
+
+  return {
+    newSessionId: targetId,
+    entries: lines.length,
+  };
+}
+
+/**
+ * Clone a Codex session by copying the JSONL file with a new session ID.
+ *
+ * Codex sessions are linear (no DAG). Only the first line (session_meta)
+ * contains the session ID in `payload.id`; all other lines are copied as-is.
+ *
+ * @param sourceFilePath - Full path to the source JSONL file
+ * @param newSessionId - Optional new session ID (generated if not provided)
+ * @returns Clone result with new session ID and entry count
+ */
+export async function cloneCodexSession(
+  sourceFilePath: string,
+  newSessionId?: string,
+): Promise<CloneResult> {
+  const content = await readFile(sourceFilePath, "utf-8");
+  const trimmed = content.trim();
+
+  if (!trimmed) {
+    throw new Error("Source session is empty");
+  }
+
+  const lines = trimmed.split("\n");
+  const targetId = newSessionId ?? randomUUID();
+
+  // Update session_meta (first line) with new session ID
+  const transformedLines = lines.map((line, index) => {
+    if (index !== 0) return line;
+    try {
+      const entry = JSON.parse(line) as Record<string, unknown>;
+      if (
+        entry.type === "session_meta" &&
+        typeof entry.payload === "object" &&
+        entry.payload !== null
+      ) {
+        (entry.payload as Record<string, unknown>).id = targetId;
+      }
+      return JSON.stringify(entry);
+    } catch {
+      return line;
+    }
+  });
+
+  // Write clone next to the source file (same date directory)
+  const targetPath = join(
+    sourceFilePath.substring(0, sourceFilePath.lastIndexOf("/")),
+    `${targetId}.jsonl`,
+  );
   await writeFile(targetPath, `${transformedLines.join("\n")}\n`, "utf-8");
 
   return {
