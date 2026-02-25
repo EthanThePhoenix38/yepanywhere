@@ -6,6 +6,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [site-v1.5.12] - 2026-02-25
+
+### Fixed
+- Thinking mode toggle now persists correctly in localStorage
+- Stream reconnects automatically after thinking-mode process restart
+- "On" thinking mode uses adaptive + effort (avoids CLI crash on Opus 4.6)
+
 ## [site-v1.5.11] - 2026-02-25
 
 ### Added
