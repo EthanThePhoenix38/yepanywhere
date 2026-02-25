@@ -61,6 +61,7 @@ export const SERVER_SCOPED_KEYS = {
   model: "model",
   thinkingLevel: "thinking-level",
   thinkingEnabled: "thinking-enabled",
+  thinkingMode: "thinking-mode",
   voiceInputEnabled: "voice-input-enabled",
   browserProfileId: "browser-profile-id",
   notifyInApp: "notify-in-app",

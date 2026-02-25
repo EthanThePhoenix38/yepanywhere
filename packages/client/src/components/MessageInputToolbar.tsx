@@ -81,7 +81,7 @@ export function MessageInputToolbar({
   disabled,
   pendingApproval,
 }: MessageInputToolbarProps) {
-  const { thinkingEnabled, toggleThinking, thinkingLevel } = useModelSettings();
+  const { thinkingMode, cycleThinkingMode, thinkingLevel } = useModelSettings();
 
   return (
     <div className="message-input-toolbar">
@@ -123,14 +123,16 @@ export function MessageInputToolbar({
         {supportsThinkingToggle && (
           <button
             type="button"
-            className={`thinking-toggle-button ${thinkingEnabled ? "active" : ""}`}
-            onClick={toggleThinking}
+            className={`thinking-toggle-button ${thinkingMode !== "off" ? `active ${thinkingMode}` : ""}`}
+            onClick={cycleThinkingMode}
             title={
-              thinkingEnabled
-                ? `Extended thinking: ${thinkingLevel}`
-                : "Enable extended thinking"
+              thinkingMode === "off"
+                ? "Thinking: off"
+                : thinkingMode === "auto"
+                  ? "Thinking: auto"
+                  : `Thinking: on (${thinkingLevel})`
             }
-            aria-pressed={thinkingEnabled}
+            aria-label={`Thinking mode: ${thinkingMode}`}
           >
             <svg
               width="16"
@@ -145,6 +147,30 @@ export function MessageInputToolbar({
             >
               <circle cx="12" cy="12" r="10" />
               <polyline points="12 6 12 12 16 14" />
+              {thinkingMode === "auto" && (
+                <g>
+                  <circle
+                    cx="19"
+                    cy="5"
+                    r="5.5"
+                    fill="currentColor"
+                    stroke="none"
+                  />
+                  <text
+                    x="19"
+                    y="5"
+                    textAnchor="middle"
+                    dominantBaseline="central"
+                    fill="var(--bg-primary, #1a1a2e)"
+                    fontSize="8"
+                    fontWeight="700"
+                    fontFamily="system-ui, sans-serif"
+                    stroke="none"
+                  >
+                    A
+                  </text>
+                </g>
+              )}
             </svg>
           </button>
         )}

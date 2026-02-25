@@ -2241,13 +2241,25 @@ a.sidebar-nav-item {
   border-color: var(--border-input);
 }
 
-.thinking-toggle-button.active {
+/* Auto mode: muted amber */
+.thinking-toggle-button.active.auto {
+  background: rgba(180, 140, 60, 0.12);
+  border-color: rgba(180, 140, 60, 0.5);
+  color: rgb(180, 140, 60);
+}
+
+.thinking-toggle-button.active.auto:hover {
+  background: rgba(180, 140, 60, 0.2);
+}
+
+/* On mode: blue */
+.thinking-toggle-button.active.on {
   background: rgba(59, 130, 246, 0.15);
   border-color: rgb(59, 130, 246);
   color: rgb(59, 130, 246);
 }
 
-.thinking-toggle-button.active:hover {
+.thinking-toggle-button.active.on:hover {
   background: rgba(59, 130, 246, 0.25);
 }
 

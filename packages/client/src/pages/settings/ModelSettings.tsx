@@ -34,7 +34,7 @@ export function ModelSettings() {
             <strong>Effort Level</strong>
             <p>
               Controls how much effort Claude puts into responses when thinking
-              is enabled. Higher levels use more tokens.
+              is set to "on". Higher levels use more tokens.
             </p>
           </div>
           <div className="font-size-selector">

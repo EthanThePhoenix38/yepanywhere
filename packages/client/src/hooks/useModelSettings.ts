@@ -1,4 +1,8 @@
-import type { EffortLevel, ThinkingOption } from "@yep-anywhere/shared";
+import type {
+  EffortLevel,
+  ThinkingMode,
+  ThinkingOption,
+} from "@yep-anywhere/shared";
 import { useCallback, useState } from "react";
 import {
   LEGACY_KEYS,
@@ -15,7 +19,7 @@ export type ModelOption = "default" | "sonnet" | "opus" | "haiku";
 /**
  * Re-export shared types for convenience.
  */
-export type { EffortLevel, ThinkingOption };
+export type { EffortLevel, ThinkingMode, ThinkingOption };
 
 export const MODEL_OPTIONS: { value: ModelOption; label: string }[] = [
   { value: "default", label: "Default" },
@@ -75,20 +79,29 @@ function saveEffortLevel(level: EffortLevel) {
   setServerScoped("thinkingLevel", level, LEGACY_KEYS.thinkingLevel);
 }
 
-function loadThinkingEnabled(): boolean {
-  const stored = getServerScoped(
+const THINKING_MODES: ThinkingMode[] = ["off", "auto", "on"];
+
+function loadThinkingMode(): ThinkingMode {
+  // Try new key first
+  const stored = getServerScoped("thinkingMode");
+  if (stored && THINKING_MODES.includes(stored as ThinkingMode)) {
+    return stored as ThinkingMode;
+  }
+  // Migrate from old boolean thinkingEnabled
+  const legacy = getServerScoped(
     "thinkingEnabled",
     LEGACY_KEYS.thinkingEnabled,
   );
-  return stored === "true";
+  if (legacy === "true") {
+    // Old "on" was adaptive, so migrate to "auto"
+    saveThinkingMode("auto");
+    return "auto";
+  }
+  return "off";
 }
 
-function saveThinkingEnabled(enabled: boolean) {
-  setServerScoped(
-    "thinkingEnabled",
-    enabled ? "true" : "false",
-    LEGACY_KEYS.thinkingEnabled,
-  );
+function saveThinkingMode(mode: ThinkingMode) {
+  setServerScoped("thinkingMode", mode);
 }
 
 function loadVoiceInputEnabled(): boolean {
@@ -115,8 +128,8 @@ export function useModelSettings() {
   const [model, setModelState] = useState<ModelOption>(loadModel);
   const [effortLevel, setEffortLevelState] =
     useState<EffortLevel>(loadEffortLevel);
-  const [thinkingEnabled, setThinkingEnabledState] =
-    useState<boolean>(loadThinkingEnabled);
+  const [thinkingMode, setThinkingModeState] =
+    useState<ThinkingMode>(loadThinkingMode);
   const [voiceInputEnabled, setVoiceInputEnabledState] = useState<boolean>(
     loadVoiceInputEnabled,
   );
@@ -131,16 +144,17 @@ export function useModelSettings() {
     saveEffortLevel(level);
   }, []);
 
-  const setThinkingEnabled = useCallback((enabled: boolean) => {
-    setThinkingEnabledState(enabled);
-    saveThinkingEnabled(enabled);
+  const setThinkingMode = useCallback((mode: ThinkingMode) => {
+    setThinkingModeState(mode);
+    saveThinkingMode(mode);
   }, []);
 
-  const toggleThinking = useCallback(() => {
-    const newEnabled = !thinkingEnabled;
-    setThinkingEnabledState(newEnabled);
-    saveThinkingEnabled(newEnabled);
-  }, [thinkingEnabled]);
+  const cycleThinkingMode = useCallback(() => {
+    const idx = THINKING_MODES.indexOf(thinkingMode);
+    const next = THINKING_MODES[(idx + 1) % THINKING_MODES.length] ?? "off";
+    setThinkingModeState(next);
+    saveThinkingMode(next);
+  }, [thinkingMode]);
 
   const setVoiceInputEnabled = useCallback((enabled: boolean) => {
     setVoiceInputEnabledState(enabled);
@@ -161,9 +175,9 @@ export function useModelSettings() {
     // Keep thinkingLevel as alias for backward compat with components
     thinkingLevel: effortLevel,
     setThinkingLevel: setEffortLevel,
-    thinkingEnabled,
-    setThinkingEnabled,
-    toggleThinking,
+    thinkingMode,
+    setThinkingMode,
+    cycleThinkingMode,
     voiceInputEnabled,
     setVoiceInputEnabled,
     toggleVoiceInput,
@@ -179,28 +193,22 @@ export function getModelSetting(): ModelOption {
 
 /**
  * Get thinking setting as ThinkingOption (for API compatibility).
- * Returns "off" if disabled, otherwise returns the current effort level.
+ * - "off" when thinking is disabled
+ * - "auto" for adaptive (model decides when to think)
+ * - "on:level" for forced-on thinking at that effort level
  */
 export function getThinkingSetting(): ThinkingOption {
-  const enabled = loadThinkingEnabled();
-  if (!enabled) {
-    return "off";
-  }
-  return loadEffortLevel();
+  const mode = loadThinkingMode();
+  if (mode === "off") return "off";
+  if (mode === "auto") return "auto";
+  return `on:${loadEffortLevel()}`;
 }
 
 /**
- * Get thinking enabled state without React state.
+ * Get thinking mode without React state.
  */
-export function getThinkingEnabled(): boolean {
-  return loadThinkingEnabled();
-}
-
-/**
- * Set thinking enabled state without React state.
- */
-export function setThinkingEnabled(enabled: boolean): void {
-  saveThinkingEnabled(enabled);
+export function getThinkingMode(): ThinkingMode {
+  return loadThinkingMode();
 }
 
 /**

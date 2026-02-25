@@ -950,7 +950,7 @@ export class Supervisor {
         !effortChanged &&
         process.supportsThinkingModeChange
       ) {
-        // Toggle adaptive/disabled dynamically via deprecated API
+        // Toggle thinking dynamically via deprecated API (works for auto↔off)
         const tokens = modelSettings?.thinking?.type === "disabled" ? 0 : 1;
         const changed = await process.setMaxThinkingTokens(
           tokens === 0 ? undefined : tokens,

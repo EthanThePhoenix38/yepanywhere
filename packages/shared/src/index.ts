@@ -23,6 +23,7 @@ export type {
   SlashCommand,
   PermissionMode,
   ModelOption,
+  ThinkingMode,
   ThinkingOption,
   ThinkingConfig,
   EffortLevel,

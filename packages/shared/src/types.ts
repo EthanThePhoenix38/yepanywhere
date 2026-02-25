@@ -125,11 +125,22 @@ export function resolveModel(
 export type EffortLevel = "low" | "medium" | "high" | "max";
 
 /**
- * Thinking + effort option sent from client to server.
- * - "off": Thinking disabled, no effort override
- * - EffortLevel: Adaptive thinking enabled with the given effort level
+ * Thinking mode for the 3-way toggle.
+ * - "off": Thinking disabled
+ * - "auto": Model decides when to think (adaptive)
+ * - "on": Always think (forced)
  */
-export type ThinkingOption = "off" | EffortLevel;
+export type ThinkingMode = "off" | "auto" | "on";
+
+/**
+ * Thinking + effort option sent from client to server.
+ * Wire format (backward compatible):
+ * - "off": Thinking disabled
+ * - "auto": Adaptive thinking, no effort override
+ * - "on:low" | "on:medium" | "on:high" | "on:max": Forced-on thinking at effort level
+ * - EffortLevel (plain): Adaptive thinking with effort (backward compat with old clients)
+ */
+export type ThinkingOption = "off" | "auto" | `on:${EffortLevel}` | EffortLevel;
 
 /**
  * Thinking configuration for the SDK.
@@ -149,7 +160,16 @@ export function thinkingOptionToConfig(option: ThinkingOption): {
   if (option === "off") {
     return { thinking: { type: "disabled" } };
   }
-  return { thinking: { type: "adaptive" }, effort: option };
+  if (option === "auto") {
+    return { thinking: { type: "adaptive" } };
+  }
+  // "on:high" etc. = forced-on thinking at specific effort level
+  if (option.startsWith("on:")) {
+    const effort = option.slice(3) as EffortLevel;
+    return { thinking: { type: "enabled" }, effort };
+  }
+  // Plain EffortLevel = adaptive + effort (backward compat with old clients)
+  return { thinking: { type: "adaptive" }, effort: option as EffortLevel };
 }
 
 /**
