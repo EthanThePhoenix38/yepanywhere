@@ -6,6 +6,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [site-v1.5.8] - 2026-02-25
+
+### Changed
+- Improve homepage comparison section heading
+
 ## [site-v1.5.7] - 2026-02-25
 
 ### Added
