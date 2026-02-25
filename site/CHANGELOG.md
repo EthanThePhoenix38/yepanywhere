@@ -6,6 +6,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [site-v1.5.11] - 2026-02-25
+
+### Added
+- Blog post: Five Ways to Access AI Subscriptions Programmatically
+- News page entry for subscription access approaches article
+
 ## [site-v1.5.9] - 2026-02-25
 
 ### Changed
