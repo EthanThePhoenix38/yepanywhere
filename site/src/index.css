@@ -203,6 +203,23 @@ h3:hover .heading-anchor,
   color: var(--accent);
 }
 
+.article-content pre {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 16px;
+  overflow-x: auto;
+  margin: 16px 0;
+}
+
+.article-content pre code {
+  background: none;
+  border: none;
+  border-radius: 0;
+  padding: 0;
+  font-size: 14px;
+}
+
 .article-content blockquote {
   border-left: 3px solid var(--accent);
   padding-left: 16px;

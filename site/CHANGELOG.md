@@ -6,6 +6,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [site-v1.5.16] - 2026-02-25
+
+### Fixed
+- Fix spectrum diagram rendering: use ASCII arrows instead of variable-width em dashes
+- Add proper pre/code block styling so text aligns with clean right edge
+
 ## [site-v1.5.15] - 2026-02-25
 
 ### Fixed
