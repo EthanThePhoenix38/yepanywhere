@@ -1361,6 +1361,7 @@ export class Process {
 
   async abort(): Promise<void> {
     this.clearIdleTimer();
+    this.stopBucketSwapTimer();
 
     // Call the SDK's abort function if available
     if (this.abortFn) {
@@ -1371,8 +1372,11 @@ export class Process {
     const timeout = new Promise<void>((resolve) => setTimeout(resolve, 5000));
     await Promise.race([this._exitPromise, timeout]);
 
-    // Signal completion to subscribers
-    this.emit({ type: "complete" });
+    // Signal completion to subscribers (skip if already terminated —
+    // markTerminated() already emitted "complete")
+    if (this._state.type !== "terminated") {
+      this.emit({ type: "complete" });
+    }
     this.listeners.clear();
   }
 
@@ -1514,6 +1518,14 @@ export class Process {
       // Don't transition to idle if we're waiting for input
       if (this._state.type !== "waiting-input") {
         this.transitionToIdle();
+      }
+    } finally {
+      // Resolve exit promise on both normal completion and non-terminating errors
+      // so abort() doesn't hang waiting for it. (markTerminated already resolves
+      // it for termination errors, and guards against double-resolve.)
+      if (this._exitResolve) {
+        this._exitResolve();
+        this._exitResolve = null;
       }
     }
   }

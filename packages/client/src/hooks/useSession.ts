@@ -1025,7 +1025,7 @@ export function useSession(
 
   // Only connect to session stream when we own the session
   // External sessions are tracked via the activity stream instead
-  const { connected } = useSessionStream(
+  const { connected, reconnect: reconnectStream } = useSessionStream(
     status.owner === "self" ? sessionId : null,
     { onMessage: handleStreamMessage, onError: handleStreamError },
   );
@@ -1073,5 +1073,6 @@ export function useSession(
     pagination, // Compact-boundary pagination metadata
     loadingOlder, // Whether older messages are being loaded
     loadOlderMessages, // Load next chunk of older messages
+    reconnectStream, // Force session stream reconnection (e.g., after process restart)
   };
 }

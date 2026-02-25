@@ -176,6 +176,20 @@ export function useSessionStream(
     });
   }, [sessionId, connect]);
 
+  // Force reconnect (e.g., after process restart)
+  const reconnect = useCallback(() => {
+    if (!sessionId) return;
+    if (wsSubscriptionRef.current) {
+      const old = wsSubscriptionRef.current;
+      wsSubscriptionRef.current = null;
+      old.close();
+    }
+    mountedSessionIdRef.current = null;
+    setConnected(false);
+    // Defer so the close completes before reconnecting
+    setTimeout(() => connect(), 50);
+  }, [sessionId, connect]);
+
   useEffect(() => {
     connect();
 
@@ -191,5 +205,5 @@ export function useSessionStream(
     };
   }, [connect]);
 
-  return { connected };
+  return { connected, reconnect };
 }

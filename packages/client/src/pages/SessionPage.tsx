@@ -140,6 +140,7 @@ function SessionPageContent({
     pagination,
     loadingOlder,
     loadOlderMessages,
+    reconnectStream,
   } = useSession(
     projectId,
     sessionId,
@@ -372,9 +373,10 @@ function SessionPageContent({
           tempId,
           thinking,
         );
-        // If process was restarted due to thinking mode change, update the status
+        // If process was restarted due to thinking mode change, reconnect stream
         if (result.restarted && result.processId) {
           setStatus({ owner: "self", processId: result.processId });
+          reconnectStream();
         }
       }
       // Success - clear the draft from localStorage

@@ -142,8 +142,12 @@ describe("Process", () => {
     });
 
     it("prefers steerFn for in-turn messages when available", async () => {
+      let resolveIterator: () => void;
       const iterator: AsyncIterator<SDKMessage> = {
-        next: () => new Promise(() => {}),
+        next: () =>
+          new Promise((resolve) => {
+            resolveIterator = () => resolve({ done: true, value: undefined });
+          }),
       };
       const queue = new MessageQueue();
       const steerFn = vi.fn(async () => true);
@@ -164,12 +168,18 @@ describe("Process", () => {
       expect(steerFn).toHaveBeenCalledTimes(1);
       expect(process.queueDepth).toBe(0);
 
+      // Let the iterator complete so abort() doesn't hang
+      resolveIterator?.();
       await process.abort();
     });
 
     it("falls back to queue when steerFn returns false", async () => {
+      let resolveIterator: () => void;
       const iterator: AsyncIterator<SDKMessage> = {
-        next: () => new Promise(() => {}),
+        next: () =>
+          new Promise((resolve) => {
+            resolveIterator = () => resolve({ done: true, value: undefined });
+          }),
       };
       const queue = new MessageQueue();
       const steerFn = vi.fn(async () => false);
@@ -187,9 +197,14 @@ describe("Process", () => {
       expect(result.success).toBe(true);
       expect(result.position).toBe(0);
 
+      // steerFn returns a resolved promise, then .then() pushes to queue —
+      // need 2 microtask ticks for both to settle
+      await Promise.resolve();
       await Promise.resolve();
       expect(process.queueDepth).toBe(1);
 
+      // Let the iterator complete so abort() doesn't hang
+      resolveIterator?.();
       await process.abort();
     });
   });
@@ -245,15 +260,17 @@ describe("Process", () => {
         idleTimeoutMs: 100,
       });
 
-      let callCount = 0;
-      process.subscribe(() => {
-        callCount++;
+      let completeCount = 0;
+      process.subscribe((event) => {
+        if (event.type === "complete") {
+          completeCount++;
+        }
       });
 
       await process.abort();
 
       // Listener should have been called once for complete event
-      expect(callCount).toBe(1);
+      expect(completeCount).toBe(1);
     });
   });
 
