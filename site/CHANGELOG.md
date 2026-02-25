@@ -6,6 +6,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [site-v1.5.14] - 2026-02-25
+
+### Fixed
+- Hide Screenshots, Features, and FAQ nav links on mobile to prevent header overflow
+
 ## [site-v1.5.13] - 2026-02-25
 
 ### Added

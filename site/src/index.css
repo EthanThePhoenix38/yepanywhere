@@ -333,6 +333,10 @@ footer a:hover {
     gap: 16px;
   }
 
+  nav .mobile-hide {
+    display: none;
+  }
+
   .article-header {
     padding: 40px 0 32px;
   }
