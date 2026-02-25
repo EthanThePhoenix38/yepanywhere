@@ -1,8 +1,8 @@
 <p align="center">
   <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="site/branding/lockup-dark.svg">
-    <source media="(prefers-color-scheme: light)" srcset="site/branding/lockup-light.svg">
-    <img src="site/branding/lockup-light.svg" alt="Yep Anywhere" height="60">
+    <source media="(prefers-color-scheme: dark)" srcset="site/public/branding/lockup-dark.svg">
+    <source media="(prefers-color-scheme: light)" srcset="site/public/branding/lockup-light.svg">
+    <img src="site/public/branding/lockup-light.svg" alt="Yep Anywhere" height="60">
   </picture>
 </p>
 
@@ -41,21 +41,21 @@ No database, no cloud, no accounts. 100% open source (MIT).
 ## Screenshots
 
 <p align="center">
-  <img src="site/screenshots/session-view.png" width="250" alt="Session view">
-  <img src="site/screenshots/conversation.png" width="250" alt="Conversation">
-  <img src="site/screenshots/approval.png" width="250" alt="Approval flow">
+  <img src="site/public/screenshots/session-view.png" width="250" alt="Session view">
+  <img src="site/public/screenshots/conversation.png" width="250" alt="Conversation">
+  <img src="site/public/screenshots/approval.png" width="250" alt="Approval flow">
 </p>
 <p align="center">
-  <img src="site/screenshots/navigation.png" width="250" alt="Navigation">
-  <img src="site/screenshots/new-session.png" width="250" alt="New session">
-  <img src="site/screenshots/mobile-diff.png" width="250" alt="Mobile diff view">
+  <img src="site/public/screenshots/navigation.png" width="250" alt="Navigation">
+  <img src="site/public/screenshots/new-session.png" width="250" alt="New session">
+  <img src="site/public/screenshots/mobile-diff.png" width="250" alt="Mobile diff view">
 </p>
 
 **Works great on desktop too!**
 
 <p align="center">
-  <img src="site/screenshots/desktop.png" width="400" alt="Desktop view">
-  <img src="site/screenshots/desktop-diff.png" width="400" alt="Desktop diff view">
+  <img src="site/public/screenshots/desktop.png" width="400" alt="Desktop view">
+  <img src="site/public/screenshots/desktop-diff.png" width="400" alt="Desktop diff view">
 </p>
 
 ## Getting Started
