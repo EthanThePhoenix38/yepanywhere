@@ -130,7 +130,9 @@ The workflow runs lint, typecheck, and tests, then builds with `pnpm build:bundl
 
 ## Releasing the Website
 
-The website (landing pages + remote relay client at `/remote`) is deployed separately from npm. See `site/RELEASING.md` for the full process.
+The website (landing pages + remote relay client at `/remote`) is deployed to GitHub Pages separately from npm. **Pushing to main does NOT deploy the site** — it only runs CI (lint, typecheck, tests). The site only deploys when a `site-v*` tag is pushed (or via manual workflow_dispatch).
+
+See `site/RELEASING.md` for the full process.
 
 Quick reference:
 ```bash

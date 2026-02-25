@@ -6,6 +6,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [site-v1.5.5] - 2026-02-25
+
+### Added
+- Feature comparison table and TLDR summary on Remote Control blog post
+
 ## [site-v1.5.4] - 2026-02-24
 
 ### Added
