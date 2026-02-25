@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.4] - 2026-02-25
+
+### Added
+- 3-way thinking toggle: off / auto / on (model decides when to think in auto mode)
+
+### Fixed
+- Fix thinking "on" mode for Opus 4.6+ and wait for CLI exit on abort
+- Reconnect session stream after thinking-mode process restart
+- Fix context usage percentage being too low after compaction
+- Fix DAG not bridging across compaction boundaries with broken logicalParentUuid
+- Fix source control page issues
+
 ## [0.4.3] - 2026-02-23
 
 ### Added
