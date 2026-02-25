@@ -7,6 +7,19 @@
   --accent: #16a34a;
   --accent-hover: #22c55e;
   --border: #333333;
+  color-scheme: dark;
+}
+
+html[data-theme="light"] {
+  --bg-primary: #ffffff;
+  --bg-secondary: #f5f5f5;
+  --bg-tertiary: #e8e8e8;
+  --text-primary: #1a1a1a;
+  --text-secondary: #555555;
+  --accent: #15803d;
+  --accent-hover: #16a34a;
+  --border: #d4d4d4;
+  color-scheme: light;
 }
 
 * {
@@ -58,6 +71,7 @@ header {
 
 nav {
   display: flex;
+  align-items: center;
   gap: 24px;
 }
 

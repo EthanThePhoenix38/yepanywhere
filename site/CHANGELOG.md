@@ -6,6 +6,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [site-v1.5.13] - 2026-02-25
+
+### Added
+- Light/dark mode toggle in header with system theme default
+- Light theme CSS variables with proper contrast
+- Theme preference persisted to localStorage across page loads
+
+### Fixed
+- Hardcoded hex colors in announcement gradient and comparison table now use CSS variables
+
 ## [site-v1.5.12] - 2026-02-25
 
 ### Fixed
