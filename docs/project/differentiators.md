@@ -39,9 +39,12 @@ Claude Remote Control is "interact with any currently running claude CLI session
 | File uploads from phone | ✅ | ✅ |
 | Native app integration | ❌ | ✅ |
 | **Connectivity** | | |
-| Self-hosted relay (E2E encrypted) | ✅ | ❌ |
+| Free hosted relay | ✅ | ✅ |
+| Self-hosted relay option | ✅ | ❌ |
+| E2E encryption (relay can't read traffic) | ✅ | ❌ |
 | Direct LAN / Tailscale | ✅ | ❌ |
-| Zero setup for existing users | ❌ | ✅ |
+| No extra supervision telemetry to Anthropic | ✅ | ❌ |
+| No extra install needed | ❌ | ✅ |
 | Auto-reconnect | ✅ | ✅ |
 | **Visibility** | | |
 | Conversation history | ✅ | ✅ |
@@ -66,9 +69,11 @@ Claude Remote Control is "interact with any currently running claude CLI session
 - **Provider badges and filtering** — See which provider is running at a glance
 
 ### Connectivity & Security
-- **Self-hosted relay** — Your relay, your infrastructure. RC routes all traffic through Anthropic's API
-- **End-to-end encryption** — NaCl (XSalsa20-Poly1305) + SRP-6a authentication. The relay server sees only ciphertext. RC uses TLS to Anthropic's servers (Anthropic can see traffic)
+- **Free hosted relay** — Both provide relay infrastructure out of the box. Yep's free relay is E2E encrypted; RC routes through Anthropic's API servers
+- **Self-hosted relay option** — Run your own relay for full control. RC has no self-hosted option
+- **End-to-end encryption** — NaCl (XSalsa20-Poly1305) + SRP-6a authentication. The relay sees only ciphertext. RC uses TLS to Anthropic's servers (Anthropic can see traffic)
 - **Direct LAN/Tailscale mode** — Zero cloud dependency option. RC always goes through Anthropic
+- **No extra install needed** — RC is built into the Claude CLI and mobile app. Yep requires installing and running a separate server
 - **Works with API keys** — No subscription requirement. RC requires Pro or Max plan ($20+/mo)
 
 
