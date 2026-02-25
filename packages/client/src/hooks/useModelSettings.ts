@@ -83,7 +83,7 @@ const THINKING_MODES: ThinkingMode[] = ["off", "auto", "on"];
 
 function loadThinkingMode(): ThinkingMode {
   // Try new key first
-  const stored = getServerScoped("thinkingMode");
+  const stored = getServerScoped("thinkingMode", LEGACY_KEYS.thinkingMode);
   if (stored && THINKING_MODES.includes(stored as ThinkingMode)) {
     return stored as ThinkingMode;
   }
@@ -101,7 +101,7 @@ function loadThinkingMode(): ThinkingMode {
 }
 
 function saveThinkingMode(mode: ThinkingMode) {
-  setServerScoped("thinkingMode", mode);
+  setServerScoped("thinkingMode", mode, LEGACY_KEYS.thinkingMode);
 }
 
 function loadVoiceInputEnabled(): boolean {

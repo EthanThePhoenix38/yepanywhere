@@ -175,6 +175,10 @@ export class Process {
   /** Resolver to wake up the iterator loop when resumed */
   private _holdResolve: (() => void) | null = null;
 
+  /** Promise that resolves when the process fully terminates (CLI exits) */
+  private _exitPromise: Promise<void>;
+  private _exitResolve: (() => void) | null = null;
+
   constructor(
     private sdkIterator: AsyncIterator<SDKMessage>,
     options: ProcessConstructorOptions,
@@ -203,6 +207,11 @@ export class Process {
     this.supportedCommandsFn = options.supportedCommandsFn ?? null;
     this.setModelFn = options.setModelFn ?? null;
     this._lastMessageTime = new Date();
+
+    // Exit promise resolves when the CLI process fully terminates
+    this._exitPromise = new Promise((resolve) => {
+      this._exitResolve = resolve;
+    });
 
     // Start bucket swap timer for bounded message history
     this.startBucketSwapTimer();
@@ -607,6 +616,12 @@ export class Process {
     this.setState({ type: "terminated", reason, error });
     this.emit({ type: "terminated", reason, error });
     this.emit({ type: "complete" });
+
+    // Resolve exit promise so abort() callers can wait for full termination
+    if (this._exitResolve) {
+      this._exitResolve();
+      this._exitResolve = null;
+    }
   }
 
   /**
@@ -1351,6 +1366,10 @@ export class Process {
     if (this.abortFn) {
       this.abortFn();
     }
+
+    // Wait for CLI process to fully exit (with timeout to avoid hanging)
+    const timeout = new Promise<void>((resolve) => setTimeout(resolve, 5000));
+    await Promise.race([this._exitPromise, timeout]);
 
     // Signal completion to subscribers
     this.emit({ type: "complete" });

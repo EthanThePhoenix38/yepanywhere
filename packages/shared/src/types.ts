@@ -152,6 +152,8 @@ export type ThinkingConfig =
 
 /**
  * Convert thinking option to SDK thinking config + effort level.
+ * On Opus 4.6+, "enabled" type is for older models and crashes the CLI.
+ * Instead, "on" mode uses adaptive + explicit effort level.
  */
 export function thinkingOptionToConfig(option: ThinkingOption): {
   thinking: ThinkingConfig;
@@ -163,10 +165,10 @@ export function thinkingOptionToConfig(option: ThinkingOption): {
   if (option === "auto") {
     return { thinking: { type: "adaptive" } };
   }
-  // "on:high" etc. = forced-on thinking at specific effort level
+  // "on:high" etc. = adaptive thinking with explicit effort level
   if (option.startsWith("on:")) {
     const effort = option.slice(3) as EffortLevel;
-    return { thinking: { type: "enabled" }, effort };
+    return { thinking: { type: "adaptive" }, effort };
   }
   // Plain EffortLevel = adaptive + effort (backward compat with old clients)
   return { thinking: { type: "adaptive" }, effort: option as EffortLevel };

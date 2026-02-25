@@ -193,6 +193,7 @@ export const LEGACY_KEYS = {
   model: "yep-anywhere-model",
   thinkingLevel: "yep-anywhere-thinking-level",
   thinkingEnabled: "yep-anywhere-thinking-enabled",
+  thinkingMode: "yep-anywhere-thinking-mode",
   voiceInputEnabled: "yep-anywhere-voice-input-enabled",
   browserProfileId: "yep-anywhere-device-id",
   notifyInApp: "yep-anywhere-notify-in-app",
