@@ -46,6 +46,7 @@ Everything in the AI coding agent supervisor/wrapper space, in one table. For de
 | **claude-remote** | Mobile chat with E2E encryption via Cloudflare tunnel | [jamierpond/claude-remote](https://github.com/jamierpond/claude-remote) | MIT | jamierpond | 16 |
 | **ClawIDE** | Web IDE for Claude Code — terminal multiplexing, file editor, Docker, git worktrees — single Go binary + tmux | [davydany/ClawIDE](https://github.com/davydany/ClawIDE) | — | davydany | 13 |
 | **Geoff** | "Side projects while you're at work" — multi-agent with Supabase sync | [belgradGoat/Geoff](https://github.com/belgradGoat/Geoff) | — | belgradGoat | 8 |
+| **Poirot** | Native macOS companion for Claude Code — browse sessions, explore diffs, re-run commands (SwiftUI) | [LeonardoCardoso/Poirot](https://github.com/LeonardoCardoso/Poirot) | MIT | LeonardoCardoso | 55 |
 | **Cogpit** | Desktop + web dashboard for Claude Code with undo/redo branching and cost charts | [gentritbiba/cogpit](https://github.com/gentritbiba/cogpit) | MIT | Gentrit Biba | 3 |
 | **Moshi** | Native iOS terminal app using Mosh protocol for AI agent resilience | [getmoshi.app](https://getmoshi.app/) | Proprietary | — | N/A |
 | **Chroxy** | React Native mobile app + Node.js daemon with Cloudflare tunnels and E2E | [blamechris/chroxy](https://github.com/blamechris/chroxy) | MIT | blamechris | 1 |

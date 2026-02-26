@@ -278,6 +278,23 @@ Tech: JavaScript, Node.js, ntfy.sh
 
 ---
 
+### Poirot
+**GitHub:** https://github.com/LeonardoCardoso/Poirot
+**Status:** Active (55 stars, MIT)
+
+Native macOS companion app for Claude Code:
+- Browse and search Claude Code sessions from `~/.claude/projects/`
+- Explore diffs with syntax highlighting (HighlightSwift)
+- Re-run commands from session history
+- Rich markdown rendering (MarkdownUI)
+- Pure SwiftUI — no Electron, no web stack
+
+Tech: Swift, SwiftUI, macOS native
+
+**Note:** Read-only session viewer like claude-devtools but native macOS instead of Electron. Lightweight and focused — no session driving, no remote access. Targets users who want a fast, native way to browse their Claude Code history on Mac.
+
+---
+
 ## Patterns Observed
 
 1. **Tailscale is popular** — Many use it for secure remote access
