@@ -39,10 +39,12 @@ Everything in the AI coding agent supervisor/wrapper space, in one table. For de
 | **claude-code-supervisor** | Auto-review agent that iterates on Claude Code output; multi-provider | [guyskk/claude-code-supervisor](https://github.com/guyskk/claude-code-supervisor) | MIT | guyskk | 40 |
 | **claude-code-app** | Mobile app for Claude Code (Flutter/Dart — true cross-platform native) | [9cat/claude-code-app](https://github.com/9cat/claude-code-app) | MIT | 9cat | 38 |
 | **clauder** | Native iOS remote control for Claude Code (Swift) | [ZohaibAhmed/clauder](https://github.com/ZohaibAhmed/clauder) | MIT | ZohaibAhmed | 27 |
-| **Codex Pocket** | iPhone remote for Codex Desktop via Tailscale with SQLite persistence | [ddevalco/codex-pocket](https://github.com/ddevalco/codex-pocket) | MIT | ddevalco | 24 |
+| **CodeRelay** | Multi-provider (Codex, OpenCode, Copilot ACP, Claude) mobile web UI over Tailscale with SQLite, interactive approvals, QR pairing | [ddevalco/CodeRelay](https://github.com/ddevalco/CodeRelay) | — | ddevalco | 30 |
+| **Codex Pocket** | iPhone remote for Codex Desktop via Tailscale with SQLite persistence (predecessor to CodeRelay) | [ddevalco/codex-pocket](https://github.com/ddevalco/codex-pocket) | MIT | ddevalco | 24 |
 | **claude-conduit** | Lightweight daemon to manage Claude Code sessions from iPad/iPhone | [A-Somniatore/claude-conduit](https://github.com/A-Somniatore/claude-conduit) | MIT | A-Somniatore | 22 |
 | **247-claude-code-remote** | Tailscale + Fly.io VM provisioning for Claude/Codex/Gemini/OpenCode | [QuivrHQ/247-claude-code-remote](https://github.com/QuivrHQ/247-claude-code-remote) | — | QuivrHQ | 21 |
 | **claude-remote** | Mobile chat with E2E encryption via Cloudflare tunnel | [jamierpond/claude-remote](https://github.com/jamierpond/claude-remote) | MIT | jamierpond | 16 |
+| **ClawIDE** | Web IDE for Claude Code — terminal multiplexing, file editor, Docker, git worktrees — single Go binary + tmux | [davydany/ClawIDE](https://github.com/davydany/ClawIDE) | — | davydany | 13 |
 | **Geoff** | "Side projects while you're at work" — multi-agent with Supabase sync | [belgradGoat/Geoff](https://github.com/belgradGoat/Geoff) | — | belgradGoat | 8 |
 | **Cogpit** | Desktop + web dashboard for Claude Code with undo/redo branching and cost charts | [gentritbiba/cogpit](https://github.com/gentritbiba/cogpit) | MIT | Gentrit Biba | 3 |
 | **Moshi** | Native iOS terminal app using Mosh protocol for AI agent resilience | [getmoshi.app](https://getmoshi.app/) | Proprietary | — | N/A |
