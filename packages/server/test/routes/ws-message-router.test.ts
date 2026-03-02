@@ -1,3 +1,4 @@
+import type { RemoteClientMessage } from "@yep-anywhere/shared";
 import { BinaryFormat } from "@yep-anywhere/shared";
 import { describe, expect, it, vi } from "vitest";
 import {
@@ -232,5 +233,52 @@ describe("WebSocket Message Router", () => {
       status: 500,
       body: { error: "Internal server error" },
     });
+  });
+
+  it("routes emulator signaling messages to onEmulatorMessage", async () => {
+    const send = vi.fn();
+    const onEmulatorMessage = vi.fn(async () => undefined);
+    const handlers = {
+      onRequest: vi.fn(async () => undefined),
+      onSubscribe: vi.fn(async () => undefined),
+      onUnsubscribe: vi.fn(async () => undefined),
+      onUploadStart: vi.fn(async () => undefined),
+      onUploadChunk: vi.fn(async () => undefined),
+      onUploadEnd: vi.fn(async () => undefined),
+      onPing: vi.fn(async () => undefined),
+      onEmulatorMessage,
+    };
+
+    const messages: RemoteClientMessage[] = [
+      {
+        type: "emulator_stream_start",
+        sessionId: "session-1",
+        emulatorId: "emulator-5554",
+      },
+      {
+        type: "emulator_stream_stop",
+        sessionId: "session-1",
+      },
+      {
+        type: "emulator_webrtc_answer",
+        sessionId: "session-1",
+        sdp: "v=0",
+      },
+      {
+        type: "emulator_ice_candidate",
+        sessionId: "session-1",
+        candidate: null,
+      },
+    ];
+
+    for (const message of messages) {
+      await routeClientMessageSafely(message, send, handlers);
+    }
+
+    expect(onEmulatorMessage).toHaveBeenCalledTimes(messages.length);
+    for (const [index, message] of messages.entries()) {
+      expect(onEmulatorMessage).toHaveBeenNthCalledWith(index + 1, message);
+    }
+    expect(send).not.toHaveBeenCalled();
   });
 });
