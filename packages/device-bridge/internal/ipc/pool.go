@@ -11,6 +11,8 @@ import (
 	"github.com/anthropics/yepanywhere/device-bridge/internal/emulator"
 )
 
+const useAPKForEmulatorEnvVar = "DEVICE_BRIDGE_USE_APK_FOR_EMULATOR"
+
 // clientEntry is a ref-counted device connection.
 type clientEntry struct {
 	client   device.Device
@@ -85,6 +87,14 @@ func (rp *ResourcePool) createDeviceLocked(deviceID string) (device.Device, erro
 		return d, nil
 	}
 
+	if serial, ok := androidSerialForDeviceID(deviceID); ok {
+		d, err := device.NewAndroidDevice(serial, rp.adbPath)
+		if err != nil {
+			return nil, fmt.Errorf("connecting to android device %s (id=%s): %w", serial, deviceID, err)
+		}
+		return d, nil
+	}
+
 	if strings.HasPrefix(deviceID, "emulator-") {
 		grpcAddr := GRPCAddr(deviceID)
 		d, err := emulator.NewClient(grpcAddr)
@@ -97,12 +107,7 @@ func (rp *ResourcePool) createDeviceLocked(deviceID string) (device.Device, erro
 	if strings.HasPrefix(deviceID, "avd-") {
 		return nil, fmt.Errorf("device %s is not running", deviceID)
 	}
-
-	d, err := device.NewAndroidDevice(deviceID, rp.adbPath)
-	if err != nil {
-		return nil, fmt.Errorf("connecting to android device %s: %w", deviceID, err)
-	}
-	return d, nil
+	return nil, fmt.Errorf("unknown device id: %s", deviceID)
 }
 
 // ReleaseDevice decrements the ref count and closes the device when it reaches 0.
@@ -173,5 +178,37 @@ func (rp *ResourcePool) CloseAll() {
 	for id, entry := range rp.clients {
 		entry.client.Close()
 		delete(rp.clients, id)
+	}
+}
+
+func androidSerialForDeviceID(deviceID string) (string, bool) {
+	// Explicit override: route any device ID through Android APK transport.
+	// Example: "android:emulator-5554" or "android:R3CN90ABCDE"
+	if strings.HasPrefix(deviceID, "android:") {
+		serial := strings.TrimSpace(strings.TrimPrefix(deviceID, "android:"))
+		return serial, serial != ""
+	}
+
+	// Auto-apply Android transport for emulators when regression-testing APK mode.
+	if strings.HasPrefix(deviceID, "emulator-") && shouldUseAPKForEmulators() {
+		return deviceID, true
+	}
+
+	// Physical Android serials are unprefixed and not "avd-*".
+	if strings.HasPrefix(deviceID, "avd-") || deviceID == "chromeos" || strings.HasPrefix(deviceID, "chromeos:") {
+		return "", false
+	}
+	if strings.HasPrefix(deviceID, "emulator-") {
+		return "", false
+	}
+	return strings.TrimSpace(deviceID), strings.TrimSpace(deviceID) != ""
+}
+
+func shouldUseAPKForEmulators() bool {
+	switch strings.ToLower(strings.TrimSpace(os.Getenv(useAPKForEmulatorEnvVar))) {
+	case "1", "true", "yes", "on":
+		return true
+	default:
+		return false
 	}
 }

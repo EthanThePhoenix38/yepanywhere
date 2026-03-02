@@ -28,6 +28,17 @@ adb -s <serial> shell CLASSPATH=/data/local/tmp/yep-device-server.apk app_proces
 adb -s <serial> forward tcp:27183 tcp:27183
 ```
 
+## Emulator Override (APK path testing)
+
+To force emulator sessions to use the APK transport instead of emulator gRPC:
+
+```bash
+export DEVICE_BRIDGE_USE_APK_FOR_EMULATOR=true
+```
+
+The bridge will route `emulator-*` IDs through `AndroidDevice` (APK path).  
+You can also force a specific ID explicitly with `android:<serial>` (for example, `android:emulator-5554`).
+
 ## Wire Protocol
 
 - Handshake (device -> sidecar): `[width u16 LE][height u16 LE]`
