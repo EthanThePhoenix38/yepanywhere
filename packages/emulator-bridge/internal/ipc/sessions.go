@@ -311,8 +311,6 @@ func (sm *SessionManager) runPipeline(sess *streamSession) {
 	defer activityTimer.Stop()
 
 	var lastTime time.Time
-	var frameCount int
-	var totalRecv, totalConvert, totalEncode, totalWrite time.Duration
 
 	for {
 		select {
@@ -326,10 +324,8 @@ func (sm *SessionManager) runPipeline(sess *streamSession) {
 			if !ok {
 				return
 			}
-			tRecv := time.Now()
 
 			// Drain any stale frames — always encode the freshest one.
-			drained := 0
 			for {
 				select {
 				case newer, ok2 := <-frames:
@@ -337,24 +333,17 @@ func (sm *SessionManager) runPipeline(sess *streamSession) {
 						return
 					}
 					frame = newer
-					drained++
 				default:
 					goto encode
 				}
 			}
 		encode:
 
-			tConvert := time.Now()
-			totalRecv += tConvert.Sub(tRecv)
-
 			y, cb, cr := encoder.ScaleAndConvertToI420(
 				frame.Data,
 				int(frame.Width), int(frame.Height),
 				sess.targetW, sess.targetH,
 			)
-
-			tEncode := time.Now()
-			totalConvert += tEncode.Sub(tConvert)
 
 			nals, err := sess.enc.Encode(y, cb, cr)
 			encoder.ReleaseI420(y) // return pooled buffer
@@ -366,10 +355,7 @@ func (sm *SessionManager) runPipeline(sess *streamSession) {
 				continue
 			}
 
-			tWrite := time.Now()
-			totalEncode += tWrite.Sub(tEncode)
-
-			now := tWrite
+			now := time.Now()
 			duration := time.Second / 30
 			if !lastTime.IsZero() {
 				duration = now.Sub(lastTime)
@@ -389,23 +375,6 @@ func (sm *SessionManager) runPipeline(sess *streamSession) {
 				}
 			}
 			activityTimer.Reset(activityTimeout)
-
-			tDone := time.Now()
-			totalWrite += tDone.Sub(tWrite)
-
-			frameCount++
-			if frameCount%30 == 0 {
-				log.Printf("[session %s] stats: frames=%d src=%dx%d→%dx%d drained=%d recv=%.1fms convert=%.1fms encode=%.1fms write=%.1fms nals=%d",
-					sess.sessionID, frameCount,
-					frame.Width, frame.Height, sess.targetW, sess.targetH,
-					drained,
-					float64(totalRecv.Milliseconds())/float64(frameCount),
-					float64(totalConvert.Milliseconds())/float64(frameCount),
-					float64(totalEncode.Milliseconds())/float64(frameCount),
-					float64(totalWrite.Milliseconds())/float64(frameCount),
-					len(nals),
-				)
-			}
 		}
 	}
 }
