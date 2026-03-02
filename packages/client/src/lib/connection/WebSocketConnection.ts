@@ -1,5 +1,5 @@
 import type {
-  EmulatorServerMessage,
+  DeviceServerMessage,
   RemoteClientMessage,
   UploadedFile,
   YepMessage,
@@ -246,8 +246,8 @@ export class WebSocketConnection implements Connection {
     this.send(msg);
   }
 
-  onEmulatorMessage(handler: (msg: EmulatorServerMessage) => void): () => void {
-    return this.protocol.onEmulatorMessage(handler);
+  onDeviceMessage(handler: (msg: DeviceServerMessage) => void): () => void {
+    return this.protocol.onDeviceMessage(handler);
   }
 
   close(): void {

@@ -11,7 +11,7 @@ import (
 	"strings"
 	"time"
 
-	pb "github.com/anthropics/yepanywhere/emulator-bridge/proto/emulatorpb"
+	pb "github.com/anthropics/yepanywhere/device-bridge/proto/emulatorpb"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/metadata"

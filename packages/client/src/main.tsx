@@ -66,7 +66,7 @@ createRoot(rootElement).render(
               />
               <Route path="/git-status" element={<GitStatusPage />} />
               <Route path="/emulator" element={<EmulatorPage />} />
-              <Route path="/emulator/:emulatorId" element={<EmulatorPage />} />
+              <Route path="/emulator/:deviceId" element={<EmulatorPage />} />
               <Route path="/new-session" element={<NewSessionPage />} />
               <Route
                 path="/projects/:projectId/sessions/:sessionId"

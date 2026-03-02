@@ -14,10 +14,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/anthropics/yepanywhere/emulator-bridge/internal/emulator"
-	"github.com/anthropics/yepanywhere/emulator-bridge/internal/encoder"
-	"github.com/anthropics/yepanywhere/emulator-bridge/internal/ipc"
-	"github.com/anthropics/yepanywhere/emulator-bridge/internal/stream"
+	"github.com/anthropics/yepanywhere/device-bridge/internal/emulator"
+	"github.com/anthropics/yepanywhere/device-bridge/internal/encoder"
+	"github.com/anthropics/yepanywhere/device-bridge/internal/ipc"
+	"github.com/anthropics/yepanywhere/device-bridge/internal/stream"
 )
 
 //go:embed web
@@ -145,22 +145,22 @@ func runIPC(adbPath string) {
 	})
 
 	// Emulator discovery endpoints.
-	mux.HandleFunc("/emulators", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/devices", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet {
 			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 			return
 		}
-		emulators, err := handler.GetDiscovery().ListEmulators()
+		devices, err := handler.GetDiscovery().ListDevices()
 		if err != nil {
 			http.Error(w, fmt.Sprintf("discovery error: %v", err), http.StatusInternalServerError)
 			return
 		}
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(emulators)
+		json.NewEncoder(w).Encode(devices)
 	})
 
-	mux.HandleFunc("/emulators/", func(w http.ResponseWriter, r *http.Request) {
-		path := strings.TrimPrefix(r.URL.Path, "/emulators/")
+	mux.HandleFunc("/devices/", func(w http.ResponseWriter, r *http.Request) {
+		path := strings.TrimPrefix(r.URL.Path, "/devices/")
 		parts := strings.SplitN(path, "/", 2)
 		if len(parts) != 2 {
 			http.Error(w, "not found", http.StatusNotFound)

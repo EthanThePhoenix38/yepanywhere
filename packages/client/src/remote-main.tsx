@@ -73,7 +73,7 @@ const APP_ROUTES = (
       <Route path="inbox" element={<InboxPage />} />
       <Route path="git-status" element={<GitStatusPage />} />
       <Route path="emulator" element={<EmulatorPage />} />
-      <Route path="emulator/:emulatorId" element={<EmulatorPage />} />
+      <Route path="emulator/:deviceId" element={<EmulatorPage />} />
       <Route path="settings" element={<SettingsLayout />} />
       <Route path="settings/:category" element={<SettingsLayout />} />
       <Route path="new-session" element={<NewSessionPage />} />

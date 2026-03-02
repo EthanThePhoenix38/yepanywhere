@@ -1,5 +1,5 @@
 import type {
-  EmulatorServerMessage,
+  DeviceServerMessage,
   RemoteClientMessage,
   UploadedFile,
 } from "@yep-anywhere/shared";
@@ -294,5 +294,5 @@ export interface Connection {
    * Returns an unsubscribe function.
    * Optional - only WebSocket-based connections support this.
    */
-  onEmulatorMessage?(handler: (msg: EmulatorServerMessage) => void): () => void;
+  onDeviceMessage?(handler: (msg: DeviceServerMessage) => void): () => void;
 }

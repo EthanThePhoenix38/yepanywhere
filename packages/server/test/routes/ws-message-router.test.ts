@@ -235,9 +235,9 @@ describe("WebSocket Message Router", () => {
     });
   });
 
-  it("routes emulator signaling messages to onEmulatorMessage", async () => {
+  it("routes emulator signaling messages to onDeviceMessage", async () => {
     const send = vi.fn();
-    const onEmulatorMessage = vi.fn(async () => undefined);
+    const onDeviceMessage = vi.fn(async () => undefined);
     const handlers = {
       onRequest: vi.fn(async () => undefined),
       onSubscribe: vi.fn(async () => undefined),
@@ -246,26 +246,26 @@ describe("WebSocket Message Router", () => {
       onUploadChunk: vi.fn(async () => undefined),
       onUploadEnd: vi.fn(async () => undefined),
       onPing: vi.fn(async () => undefined),
-      onEmulatorMessage,
+      onDeviceMessage,
     };
 
     const messages: RemoteClientMessage[] = [
       {
-        type: "emulator_stream_start",
+        type: "device_stream_start",
         sessionId: "session-1",
-        emulatorId: "emulator-5554",
+        deviceId: "emulator-5554",
       },
       {
-        type: "emulator_stream_stop",
+        type: "device_stream_stop",
         sessionId: "session-1",
       },
       {
-        type: "emulator_webrtc_answer",
+        type: "device_webrtc_answer",
         sessionId: "session-1",
         sdp: "v=0",
       },
       {
-        type: "emulator_ice_candidate",
+        type: "device_ice_candidate",
         sessionId: "session-1",
         candidate: null,
       },
@@ -275,9 +275,9 @@ describe("WebSocket Message Router", () => {
       await routeClientMessageSafely(message, send, handlers);
     }
 
-    expect(onEmulatorMessage).toHaveBeenCalledTimes(messages.length);
+    expect(onDeviceMessage).toHaveBeenCalledTimes(messages.length);
     for (const [index, message] of messages.entries()) {
-      expect(onEmulatorMessage).toHaveBeenNthCalledWith(index + 1, message);
+      expect(onDeviceMessage).toHaveBeenNthCalledWith(index + 1, message);
     }
     expect(send).not.toHaveBeenCalled();
   });

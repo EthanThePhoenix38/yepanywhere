@@ -81,6 +81,8 @@ export function SettingsLayout() {
   // Build the list of categories, conditionally including emulator and dev
   const categories: SettingsCategory[] = [...SETTINGS_CATEGORIES];
   if (
+    capabilities.includes("deviceBridge") ||
+    capabilities.includes("deviceBridge-download") ||
     capabilities.includes("emulator") ||
     capabilities.includes("emulator-download")
   ) {

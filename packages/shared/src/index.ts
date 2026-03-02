@@ -281,20 +281,20 @@ export type {
 } from "./opencode-schema/types.js";
 export { parseOpenCodeSSEEvent } from "./opencode-schema/events.js";
 
-// Emulator streaming types (for Android emulator remote control)
+// Device bridge streaming types (for device bridge remote control)
 export type {
-  EmulatorInfo,
-  EmulatorStreamStart,
-  EmulatorStreamStop,
-  EmulatorWebRTCAnswer,
-  EmulatorICECandidate,
-  EmulatorClientMessage,
-  EmulatorWebRTCOffer,
-  EmulatorICECandidateEvent,
-  EmulatorSessionState,
-  EmulatorServerMessage,
+  DeviceInfo,
+  DeviceStreamStart,
+  DeviceStreamStop,
+  DeviceWebRTCAnswer,
+  DeviceICECandidate,
+  DeviceClientMessage,
+  DeviceWebRTCOffer,
+  DeviceICECandidateEvent,
+  DeviceSessionState,
+  DeviceServerMessage,
   RTCIceCandidateInit,
-} from "./emulator.js";
+} from "./devices.js";
 
 // Relay protocol types (for remote access via WebSocket)
 export type {

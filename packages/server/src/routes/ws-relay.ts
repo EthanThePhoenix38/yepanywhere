@@ -2,7 +2,7 @@ import type { HttpBindings } from "@hono/node-server";
 import type { Context, Hono } from "hono";
 import type { WSEvents } from "hono/ws";
 import type { WebSocket as RawWebSocket } from "ws";
-import type { EmulatorBridgeService } from "../emulator/EmulatorBridgeService.js";
+import type { DeviceBridgeService } from "../device/DeviceBridgeService.js";
 import { isAllowedOrigin } from "../middleware/allowed-hosts.js";
 import type {
   RemoteAccessService,
@@ -25,7 +25,7 @@ import {
   type RelayUploadState,
   type WSAdapter,
   cleanupConnectionState,
-  cleanupEmulatorSessions,
+  cleanupDeviceSessions,
   cleanupSubscriptions,
   cleanupUploads,
   createConnectionState,
@@ -59,7 +59,7 @@ export interface WsRelayDeps {
   /** Focused session watch manager for per-session targeted file watching (optional) */
   focusedSessionWatchManager?: FocusedSessionWatchManager;
   /** Emulator bridge service for Android emulator streaming (optional) */
-  emulatorBridgeService?: EmulatorBridgeService;
+  deviceBridgeService?: DeviceBridgeService;
 }
 
 /**
@@ -88,7 +88,7 @@ export interface AcceptRelayConnectionDeps {
   /** Focused session watch manager for per-session targeted file watching (optional) */
   focusedSessionWatchManager?: FocusedSessionWatchManager;
   /** Emulator bridge service for Android emulator streaming (optional) */
-  emulatorBridgeService?: EmulatorBridgeService;
+  deviceBridgeService?: DeviceBridgeService;
 }
 
 /**
@@ -168,7 +168,7 @@ export function createWsRelayRoutes(
     connectedBrowsers,
     browserProfileService,
     focusedSessionWatchManager,
-    emulatorBridgeService,
+    deviceBridgeService,
   } = deps;
 
   // Build handler dependencies
@@ -183,7 +183,7 @@ export function createWsRelayRoutes(
     connectedBrowsers,
     browserProfileService,
     focusedSessionWatchManager,
-    emulatorBridgeService,
+    deviceBridgeService,
   };
 
   // Return the WebSocket handler with origin validation
@@ -205,7 +205,7 @@ export function createWsRelayRoutes(
     // Track active uploads for this connection
     const uploads = new Map<string, RelayUploadState>();
     // Track active emulator streaming sessions for this connection
-    const emulatorSessions = new Set<string>();
+    const deviceSessions = new Set<string>();
     // Message queue to serialize async message handling
     let messageQueue: Promise<void> = Promise.resolve();
     // Connection state for SRP authentication
@@ -282,7 +282,7 @@ export function createWsRelayRoutes(
             evt.data,
             handlerDeps,
             {},
-            emulatorSessions,
+            deviceSessions,
           ).catch((err) => {
             console.error("[WS Relay] Unexpected error:", err);
           }),
@@ -299,7 +299,7 @@ export function createWsRelayRoutes(
         });
 
         // Clean up emulator streaming sessions
-        cleanupEmulatorSessions(emulatorSessions, emulatorBridgeService);
+        cleanupDeviceSessions(deviceSessions, deviceBridgeService);
 
         // Clean up all subscriptions
         cleanupSubscriptions(subscriptions);
@@ -343,7 +343,7 @@ export function createAcceptRelayConnection(
     connectedBrowsers,
     browserProfileService,
     focusedSessionWatchManager,
-    emulatorBridgeService,
+    deviceBridgeService,
   } = deps;
 
   // Build handler dependencies
@@ -358,7 +358,7 @@ export function createAcceptRelayConnection(
     connectedBrowsers,
     browserProfileService,
     focusedSessionWatchManager,
-    emulatorBridgeService,
+    deviceBridgeService,
   };
 
   // Return the accept relay connection handler
@@ -374,7 +374,7 @@ export function createAcceptRelayConnection(
     // Track active uploads for this connection
     const uploads = new Map<string, RelayUploadState>();
     // Track active emulator streaming sessions for this connection
-    const emulatorSessions = new Set<string>();
+    const deviceSessions = new Set<string>();
     // Message queue to serialize async message handling
     let messageQueue: Promise<void> = Promise.resolve();
 
@@ -399,7 +399,7 @@ export function createAcceptRelayConnection(
           data,
           handlerDeps,
           { isBinary },
-          emulatorSessions,
+          deviceSessions,
         ).catch((err) => {
           console.error("[WS Relay] Unexpected error:", err);
         }),
@@ -425,7 +425,7 @@ export function createAcceptRelayConnection(
       });
 
       // Clean up emulator streaming sessions
-      cleanupEmulatorSessions(emulatorSessions, emulatorBridgeService);
+      cleanupDeviceSessions(deviceSessions, deviceBridgeService);
 
       cleanupSubscriptions(subscriptions);
       console.log("[WS Relay] Relay connection closed");
@@ -448,7 +448,7 @@ export function createAcceptRelayConnection(
         firstMessage,
         handlerDeps,
         { isBinary: firstMessageIsBinary },
-        emulatorSessions,
+        deviceSessions,
       ).catch((err) => {
         console.error("[WS Relay] Error processing first message:", err);
       }),

@@ -8,9 +8,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/anthropics/yepanywhere/emulator-bridge/internal/emulator"
-	"github.com/anthropics/yepanywhere/emulator-bridge/internal/encoder"
-	"github.com/anthropics/yepanywhere/emulator-bridge/internal/stream"
+	"github.com/anthropics/yepanywhere/device-bridge/internal/emulator"
+	"github.com/anthropics/yepanywhere/device-bridge/internal/encoder"
+	"github.com/anthropics/yepanywhere/device-bridge/internal/stream"
 )
 
 // SessionStartOptions are the options for starting an emulator streaming session.

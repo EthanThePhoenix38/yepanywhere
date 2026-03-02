@@ -4,14 +4,14 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { createInterface } from "node:readline";
 import type {
-  EmulatorICECandidate,
-  EmulatorICECandidateEvent,
-  EmulatorInfo,
-  EmulatorSessionState,
-  EmulatorStreamStart,
-  EmulatorStreamStop,
-  EmulatorWebRTCAnswer,
-  EmulatorWebRTCOffer,
+  DeviceICECandidate,
+  DeviceICECandidateEvent,
+  DeviceInfo,
+  DeviceSessionState,
+  DeviceStreamStart,
+  DeviceStreamStop,
+  DeviceWebRTCAnswer,
+  DeviceWebRTCOffer,
   RTCIceCandidateInit,
 } from "@yep-anywhere/shared";
 import { WebSocket } from "ws";
@@ -32,7 +32,7 @@ interface SidecarHandshake {
 interface SidecarMessage {
   type: string;
   sessionId?: string;
-  emulatorId?: string;
+  deviceId?: string;
   sdp?: string;
   candidate?: RTCIceCandidateInit | null;
   state?: string;
@@ -41,10 +41,10 @@ interface SidecarMessage {
 
 /** Callback for forwarding sidecar messages to a specific client */
 type ClientSendFn = (
-  msg: EmulatorWebRTCOffer | EmulatorICECandidateEvent | EmulatorSessionState,
+  msg: DeviceWebRTCOffer | DeviceICECandidateEvent | DeviceSessionState,
 ) => void;
 
-export interface EmulatorBridgeServiceOptions {
+export interface DeviceBridgeServiceOptions {
   /** Path to adb binary */
   adbPath: string;
   /** Data directory for locating the sidecar binary */
@@ -52,10 +52,10 @@ export interface EmulatorBridgeServiceOptions {
 }
 
 /**
- * Manages the emulator-bridge sidecar lifecycle and proxies
+ * Manages the device-bridge sidecar lifecycle and proxies
  * WebRTC signaling between clients and the sidecar.
  */
-export class EmulatorBridgeService {
+export class DeviceBridgeService {
   private adbPath: string;
   private dataDir: string;
   private process: ChildProcess | null = null;
@@ -75,7 +75,7 @@ export class EmulatorBridgeService {
   /** Maps streaming sessionId → client send function */
   private clientSenders = new Map<string, ClientSendFn>();
 
-  constructor(options: EmulatorBridgeServiceOptions) {
+  constructor(options: DeviceBridgeServiceOptions) {
     this.adbPath = options.adbPath;
     this.dataDir = options.dataDir;
   }
@@ -91,7 +91,7 @@ export class EmulatorBridgeService {
     const devExt = os.platform() === "win32" ? ".exe" : "";
     const devPath = path.resolve(
       import.meta.dirname,
-      `../../../emulator-bridge/bridge${devExt}`,
+      `../../../device-bridge/bridge${devExt}`,
     );
     if (fs.existsSync(devPath)) {
       return devPath;
@@ -106,7 +106,7 @@ export class EmulatorBridgeService {
     const prodPath = path.join(
       this.dataDir,
       "bin",
-      `emulator-bridge-${platform}-${arch}${ext}`,
+      `device-bridge-${platform}-${arch}${ext}`,
     );
     if (fs.existsSync(prodPath)) {
       return prodPath;
@@ -120,14 +120,14 @@ export class EmulatorBridgeService {
     return this.findBinaryPath() !== null;
   }
 
-  /** Get the platform-specific binary name (e.g. "emulator-bridge-darwin-arm64"). */
+  /** Get the platform-specific binary name (e.g. "device-bridge-darwin-arm64"). */
   private getBinaryInfo() {
     const p = os.platform();
     const platform =
       p === "darwin" ? "darwin" : p === "win32" ? "windows" : "linux";
     const arch = os.arch() === "arm64" ? "arm64" : "amd64";
     const ext = p === "win32" ? ".exe" : "";
-    const name = `emulator-bridge-${platform}-${arch}${ext}`;
+    const name = `device-bridge-${platform}-${arch}${ext}`;
     return { platform, arch, ext, name };
   }
 
@@ -147,7 +147,7 @@ export class EmulatorBridgeService {
     // Ensure bin directory exists
     fs.mkdirSync(destDir, { recursive: true });
 
-    console.log(`[EmulatorBridge] Downloading ${name} from ${url}`);
+    console.log(`[DeviceBridge] Downloading ${name} from ${url}`);
 
     const response = await fetch(url, { redirect: "follow" });
     if (!response.ok) {
@@ -168,7 +168,7 @@ export class EmulatorBridgeService {
     }
 
     console.log(
-      `[EmulatorBridge] Downloaded ${name} (${(buffer.length / 1024 / 1024).toFixed(1)} MB)`,
+      `[DeviceBridge] Downloaded ${name} (${(buffer.length / 1024 / 1024).toFixed(1)} MB)`,
     );
     return destPath;
   }
@@ -220,7 +220,7 @@ export class EmulatorBridgeService {
         for (const pid of pids) {
           try {
             process.kill(pid, "SIGTERM");
-            console.log(`[EmulatorBridge] Killed stale bridge process ${pid}`);
+            console.log(`[DeviceBridge] Killed stale bridge process ${pid}`);
           } catch {
             // Process might have already exited.
           }
@@ -246,14 +246,14 @@ export class EmulatorBridgeService {
       const binaryPath = this.findBinaryPath();
       if (!binaryPath) {
         throw new Error(
-          "Emulator bridge binary not found. Build it or download it first.",
+          "Device bridge binary not found. Build it or download it first.",
         );
       }
 
       // Kill any orphaned bridge processes from previous server runs.
       this.killStaleProcesses();
 
-      console.log(`[EmulatorBridge] Starting sidecar: ${binaryPath}`);
+      console.log(`[DeviceBridge] Starting sidecar: ${binaryPath}`);
 
       const child = spawn(binaryPath, ["--ipc", "--adb-path", this.adbPath], {
         stdio: ["pipe", "pipe", "pipe"],
@@ -266,14 +266,14 @@ export class EmulatorBridgeService {
       this.port = handshake.port;
 
       console.log(
-        `[EmulatorBridge] Sidecar started on port ${this.port} (v${handshake.version})`,
+        `[DeviceBridge] Sidecar started on port ${this.port} (v${handshake.version})`,
       );
 
       // Pipe stderr to our console.
       child.stderr?.on("data", (data: Buffer) => {
         const lines = data.toString().trim().split("\n");
         for (const line of lines) {
-          console.log(`[EmulatorBridge/sidecar] ${line}`);
+          console.log(`[DeviceBridge/sidecar] ${line}`);
         }
       });
 
@@ -281,7 +281,7 @@ export class EmulatorBridgeService {
       child.on("exit", (code, signal) => {
         if (this.process !== child) return;
         console.warn(
-          `[EmulatorBridge] Sidecar exited (code=${code}, signal=${signal})`,
+          `[DeviceBridge] Sidecar exited (code=${code}, signal=${signal})`,
         );
         this.cleanup();
         // Don't auto-restart on clean exit (idle shutdown, code=0)
@@ -354,7 +354,7 @@ export class EmulatorBridgeService {
       ws.on("open", () => {
         clearTimeout(timeout);
         this.ws = ws;
-        console.log("[EmulatorBridge] WebSocket connected to sidecar");
+        console.log("[DeviceBridge] WebSocket connected to sidecar");
         resolve();
       });
 
@@ -364,14 +364,14 @@ export class EmulatorBridgeService {
 
       ws.on("close", () => {
         if (this.ws === ws) {
-          console.warn("[EmulatorBridge] WebSocket closed");
+          console.warn("[DeviceBridge] WebSocket closed");
           this.ws = null;
         }
       });
 
       ws.on("error", (err) => {
         clearTimeout(timeout);
-        console.error("[EmulatorBridge] WebSocket error:", err.message);
+        console.error("[DeviceBridge] WebSocket error:", err.message);
         reject(err);
       });
     });
@@ -383,7 +383,7 @@ export class EmulatorBridgeService {
     try {
       msg = JSON.parse(raw);
     } catch {
-      console.warn("[EmulatorBridge] Bad sidecar message:", raw);
+      console.warn("[DeviceBridge] Bad sidecar message:", raw);
       return;
     }
 
@@ -400,7 +400,7 @@ export class EmulatorBridgeService {
       case "webrtc.offer":
         if (msg.sdp) {
           send({
-            type: "emulator_webrtc_offer",
+            type: "device_webrtc_offer",
             sessionId,
             sdp: msg.sdp,
           });
@@ -409,7 +409,7 @@ export class EmulatorBridgeService {
 
       case "webrtc.ice":
         send({
-          type: "emulator_ice_candidate_event",
+          type: "device_ice_candidate_event",
           sessionId,
           candidate: msg.candidate ?? null,
         });
@@ -417,7 +417,7 @@ export class EmulatorBridgeService {
 
       case "session.state":
         send({
-          type: "emulator_session_state",
+          type: "device_session_state",
           sessionId,
           state: msg.state as
             | "connecting"
@@ -433,7 +433,7 @@ export class EmulatorBridgeService {
   /** Send a JSON message to the sidecar. */
   private sendToSidecar(msg: Record<string, unknown>): void {
     if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
-      console.warn("[EmulatorBridge] Cannot send: WebSocket not connected");
+      console.warn("[DeviceBridge] Cannot send: WebSocket not connected");
       return;
     }
     this.ws.send(JSON.stringify(msg));
@@ -453,9 +453,9 @@ export class EmulatorBridgeService {
     this.clientSenders.delete(sessionId);
   }
 
-  /** Start streaming an emulator to a client. */
+  /** Start streaming a device to a client. */
   async startStream(
-    msg: EmulatorStreamStart,
+    msg: DeviceStreamStart,
     send: ClientSendFn,
   ): Promise<void> {
     await this.ensureStarted();
@@ -464,13 +464,14 @@ export class EmulatorBridgeService {
     this.sendToSidecar({
       type: "session.start",
       sessionId: msg.sessionId,
-      emulatorId: msg.emulatorId,
+      deviceId: msg.deviceId,
+      emulatorId: msg.deviceId, // compatibility with legacy sidecar binaries
       options: msg.options,
     });
   }
 
   /** Stop streaming. */
-  stopStream(msg: EmulatorStreamStop): void {
+  stopStream(msg: DeviceStreamStop): void {
     this.unregisterClientSender(msg.sessionId);
     this.sendToSidecar({
       type: "session.stop",
@@ -479,7 +480,7 @@ export class EmulatorBridgeService {
   }
 
   /** Forward SDP answer from client to sidecar. */
-  handleAnswer(msg: EmulatorWebRTCAnswer): void {
+  handleAnswer(msg: DeviceWebRTCAnswer): void {
     this.sendToSidecar({
       type: "webrtc.answer",
       sessionId: msg.sessionId,
@@ -488,7 +489,7 @@ export class EmulatorBridgeService {
   }
 
   /** Forward ICE candidate from client to sidecar. */
-  handleICE(msg: EmulatorICECandidate): void {
+  handleICE(msg: DeviceICECandidate): void {
     this.sendToSidecar({
       type: "webrtc.ice",
       sessionId: msg.sessionId,
@@ -500,48 +501,65 @@ export class EmulatorBridgeService {
   // REST API proxies
   // =========================================================================
 
-  /** List emulators via sidecar REST API. */
-  async listEmulators(): Promise<EmulatorInfo[]> {
+  /**
+   * Fetch sidecar REST endpoint with legacy path fallback.
+   *
+   * During the rename transition, older sidecar binaries still expose
+   * `/emulators/*`. Try the new `/devices/*` first, then fall back on 404.
+   */
+  private async fetchSidecar(
+    endpoint: string,
+    init?: RequestInit,
+  ): Promise<Response> {
+    const url = `http://127.0.0.1:${this.port}${endpoint}`;
+    const response = await fetch(url, init);
+    if (response.status !== 404 || !endpoint.startsWith("/devices")) {
+      return response;
+    }
+
+    const legacyEndpoint = `/emulators${endpoint.slice("/devices".length)}`;
+    const legacyUrl = `http://127.0.0.1:${this.port}${legacyEndpoint}`;
+    return fetch(legacyUrl, init);
+  }
+
+  /** List devices via sidecar REST API. */
+  async listDevices(): Promise<DeviceInfo[]> {
     await this.ensureStarted();
-    const resp = await fetch(`http://127.0.0.1:${this.port}/emulators`);
+    const resp = await this.fetchSidecar("/devices");
     if (!resp.ok) {
       throw new Error(`Sidecar error: ${resp.status}`);
     }
     return resp.json();
   }
 
-  /** Get emulator screenshot via sidecar REST API. */
-  async getScreenshot(emulatorId: string): Promise<Buffer> {
+  /** Get device screenshot via sidecar REST API. */
+  async getScreenshot(deviceId: string): Promise<Buffer> {
     await this.ensureStarted();
-    const resp = await fetch(
-      `http://127.0.0.1:${this.port}/emulators/${emulatorId}/screenshot`,
-    );
+    const resp = await this.fetchSidecar(`/devices/${deviceId}/screenshot`);
     if (!resp.ok) {
       throw new Error(`Screenshot error: ${resp.status}`);
     }
     return Buffer.from(await resp.arrayBuffer());
   }
 
-  /** Start an emulator via sidecar REST API. */
-  async startEmulator(emulatorId: string): Promise<void> {
+  /** Start a device via sidecar REST API. */
+  async startDevice(deviceId: string): Promise<void> {
     await this.ensureStarted();
-    const resp = await fetch(
-      `http://127.0.0.1:${this.port}/emulators/${emulatorId}/start`,
-      { method: "POST" },
-    );
+    const resp = await this.fetchSidecar(`/devices/${deviceId}/start`, {
+      method: "POST",
+    });
     if (!resp.ok) {
       const text = await resp.text();
       throw new Error(`Start error: ${text}`);
     }
   }
 
-  /** Stop an emulator via sidecar REST API. */
-  async stopEmulator(emulatorId: string): Promise<void> {
+  /** Stop a device via sidecar REST API. */
+  async stopDevice(deviceId: string): Promise<void> {
     await this.ensureStarted();
-    const resp = await fetch(
-      `http://127.0.0.1:${this.port}/emulators/${emulatorId}/stop`,
-      { method: "POST" },
-    );
+    const resp = await this.fetchSidecar(`/devices/${deviceId}/stop`, {
+      method: "POST",
+    });
     if (!resp.ok) {
       const text = await resp.text();
       throw new Error(`Stop error: ${text}`);
@@ -563,7 +581,7 @@ export class EmulatorBridgeService {
   private scheduleRestart(): void {
     if (this.restartAttempts >= this.maxRestartAttempts) {
       console.error(
-        `[EmulatorBridge] Max restart attempts (${this.maxRestartAttempts}) reached, giving up`,
+        `[DeviceBridge] Max restart attempts (${this.maxRestartAttempts}) reached, giving up`,
       );
       return;
     }
@@ -571,12 +589,12 @@ export class EmulatorBridgeService {
     const delay = Math.min(1000 * 2 ** this.restartAttempts, 30000);
     this.restartAttempts++;
     console.log(
-      `[EmulatorBridge] Restarting in ${delay}ms (attempt ${this.restartAttempts})`,
+      `[DeviceBridge] Restarting in ${delay}ms (attempt ${this.restartAttempts})`,
     );
 
     this.restartTimer = setTimeout(() => {
       this.start().catch((err) => {
-        console.error("[EmulatorBridge] Restart failed:", err.message);
+        console.error("[DeviceBridge] Restart failed:", err.message);
       });
     }, delay);
   }

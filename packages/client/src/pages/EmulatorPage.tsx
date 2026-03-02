@@ -1,4 +1,4 @@
-import type { EmulatorInfo } from "@yep-anywhere/shared";
+import type { DeviceInfo } from "@yep-anywhere/shared";
 import { useEffect, useState } from "react";
 import { api } from "../api/client";
 import { EmulatorNavButtons } from "../components/EmulatorNavButtons";
@@ -16,7 +16,7 @@ function EmulatorListItem({
   onStart,
   onStop,
 }: {
-  emulator: EmulatorInfo;
+  emulator: DeviceInfo;
   onConnect: (id: string) => void;
   onStart: (id: string) => void;
   onStop: (id: string) => void;
@@ -66,9 +66,9 @@ function EmulatorListItem({
 }
 
 function StreamView({
-  emulatorId,
+  deviceId,
   onBack,
-}: { emulatorId: string; onBack: () => void }) {
+}: { deviceId: string; onBack: () => void }) {
   const {
     remoteStream,
     dataChannel,
@@ -82,9 +82,9 @@ function StreamView({
 
   // Auto-connect when entering stream view
   useEffect(() => {
-    connect(emulatorId);
+    connect(deviceId);
     return () => disconnect();
-  }, [emulatorId, connect, disconnect]);
+  }, [deviceId, connect, disconnect]);
 
   const handleBack = () => {
     disconnect();
@@ -168,8 +168,9 @@ export function EmulatorPage() {
   const { version: versionInfo, refetch: refetchVersion } = useVersion();
   const capabilities = versionInfo?.capabilities ?? [];
   const needsDownload =
-    capabilities.includes("emulator-download") &&
-    !capabilities.includes("emulator");
+    (capabilities.includes("deviceBridge-download") ||
+      capabilities.includes("emulator-download")) &&
+    !(capabilities.includes("deviceBridge") || capabilities.includes("emulator"));
 
   const { emulators, loading, error, startEmulator, stopEmulator } =
     useEmulators({ enabled: !needsDownload });
@@ -189,7 +190,7 @@ export function EmulatorPage() {
       <div className="main-content-wrapper">
         <div className="main-content-constrained">
           <StreamView
-            emulatorId={activeEmulatorId}
+            deviceId={activeEmulatorId}
             onBack={() => setActiveEmulatorId(null)}
           />
         </div>

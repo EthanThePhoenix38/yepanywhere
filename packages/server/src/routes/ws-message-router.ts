@@ -299,7 +299,7 @@ interface MessageRouteHandlers {
     msg: RemoteClientMessage & { type: "upload_end" },
   ) => Promise<void>;
   onPing: (msg: RemoteClientMessage & { type: "ping" }) => Promise<void> | void;
-  onEmulatorMessage?: (msg: RemoteClientMessage) => Promise<void> | void;
+  onDeviceMessage?: (msg: RemoteClientMessage) => Promise<void> | void;
 }
 
 function getMessageId(msg: RemoteClientMessage): string | undefined {
@@ -312,10 +312,10 @@ function getMessageId(msg: RemoteClientMessage): string | undefined {
     case "upload_chunk":
     case "upload_end":
       return msg.uploadId;
-    case "emulator_stream_start":
-    case "emulator_stream_stop":
-    case "emulator_webrtc_answer":
-    case "emulator_ice_candidate":
+    case "device_stream_start":
+    case "device_stream_stop":
+    case "device_webrtc_answer":
+    case "device_ice_candidate":
       return (msg as { sessionId?: string }).sessionId;
     default:
       return undefined;
@@ -353,14 +353,14 @@ export async function routeClientMessageSafely(
       case "ping":
         await handlers.onPing(msg);
         break;
-      case "emulator_stream_start":
-      case "emulator_stream_stop":
-      case "emulator_webrtc_answer":
-      case "emulator_ice_candidate":
-        if (handlers.onEmulatorMessage) {
-          await handlers.onEmulatorMessage(msg);
+      case "device_stream_start":
+      case "device_stream_stop":
+      case "device_webrtc_answer":
+      case "device_ice_candidate":
+        if (handlers.onDeviceMessage) {
+          await handlers.onDeviceMessage(msg);
         } else {
-          console.warn("[WS Relay] Emulator message received but no handler");
+          console.warn("[WS Relay] Device message received but no handler");
         }
         break;
       default:

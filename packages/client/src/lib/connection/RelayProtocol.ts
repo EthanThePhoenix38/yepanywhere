@@ -1,6 +1,6 @@
 import type {
   ClientPing,
-  EmulatorServerMessage,
+  DeviceServerMessage,
   RelayEvent,
   RelayRequest,
   RelayResponse,
@@ -32,7 +32,7 @@ export interface RelayTransport {
   isConnected(): boolean;
 }
 
-export type EmulatorMessageHandler = (msg: EmulatorServerMessage) => void;
+export type EmulatorMessageHandler = (msg: DeviceServerMessage) => void;
 
 export interface RelayProtocolOptions {
   debugEnabled?: () => boolean;
@@ -145,10 +145,10 @@ export class RelayProtocol {
         this.options.onPong?.(msg.id);
         break;
       // Emulator signaling messages (server → client push)
-      case "emulator_webrtc_offer":
-      case "emulator_ice_candidate_event":
-      case "emulator_session_state":
-        this.handleEmulatorMessage(msg as EmulatorServerMessage);
+      case "device_webrtc_offer":
+      case "device_ice_candidate_event":
+      case "device_session_state":
+        this.handleEmulatorMessage(msg as DeviceServerMessage);
         break;
       default:
         console.warn(
@@ -158,7 +158,7 @@ export class RelayProtocol {
     }
   }
 
-  private handleEmulatorMessage(msg: EmulatorServerMessage): void {
+  private handleEmulatorMessage(msg: DeviceServerMessage): void {
     for (const handler of this.emulatorHandlers) {
       handler(msg);
     }
@@ -168,7 +168,7 @@ export class RelayProtocol {
    * Register a handler for emulator signaling messages.
    * Returns an unsubscribe function.
    */
-  onEmulatorMessage(handler: EmulatorMessageHandler): () => void {
+  onDeviceMessage(handler: EmulatorMessageHandler): () => void {
     this.emulatorHandlers.add(handler);
     return () => {
       this.emulatorHandlers.delete(handler);

@@ -5,7 +5,7 @@ import (
 	"log"
 	"sync"
 
-	"github.com/anthropics/yepanywhere/emulator-bridge/internal/emulator"
+	"github.com/anthropics/yepanywhere/device-bridge/internal/emulator"
 )
 
 // clientEntry is a ref-counted gRPC client.

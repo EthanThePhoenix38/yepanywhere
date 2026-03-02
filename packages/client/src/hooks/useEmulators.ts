@@ -1,9 +1,9 @@
-import type { EmulatorInfo } from "@yep-anywhere/shared";
+import type { DeviceInfo } from "@yep-anywhere/shared";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api } from "../api/client";
 
 interface UseEmulatorsResult {
-  emulators: EmulatorInfo[];
+  emulators: DeviceInfo[];
   loading: boolean;
   error: string | null;
   startEmulator: (id: string) => Promise<void>;
@@ -33,7 +33,7 @@ export function useEmulators(
     typeof options === "number" ? options : (options?.pollIntervalMs ?? 5000);
   const enabled =
     typeof options === "number" ? true : (options?.enabled ?? true);
-  const [emulators, setEmulators] = useState<EmulatorInfo[]>([]);
+  const [emulators, setEmulators] = useState<DeviceInfo[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const mountedRef = useRef(true);

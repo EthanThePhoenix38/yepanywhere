@@ -40,7 +40,7 @@ import {
   encryptToBinaryEnvelopeWithCompression,
 } from "../crypto/index.js";
 import type { SrpServerSession } from "../crypto/index.js";
-import type { EmulatorBridgeService } from "../emulator/EmulatorBridgeService.js";
+import type { DeviceBridgeService } from "../device/DeviceBridgeService.js";
 import { getLogger } from "../logging/logger.js";
 import { WS_INTERNAL_AUTHENTICATED } from "../middleware/internal-auth.js";
 import type {
@@ -211,7 +211,7 @@ export interface RelayHandlerDeps {
   /** Focused session watch manager for per-session targeted file watching (optional) */
   focusedSessionWatchManager?: FocusedSessionWatchManager;
   /** Emulator bridge service for Android emulator streaming (optional) */
-  emulatorBridgeService?: EmulatorBridgeService;
+  deviceBridgeService?: DeviceBridgeService;
 }
 
 /**
@@ -941,7 +941,7 @@ export async function handleMessage(
   data: unknown,
   deps: RelayHandlerDeps,
   options: HandleMessageOptions,
-  emulatorSessions?: Set<string>,
+  deviceSessions?: Set<string>,
 ): Promise<void> {
   const {
     app,
@@ -1006,23 +1006,23 @@ export async function handleMessage(
       onUploadEnd: async (uploadEndMsg) =>
         handleUploadEnd(uploads, uploadEndMsg, send, uploadManager),
       onPing: async (pingMsg) => send({ type: "pong", id: pingMsg.id }),
-      onEmulatorMessage: deps.emulatorBridgeService
+      onDeviceMessage: deps.deviceBridgeService
         ? (() => {
-            const bridge = deps.emulatorBridgeService;
+            const bridge = deps.deviceBridgeService;
             return async (emulatorMsg: RemoteClientMessage) => {
               switch (emulatorMsg.type) {
-                case "emulator_stream_start":
-                  emulatorSessions?.add(emulatorMsg.sessionId);
+                case "device_stream_start":
+                  deviceSessions?.add(emulatorMsg.sessionId);
                   await bridge.startStream(emulatorMsg, send);
                   break;
-                case "emulator_stream_stop":
-                  emulatorSessions?.delete(emulatorMsg.sessionId);
+                case "device_stream_stop":
+                  deviceSessions?.delete(emulatorMsg.sessionId);
                   bridge.stopStream(emulatorMsg);
                   break;
-                case "emulator_webrtc_answer":
+                case "device_webrtc_answer":
                   bridge.handleAnswer(emulatorMsg);
                   break;
-                case "emulator_ice_candidate":
+                case "device_ice_candidate":
                   bridge.handleICE(emulatorMsg);
                   break;
               }
@@ -1086,15 +1086,15 @@ export async function handleMessage(
 /**
  * Clean up emulator streaming sessions on connection close.
  */
-export function cleanupEmulatorSessions(
-  emulatorSessions: Set<string>,
-  emulatorBridgeService?: EmulatorBridgeService,
+export function cleanupDeviceSessions(
+  deviceSessions: Set<string>,
+  deviceBridgeService?: DeviceBridgeService,
 ): void {
-  if (!emulatorBridgeService || emulatorSessions.size === 0) return;
-  for (const sessionId of emulatorSessions) {
+  if (!deviceBridgeService || deviceSessions.size === 0) return;
+  for (const sessionId of deviceSessions) {
     try {
-      emulatorBridgeService.stopStream({
-        type: "emulator_stream_stop",
+      deviceBridgeService.stopStream({
+        type: "device_stream_stop",
         sessionId,
       });
     } catch (err) {
@@ -1104,7 +1104,7 @@ export function cleanupEmulatorSessions(
       );
     }
   }
-  emulatorSessions.clear();
+  deviceSessions.clear();
 }
 
 /**

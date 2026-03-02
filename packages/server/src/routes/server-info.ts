@@ -4,13 +4,13 @@ export interface ServerInfoOptions {
   host: string;
   port: number;
   installId?: string;
-  /** Whether emulator streaming is available (ADB detected + sidecar binary exists) */
-  emulatorAvailable?: boolean;
+  /** Whether device bridge streaming is available (ADB detected + sidecar binary exists) */
+  deviceBridgeAvailable?: boolean;
 }
 
 export interface ServerCapabilities {
-  /** Whether Android emulator streaming is available */
-  emulator: boolean;
+  /** Whether device bridge streaming is available */
+  deviceBridge: boolean;
 }
 
 export interface ServerInfo {
@@ -42,7 +42,7 @@ export function createServerInfoRoutes(options: ServerInfoOptions) {
         options.host === "::1",
       installId: options.installId,
       capabilities: {
-        emulator: options.emulatorAvailable ?? false,
+        deviceBridge: options.deviceBridgeAvailable ?? false,
       },
     };
     return c.json(info);

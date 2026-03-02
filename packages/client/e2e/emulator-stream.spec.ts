@@ -3,7 +3,7 @@
  *
  * Requires:
  *   - A running Android emulator (detected via `adb devices`)
- *   - The emulator-bridge binary built at packages/emulator-bridge/bridge
+ *   - The device-bridge binary built at packages/device-bridge/bridge
  *
  * Skipped automatically when either prerequisite is missing, so this is
  * safe to run in CI (where no emulator is available).
@@ -18,7 +18,7 @@ import { expect, test } from "./fixtures.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
-const BRIDGE_BINARY = resolve(__dirname, "../../emulator-bridge/bridge");
+const BRIDGE_BINARY = resolve(__dirname, "../../device-bridge/bridge");
 
 /** Find adb binary — checks PATH then common Android SDK locations. */
 function findAdb(): string | null {
@@ -57,7 +57,7 @@ test("streams emulator video over WebRTC when ?auto is set", async ({
 }) => {
   test.skip(
     !existsSync(BRIDGE_BINARY),
-    "emulator-bridge binary not built — run: cd packages/emulator-bridge && go build -o bridge ./cmd/bridge/",
+    "device-bridge binary not built — run: cd packages/device-bridge && go build -o bridge ./cmd/bridge/",
   );
 
   const runningEmulator = findRunningEmulator();

@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 	"log"
 
-	"github.com/anthropics/yepanywhere/emulator-bridge/internal/emulator"
+	"github.com/anthropics/yepanywhere/device-bridge/internal/emulator"
 )
 
 // InputHandler translates browser touch/key events to emulator gRPC calls.

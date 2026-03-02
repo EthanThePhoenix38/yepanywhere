@@ -10,8 +10,8 @@ import { createNodeWebSocket } from "@hono/node-ws";
 import { createApp } from "./app.js";
 import { AuthService } from "./auth/AuthService.js";
 import { loadConfig } from "./config.js";
-import { EmulatorBridgeService } from "./emulator/EmulatorBridgeService.js";
-import { detectAdb } from "./emulator/adb.js";
+import { DeviceBridgeService } from "./device/DeviceBridgeService.js";
+import { detectAdb } from "./device/adb.js";
 import {
   attachUnifiedUpgradeHandler,
   createFrontendProxy,
@@ -106,7 +106,7 @@ const config = loadConfig();
 let supervisorForShutdown:
   | Awaited<ReturnType<typeof createApp>>["supervisor"]
   | null = null;
-let emulatorBridgeForShutdown: EmulatorBridgeService | null = null;
+let deviceBridgeForShutdown: DeviceBridgeService | null = null;
 let isShuttingDown = false;
 
 /**
@@ -144,11 +144,11 @@ async function gracefulShutdown(signal: string): Promise<void> {
     }
   }
 
-  // Shut down emulator bridge sidecar
-  if (emulatorBridgeForShutdown) {
+  // Shut down device bridge sidecar
+  if (deviceBridgeForShutdown) {
     try {
-      await emulatorBridgeForShutdown.shutdown();
-      console.log("[Shutdown] Emulator bridge shut down");
+      await deviceBridgeForShutdown.shutdown();
+      console.log("[Shutdown] Device bridge shut down");
     } catch (error) {
       console.error("[Shutdown] Error shutting down emulator bridge:", error);
     }
@@ -460,24 +460,24 @@ async function startServer() {
 
   // Detect ADB and create emulator bridge service (lazy start)
   const adbPath = detectAdb();
-  let emulatorBridgeService: EmulatorBridgeService | undefined;
+  let deviceBridgeService: DeviceBridgeService | undefined;
   if (adbPath) {
-    emulatorBridgeService = new EmulatorBridgeService({
+    deviceBridgeService = new DeviceBridgeService({
       adbPath,
       dataDir: config.dataDir,
     });
-    console.log(`[EmulatorBridge] ADB detected at ${adbPath}`);
-    if (emulatorBridgeService.hasBinary()) {
+    console.log(`[DeviceBridge] ADB detected at ${adbPath}`);
+    if (deviceBridgeService.hasBinary()) {
       console.log(
-        "[EmulatorBridge] Sidecar binary found (will start on first use)",
+        "[DeviceBridge] Sidecar binary found (will start on first use)",
       );
     } else {
       console.log(
-        "[EmulatorBridge] Sidecar binary not found (feature disabled until binary is available)",
+        "[DeviceBridge] Sidecar binary not found (feature disabled until binary is available)",
       );
     }
   } else {
-    console.log("[EmulatorBridge] ADB not found, emulator streaming disabled");
+    console.log("[DeviceBridge] ADB not found, device bridge streaming disabled");
   }
 
   // Create the app first (without WebSocket support initially)
@@ -516,7 +516,7 @@ async function startServer() {
     browserProfileService,
     serverSettingsService,
     sharingService,
-    emulatorBridgeService,
+    deviceBridgeService,
   });
 
   const focusedSessionWatchManager = new FocusedSessionWatchManager({
@@ -531,7 +531,7 @@ async function startServer() {
 
   // Set service references for graceful shutdown
   supervisorForShutdown = supervisor;
-  emulatorBridgeForShutdown = emulatorBridgeService ?? null;
+  deviceBridgeForShutdown = deviceBridgeService ?? null;
 
   // Set up debug context for maintenance server
   setDebugContext({
@@ -581,7 +581,7 @@ async function startServer() {
     connectedBrowsers: connectedBrowsersService,
     browserProfileService,
     focusedSessionWatchManager,
-    emulatorBridgeService,
+    deviceBridgeService,
   });
   app.get("/api/ws", wsRelayHandler);
 
@@ -598,7 +598,7 @@ async function startServer() {
     connectedBrowsers: connectedBrowsersService,
     browserProfileService,
     focusedSessionWatchManager,
-    emulatorBridgeService,
+    deviceBridgeService,
   });
 
   // Function to start/restart relay client with current config

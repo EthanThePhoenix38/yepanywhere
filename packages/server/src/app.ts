@@ -3,7 +3,7 @@ import { RESPONSE_ALREADY_SENT } from "@hono/node-server/utils/response";
 import { Hono } from "hono";
 import type { AuthService } from "./auth/AuthService.js";
 import { createAuthRoutes } from "./auth/routes.js";
-import type { EmulatorBridgeService } from "./emulator/EmulatorBridgeService.js";
+import type { DeviceBridgeService } from "./device/DeviceBridgeService.js";
 import type { FrontendProxy } from "./frontend/index.js";
 import type { SessionIndexService } from "./indexes/index.js";
 import type {
@@ -41,7 +41,7 @@ import { createClientLogsRoutes } from "./routes/client-logs.js";
 import { createConnectionsRoutes } from "./routes/connections.js";
 import { createDebugStreamingRoutes } from "./routes/debug-streaming.js";
 import { createDevRoutes } from "./routes/dev.js";
-import { createEmulatorRoutes } from "./routes/emulators.js";
+import { createDeviceRoutes } from "./routes/devices.js";
 import { createFilesRoutes } from "./routes/files.js";
 import { createGitStatusRoutes } from "./routes/git-status.js";
 import { createGlobalSessionsRoutes } from "./routes/global-sessions.js";
@@ -166,8 +166,8 @@ export interface AppOptions {
   serverSettingsService?: ServerSettingsService;
   /** SharingService for session sharing */
   sharingService?: SharingService;
-  /** EmulatorBridgeService for Android emulator streaming */
-  emulatorBridgeService?: EmulatorBridgeService;
+  /** DeviceBridgeService for Android emulator streaming */
+  deviceBridgeService?: DeviceBridgeService;
 }
 
 export interface AppResult {
@@ -388,9 +388,9 @@ export function createApp(options: AppOptions): AppResult {
   app.route(
     "/api/version",
     createVersionRoutes({
-      getEmulatorState: () => {
-        if (!options.emulatorBridgeService) return "unavailable";
-        return options.emulatorBridgeService.hasBinary()
+      getDeviceBridgeState: () => {
+        if (!options.deviceBridgeService) return "unavailable";
+        return options.deviceBridgeService.hasBinary()
           ? "available"
           : "downloadable";
       },
@@ -405,7 +405,7 @@ export function createApp(options: AppOptions): AppResult {
         host: options.serverHost,
         port: options.serverPort,
         installId: options.installId,
-        emulatorAvailable: !!options.emulatorBridgeService?.hasBinary(),
+        deviceBridgeAvailable: !!options.deviceBridgeService?.hasBinary(),
       }),
     );
   }
@@ -622,11 +622,11 @@ export function createApp(options: AppOptions): AppResult {
   }
 
   // Emulator streaming routes (Android emulator remote control)
-  if (options.emulatorBridgeService) {
+  if (options.deviceBridgeService) {
     app.route(
-      "/api/emulators",
-      createEmulatorRoutes({
-        emulatorBridgeService: options.emulatorBridgeService,
+      "/api/devices",
+      createDeviceRoutes({
+        deviceBridgeService: options.deviceBridgeService,
       }),
     );
   }

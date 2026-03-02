@@ -1,4 +1,4 @@
-import type { EmulatorServerMessage } from "@yep-anywhere/shared";
+import type { DeviceServerMessage } from "@yep-anywhere/shared";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { getGlobalConnection } from "../lib/connection";
 import { getWebSocketConnection } from "../lib/connection/WebSocketConnection";
@@ -26,7 +26,7 @@ interface UseEmulatorStreamResult {
   /** Error message if connection failed */
   error: string | null;
   /** Start streaming from the specified emulator */
-  connect: (emulatorId: string) => void;
+  connect: (deviceId: string) => void;
   /** Stop streaming */
   disconnect: () => void;
 }
@@ -35,10 +35,10 @@ interface UseEmulatorStreamResult {
  * Hook that manages WebRTC peer connection and signaling for emulator streaming.
  *
  * Signaling flow:
- * 1. Client sends emulator_stream_start via relay
- * 2. Server/sidecar responds with emulator_webrtc_offer (SDP)
+ * 1. Client sends device_stream_start via relay
+ * 2. Server/sidecar responds with device_webrtc_offer (SDP)
  * 3. Client creates RTCPeerConnection, sets remote description, creates answer
- * 4. Client sends emulator_webrtc_answer
+ * 4. Client sends device_webrtc_answer
  * 5. ICE candidates exchanged bidirectionally
  * 6. WebRTC P2P established (video + data channel)
  */
@@ -70,7 +70,7 @@ export function useEmulatorStream(): UseEmulatorStreamResult {
       try {
         const conn = getConnection();
         conn.sendMessage?.({
-          type: "emulator_stream_stop",
+          type: "device_stream_stop",
           sessionId: sid,
         });
       } catch {
@@ -102,7 +102,7 @@ export function useEmulatorStream(): UseEmulatorStreamResult {
   }, [getConnection]);
 
   const connect = useCallback(
-    (emulatorId: string) => {
+    (deviceId: string) => {
       // Clean up any existing connection
       disconnect();
 
@@ -110,7 +110,7 @@ export function useEmulatorStream(): UseEmulatorStreamResult {
       sessionIdRef.current = sessionId;
       const sid = sessionId.slice(0, 8);
       console.log(
-        `${LOG_PREFIX} connect(emulatorId=${emulatorId}, session=${sid})`,
+        `${LOG_PREFIX} connect(deviceId=${deviceId}, session=${sid})`,
       );
       setConnectionState("connecting");
       setError(null);
@@ -222,7 +222,7 @@ export function useEmulatorStream(): UseEmulatorStreamResult {
           );
         }
         conn.sendMessage?.({
-          type: "emulator_ice_candidate",
+          type: "device_ice_candidate",
           sessionId,
           candidate: event.candidate
             ? {
@@ -236,12 +236,12 @@ export function useEmulatorStream(): UseEmulatorStreamResult {
       };
 
       // Listen for signaling messages from server
-      const unsub = conn.onEmulatorMessage?.(
-        async (msg: EmulatorServerMessage) => {
+      const unsub = conn.onDeviceMessage?.(
+        async (msg: DeviceServerMessage) => {
           if (msg.sessionId !== sessionId) return;
 
           switch (msg.type) {
-            case "emulator_webrtc_offer": {
+            case "device_webrtc_offer": {
               console.log(
                 `${LOG_PREFIX} [${sid}] received SDP offer (${msg.sdp.length} bytes)`,
               );
@@ -256,7 +256,7 @@ export function useEmulatorStream(): UseEmulatorStreamResult {
                   `${LOG_PREFIX} [${sid}] sent SDP answer (${(answer.sdp ?? "").length} bytes)`,
                 );
                 conn.sendMessage?.({
-                  type: "emulator_webrtc_answer",
+                  type: "device_webrtc_answer",
                   sessionId,
                   sdp: answer.sdp ?? "",
                 });
@@ -273,7 +273,7 @@ export function useEmulatorStream(): UseEmulatorStreamResult {
               break;
             }
 
-            case "emulator_ice_candidate_event": {
+            case "device_ice_candidate_event": {
               if (msg.candidate) {
                 console.log(
                   `${LOG_PREFIX} [${sid}] received remote ICE candidate`,
@@ -294,7 +294,7 @@ export function useEmulatorStream(): UseEmulatorStreamResult {
               break;
             }
 
-            case "emulator_session_state": {
+            case "device_session_state": {
               console.log(
                 `${LOG_PREFIX} [${sid}] server session state: ${msg.state}${msg.error ? ` error=${msg.error}` : ""}`,
               );
@@ -317,12 +317,12 @@ export function useEmulatorStream(): UseEmulatorStreamResult {
         const { maxFps, maxWidth, quality } = getEmulatorSettings();
         const crf = QUALITY_TO_CRF[quality];
         console.log(
-          `${LOG_PREFIX} [${sid}] sending emulator_stream_start fps=${maxFps} width=${maxWidth} quality=${quality}(crf=${crf})`,
+          `${LOG_PREFIX} [${sid}] sending device_stream_start fps=${maxFps} width=${maxWidth} quality=${quality}(crf=${crf})`,
         );
         conn.sendMessage?.({
-          type: "emulator_stream_start",
+          type: "device_stream_start",
           sessionId,
-          emulatorId,
+          deviceId,
           options: { maxFps, maxWidth, quality: crf },
         });
       };
@@ -363,7 +363,7 @@ export function useEmulatorStream(): UseEmulatorStreamResult {
           const global = getGlobalConnection();
           const conn = global ?? getWebSocketConnection();
           conn.sendMessage?.({
-            type: "emulator_stream_stop",
+            type: "device_stream_stop",
             sessionId: sessionIdRef.current,
           });
         } catch {

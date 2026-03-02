@@ -2,7 +2,7 @@ import type {
   AgentActivity,
   BrowserProfilesResponse,
   ConnectionsResponse,
-  EmulatorInfo,
+  DeviceInfo,
   EnrichedRecentEntry,
   FileContentResponse,
   GitStatusInfo,
@@ -923,21 +923,21 @@ export const api = {
     }),
 
   // Emulator API
-  getEmulators: () => fetchJSON<EmulatorInfo[]>("/emulators"),
+  getEmulators: () => fetchJSON<DeviceInfo[]>("/devices"),
 
   startEmulator: (id: string) =>
-    fetchJSON<{ ok: boolean }>(`/emulators/${encodeURIComponent(id)}/start`, {
+    fetchJSON<{ ok: boolean }>(`/devices/${encodeURIComponent(id)}/start`, {
       method: "POST",
     }),
 
   stopEmulator: (id: string) =>
-    fetchJSON<{ ok: boolean }>(`/emulators/${encodeURIComponent(id)}/stop`, {
+    fetchJSON<{ ok: boolean }>(`/devices/${encodeURIComponent(id)}/stop`, {
       method: "POST",
     }),
 
   downloadEmulatorBridge: () =>
     fetchJSON<{ ok: boolean; path?: string; error?: string }>(
-      "/emulators/bridge/download",
+      "/devices/bridge/download",
       { method: "POST" },
     ),
 };

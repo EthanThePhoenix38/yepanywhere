@@ -11,7 +11,7 @@
  */
 import type {
   ClientCapabilities,
-  EmulatorServerMessage,
+  DeviceServerMessage,
   OriginMetadata,
   RemoteClientMessage,
   SrpClientHello,
@@ -1200,8 +1200,8 @@ export class SecureConnection implements Connection {
     this.send(msg);
   }
 
-  onEmulatorMessage(handler: (msg: EmulatorServerMessage) => void): () => void {
-    return this.protocol.onEmulatorMessage(handler);
+  onDeviceMessage(handler: (msg: DeviceServerMessage) => void): () => void {
+    return this.protocol.onDeviceMessage(handler);
   }
 
   /**
