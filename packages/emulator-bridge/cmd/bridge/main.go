@@ -56,13 +56,13 @@ func runStandalone(addr, emuAddr string, maxWidth, fps int) {
 	targetW, targetH := encoder.ComputeTargetSize(int(srcW), int(srcH), maxWidth)
 	log.Printf("Encoding resolution: %dx%d", targetW, targetH)
 
-	h264Enc, err := encoder.NewH264Encoder(targetW, targetH, fps)
+	h264Enc, err := encoder.NewH264Encoder(targetW, targetH, fps, 0)
 	if err != nil {
 		log.Fatalf("Failed to create encoder: %v", err)
 	}
 	defer h264Enc.Close()
 
-	frameSource := emulator.NewFrameSource(client, maxWidth)
+	frameSource := emulator.NewFrameSource(client, maxWidth, fps)
 	defer frameSource.Stop()
 
 	inputHandler := stream.NewInputHandler(client)
@@ -232,7 +232,7 @@ func handleScreenshot(w http.ResponseWriter, r *http.Request, emulatorID string)
 	}
 	defer client.Close()
 
-	frameSource := emulator.NewFrameSource(client, 360)
+	frameSource := emulator.NewFrameSource(client, 360, 0)
 	defer frameSource.Stop()
 
 	id, frames := frameSource.Subscribe()

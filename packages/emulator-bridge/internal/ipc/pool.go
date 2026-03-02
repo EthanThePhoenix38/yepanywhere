@@ -85,7 +85,8 @@ func (rp *ResourcePool) ReleaseClient(emulatorID string) {
 
 // AcquireFrameSource returns a shared FrameSource, creating one if needed.
 // The client must already be acquired via AcquireClient.
-func (rp *ResourcePool) AcquireFrameSource(emulatorID string, maxWidth int, client *emulator.Client) *emulator.FrameSource {
+// fps is passed to NewFrameSource to cap the gRPC polling rate (0 = unlimited).
+func (rp *ResourcePool) AcquireFrameSource(emulatorID string, maxWidth, fps int, client *emulator.Client) *emulator.FrameSource {
 	rp.mu.Lock()
 	defer rp.mu.Unlock()
 
@@ -96,9 +97,9 @@ func (rp *ResourcePool) AcquireFrameSource(emulatorID string, maxWidth int, clie
 		return entry.source
 	}
 
-	fs := emulator.NewFrameSource(client, maxWidth)
+	fs := emulator.NewFrameSource(client, maxWidth, fps)
 	rp.frameSources[key] = &frameSourceEntry{source: fs, refCount: 1}
-	log.Printf("[ResourcePool] created new FrameSource for %s@%d", emulatorID, maxWidth)
+	log.Printf("[ResourcePool] created new FrameSource for %s@%d fps=%d", emulatorID, maxWidth, fps)
 	return fs
 }
 

@@ -51,6 +51,9 @@ export const UI_KEYS = {
   streamingEnabled: "yep-anywhere-streaming-enabled",
   developerMode: "yep-anywhere-developer-mode",
   schemaValidation: "yep-anywhere-schema-validation",
+  emulatorMaxFps: "yep-anywhere-emulator-max-fps",
+  emulatorMaxWidth: "yep-anywhere-emulator-max-width",
+  emulatorQuality: "yep-anywhere-emulator-quality",
 } as const;
 
 // ============================================================================

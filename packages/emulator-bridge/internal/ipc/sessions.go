@@ -17,6 +17,7 @@ import (
 type SessionStartOptions struct {
 	MaxFPS   int `json:"maxFps"`
 	MaxWidth int `json:"maxWidth"`
+	Quality  int `json:"quality"` // x264 CRF value (0 = use default of 30)
 }
 
 // streamSession holds the state for a single active emulator streaming session.
@@ -124,7 +125,7 @@ func (sm *SessionManager) StartSession(sessionID, emulatorID string, opts Sessio
 	targetW, targetH := encoder.ComputeTargetSize(int(srcW), int(srcH), maxWidth)
 	log.Printf("[session %s] screen %dx%d → encoding %dx%d", sessionID, srcW, srcH, targetW, targetH)
 
-	h264Enc, err := encoder.NewH264Encoder(targetW, targetH, maxFPS)
+	h264Enc, err := encoder.NewH264Encoder(targetW, targetH, maxFPS, opts.Quality)
 	if err != nil {
 		sm.pool.ReleaseClient(emulatorID)
 		sm.sendState(sessionID, "failed", fmt.Sprintf("encoder: %v", err))
@@ -132,7 +133,7 @@ func (sm *SessionManager) StartSession(sessionID, emulatorID string, opts Sessio
 	}
 
 	// Acquire shared FrameSource from pool.
-	frameSource := sm.pool.AcquireFrameSource(emulatorID, maxWidth, client)
+	frameSource := sm.pool.AcquireFrameSource(emulatorID, maxWidth, maxFPS, client)
 	inputHandler := stream.NewInputHandler(client)
 
 	// Create WebRTC peer with trickle ICE.

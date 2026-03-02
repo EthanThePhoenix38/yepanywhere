@@ -32,7 +32,7 @@ export interface EmulatorStreamStart {
   /** Which emulator to stream (EmulatorInfo.id) */
   emulatorId: string;
   /** Optional streaming parameters */
-  options?: { maxFps?: number; maxWidth?: number };
+  options?: { maxFps?: number; maxWidth?: number; quality?: number };
 }
 
 /** Client requests to stop streaming. */

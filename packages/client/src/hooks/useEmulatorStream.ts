@@ -3,6 +3,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { getGlobalConnection } from "../lib/connection";
 import { getWebSocketConnection } from "../lib/connection/WebSocketConnection";
 import { generateUUID } from "../lib/uuid";
+import { QUALITY_TO_CRF, getEmulatorSettings } from "./useEmulatorSettings";
 
 const LOG_PREFIX = "[EmulatorStream]";
 
@@ -313,12 +314,14 @@ export function useEmulatorStream(): UseEmulatorStreamResult {
         conn as { ensureConnected?: () => Promise<void> }
       ).ensureConnected?.bind(conn);
       const sendStart = () => {
-        console.log(`${LOG_PREFIX} [${sid}] sending emulator_stream_start`);
+        const { maxFps, maxWidth, quality } = getEmulatorSettings();
+        const crf = QUALITY_TO_CRF[quality];
+        console.log(`${LOG_PREFIX} [${sid}] sending emulator_stream_start fps=${maxFps} width=${maxWidth} quality=${quality}(crf=${crf})`);
         conn.sendMessage?.({
           type: "emulator_stream_start",
           sessionId,
           emulatorId,
-          options: { maxFps: 30, maxWidth: 720 },
+          options: { maxFps, maxWidth, quality: crf },
         });
       };
       if (ensureConnected) {

@@ -17,8 +17,14 @@ type H264Encoder struct {
 }
 
 // NewH264Encoder creates and configures the x264 encoder.
-func NewH264Encoder(width, height, fps int) (*H264Encoder, error) {
+// crf is the x264 Constant Rate Factor (0-51; lower = better quality/higher bitrate).
+// Pass 0 to use the default of 30 (~2-5 Mbps at 720p/30fps).
+func NewH264Encoder(width, height, fps, crf int) (*H264Encoder, error) {
 	buf := &bytes.Buffer{}
+
+	if crf <= 0 {
+		crf = 30
+	}
 
 	opts := &x264.Options{
 		Width:        width,
@@ -28,7 +34,7 @@ func NewH264Encoder(width, height, fps int) (*H264Encoder, error) {
 		Tune:         "zerolatency",
 		Profile:      "baseline",
 		RateControl:  "crf",
-		RateConstant: 30, // ~2-5 Mbps at 720p; without this, ultrafast produces ~30 Mbps
+		RateConstant: float32(crf),
 		LogLevel:     x264.LogWarning,
 	}
 

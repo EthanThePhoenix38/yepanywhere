@@ -5,6 +5,7 @@ import (
 	"log"
 	"sync"
 	"sync/atomic"
+	"time"
 )
 
 // Frame holds a single screenshot from the emulator.
@@ -19,27 +20,34 @@ type Frame struct {
 // FrameSource manages the screenshot stream and distributes frames to subscribers.
 // Polling automatically pauses when there are no subscribers and resumes when one arrives.
 type FrameSource struct {
-	client    *Client
-	maxWidth  int // passed to emulator for server-side scaling (0 = native)
-	lastFrame atomic.Pointer[Frame]
-	mu        sync.RWMutex
-	subs      map[int]chan<- *Frame
-	nextID    int
-	cancel    context.CancelFunc
-	wakeup    chan struct{} // buffered(1), signaled on 0→1 subscriber transition
+	client        *Client
+	maxWidth      int // passed to emulator for server-side scaling (0 = native)
+	frameInterval time.Duration // minimum time between gRPC polls; 0 = no limit
+	lastFrame     atomic.Pointer[Frame]
+	mu            sync.RWMutex
+	subs          map[int]chan<- *Frame
+	nextID        int
+	cancel        context.CancelFunc
+	wakeup        chan struct{} // buffered(1), signaled on 0→1 subscriber transition
 }
 
 // NewFrameSource starts streaming screenshots and dispatching to subscribers.
 // maxWidth tells the emulator to scale frames server-side (0 = native resolution).
+// fps limits the gRPC polling rate; 0 means poll as fast as possible.
 // Polling is paused until the first subscriber arrives.
-func NewFrameSource(client *Client, maxWidth int) *FrameSource {
+func NewFrameSource(client *Client, maxWidth, fps int) *FrameSource {
 	ctx, cancel := context.WithCancel(context.Background())
+	var frameInterval time.Duration
+	if fps > 0 {
+		frameInterval = time.Second / time.Duration(fps)
+	}
 	fs := &FrameSource{
-		client:   client,
-		maxWidth: maxWidth,
-		subs:     make(map[int]chan<- *Frame),
-		cancel:   cancel,
-		wakeup:   make(chan struct{}, 1),
+		client:        client,
+		maxWidth:      maxWidth,
+		frameInterval: frameInterval,
+		subs:          make(map[int]chan<- *Frame),
+		cancel:        cancel,
+		wakeup:        make(chan struct{}, 1),
 	}
 	go fs.run(ctx)
 	return fs
@@ -118,6 +126,7 @@ func (fs *FrameSource) run(ctx context.Context) {
 			}
 		}
 
+		pollStart := time.Now()
 		frame, err := fs.client.GetOneScreenshot(ctx, fs.maxWidth)
 		if err != nil {
 			if ctx.Err() != nil {
@@ -131,6 +140,19 @@ func (fs *FrameSource) run(ctx context.Context) {
 		frame.Seq = seq
 		fs.lastFrame.Store(frame)
 		fs.dispatch(frame)
+
+		// Rate-limit gRPC polling to avoid screenshotting far faster than
+		// subscribers consume. Sleep for whatever remains of the frame interval
+		// after accounting for the gRPC call's own latency.
+		if fs.frameInterval > 0 {
+			if sleep := fs.frameInterval - time.Since(pollStart); sleep > 0 {
+				select {
+				case <-time.After(sleep):
+				case <-ctx.Done():
+					return
+				}
+			}
+		}
 	}
 }
 
