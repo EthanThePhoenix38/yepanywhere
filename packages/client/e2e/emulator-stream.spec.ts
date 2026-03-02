@@ -19,6 +19,10 @@ import { expect, test } from "./fixtures.js";
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
 const BRIDGE_BINARY = resolve(__dirname, "../../device-bridge/bridge");
+const DEFAULT_APK_PATH = resolve(
+  __dirname,
+  "../../android-device-server/app/build/outputs/apk/release/yep-device-server.apk",
+);
 
 /** Find adb binary — checks PATH then common Android SDK locations. */
 function findAdb(): string | null {
@@ -51,10 +55,19 @@ function findRunningEmulator(): string | null {
   }
 }
 
-test("streams emulator video over WebRTC when ?auto is set", async ({
-  page,
-  baseURL,
-}) => {
+function isTruthy(value: string | undefined): boolean {
+  if (!value) return false;
+  return ["1", "true", "yes", "on"].includes(value.toLowerCase());
+}
+
+function apkOverrideEnabled(): boolean {
+  return isTruthy(process.env.DEVICE_BRIDGE_USE_APK_FOR_EMULATOR);
+}
+
+async function assertAutoStreamConnects(
+  page: import("@playwright/test").Page,
+  baseURL: string,
+) {
   test.skip(
     !existsSync(BRIDGE_BINARY),
     "device-bridge binary not built — run: cd packages/device-bridge && go build -o bridge ./cmd/bridge/",
@@ -91,4 +104,30 @@ test("streams emulator video over WebRTC when ?auto is set", async ({
     );
     expect(readyState).toBeGreaterThanOrEqual(2);
   }).toPass({ timeout: 5_000 });
+}
+
+test("streams emulator video over WebRTC when ?auto is set", async ({
+  page,
+  baseURL,
+}) => {
+  await assertAutoStreamConnects(page, baseURL);
+});
+
+test("streams emulator video over WebRTC via APK transport override", async ({
+  page,
+  baseURL,
+}) => {
+  test.slow();
+  test.skip(
+    !apkOverrideEnabled(),
+    "Set DEVICE_BRIDGE_USE_APK_FOR_EMULATOR=true to run APK transport override variant",
+  );
+
+  const apkPath = process.env.ANDROID_DEVICE_SERVER_APK ?? DEFAULT_APK_PATH;
+  test.skip(
+    !existsSync(apkPath),
+    `APK not found at ${apkPath}; build it with: cd packages/android-device-server && ./build-apk.sh`,
+  );
+
+  await assertAutoStreamConnects(page, baseURL);
 });
