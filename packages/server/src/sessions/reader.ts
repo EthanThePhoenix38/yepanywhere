@@ -265,6 +265,12 @@ export class ClaudeSessionReader implements ISessionReader {
         model,
       );
 
+      // If the model from the JSONL isn't a Claude model, this session was
+      // created via claude-ollama (which uses the same SDK/JSONL format but
+      // routes to a local model like qwen3, llama, etc.)
+      const provider =
+        model && !model.startsWith("claude-") ? "claude-ollama" : "claude";
+
       return {
         id: sessionId,
         projectId,
@@ -275,7 +281,7 @@ export class ClaudeSessionReader implements ISessionReader {
         messageCount: conversationMessages.length,
         ownership: { owner: "none" }, // Will be updated by Supervisor
         contextUsage,
-        provider: "claude",
+        provider,
         model,
       };
     } catch {
@@ -323,7 +329,7 @@ export class ClaudeSessionReader implements ISessionReader {
     return {
       summary,
       data: {
-        provider: "claude",
+        provider: summary.provider as "claude" | "claude-ollama",
         session: {
           messages: finalMessages,
         },

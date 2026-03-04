@@ -18,6 +18,7 @@ export interface CodexSessionContent {
 
 export type UnifiedSession =
   | { provider: "claude"; session: ClaudeSessionFile }
+  | { provider: "claude-ollama"; session: ClaudeSessionFile }
   | { provider: "codex"; session: CodexSessionContent }
   | { provider: "codex-oss"; session: CodexSessionContent }
   | { provider: "gemini"; session: GeminiSessionFile }

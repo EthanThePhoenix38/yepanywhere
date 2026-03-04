@@ -74,7 +74,8 @@ export function normalizeSession(loaded: LoadedSession): Session {
   const { summary, data } = loaded;
 
   switch (data.provider) {
-    case "claude": {
+    case "claude":
+    case "claude-ollama": {
       // Claude sessions are stored as raw messages in the session file.
       // We need to build the DAG to find the active branch.
       const rawMessages = data.session.messages;
