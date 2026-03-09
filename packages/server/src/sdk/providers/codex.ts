@@ -8,6 +8,7 @@
 import { type ChildProcess, execSync, spawn } from "node:child_process";
 import type { ModelInfo } from "@yep-anywhere/shared";
 import {
+  isCodexCorrelationDebugEnabled,
   logCodexCorrelationDebug,
   summarizeCodexNormalizedMessage,
 } from "../../codex/correlationDebugLogger.js";
@@ -66,6 +67,7 @@ function logSdkCorrelationDebug(
     status?: string;
   } = {},
 ): void {
+  if (!isCodexCorrelationDebugEnabled()) return;
   logCodexCorrelationDebug({
     sessionId,
     channel: "sdk",

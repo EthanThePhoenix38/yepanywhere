@@ -59,6 +59,10 @@ export function closeCodexCorrelationDebugLogger(): void {
   }
 }
 
+export function isCodexCorrelationDebugEnabled(): boolean {
+  return enabled;
+}
+
 export function logCodexCorrelationDebug(
   record: CodexCorrelationDebugRecord,
 ): void {

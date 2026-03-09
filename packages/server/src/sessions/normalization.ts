@@ -23,6 +23,7 @@ import {
   isConversationEntry,
 } from "@yep-anywhere/shared";
 import {
+  isCodexCorrelationDebugEnabled,
   logCodexCorrelationDebug,
   summarizeCodexNormalizedMessage,
 } from "../codex/correlationDebugLogger.js";
@@ -238,30 +239,34 @@ function convertCodexEntries(
         toolCallContexts,
       );
       if (msg) {
-        logCodexCorrelationDebug({
-          sessionId,
-          channel: "jsonl",
-          authority: "durable",
-          entryType: entry.type,
-          payloadType: entry.payload.type,
-          eventKind: getCodexResponseEventKind(entry.payload),
-          callId: getCodexResponsePayloadCallId(entry.payload),
-          itemId: getCodexResponsePayloadItemId(entry.payload),
-          ...summarizeCodexNormalizedMessage(msg),
-        });
+        if (isCodexCorrelationDebugEnabled()) {
+          logCodexCorrelationDebug({
+            sessionId,
+            channel: "jsonl",
+            authority: "durable",
+            entryType: entry.type,
+            payloadType: entry.payload.type,
+            eventKind: getCodexResponseEventKind(entry.payload),
+            callId: getCodexResponsePayloadCallId(entry.payload),
+            itemId: getCodexResponsePayloadItemId(entry.payload),
+            ...summarizeCodexNormalizedMessage(msg),
+          });
+        }
         messages.push(msg);
       }
     } else if (entry.type === "compacted") {
       const msg = convertCodexCompactedEntry(entry, messageIndex++);
       if (msg) {
-        logCodexCorrelationDebug({
-          sessionId,
-          channel: "jsonl",
-          authority: "durable",
-          entryType: entry.type,
-          eventKind: "context_compacted",
-          ...summarizeCodexNormalizedMessage(msg),
-        });
+        if (isCodexCorrelationDebugEnabled()) {
+          logCodexCorrelationDebug({
+            sessionId,
+            channel: "jsonl",
+            authority: "durable",
+            entryType: entry.type,
+            eventKind: "context_compacted",
+            ...summarizeCodexNormalizedMessage(msg),
+          });
+        }
         messages.push(msg);
       }
     } else if (entry.type === "event_msg") {
@@ -279,17 +284,19 @@ function convertCodexEntries(
       ) {
         const msg = convertCodexEventMsg(entry, messageIndex++);
         if (msg) {
-          logCodexCorrelationDebug({
-            sessionId,
-            channel: "jsonl",
-            authority: "durable",
-            entryType: entry.type,
-            payloadType: entry.payload.type,
-            eventKind: entry.payload.type,
-            turnId: getCodexEventPayloadTurnId(entry.payload),
-            itemId: getCodexEventPayloadItemId(entry.payload),
-            ...summarizeCodexNormalizedMessage(msg),
-          });
+          if (isCodexCorrelationDebugEnabled()) {
+            logCodexCorrelationDebug({
+              sessionId,
+              channel: "jsonl",
+              authority: "durable",
+              entryType: entry.type,
+              payloadType: entry.payload.type,
+              eventKind: entry.payload.type,
+              turnId: getCodexEventPayloadTurnId(entry.payload),
+              itemId: getCodexEventPayloadItemId(entry.payload),
+              ...summarizeCodexNormalizedMessage(msg),
+            });
+          }
           messages.push(msg);
         }
       }

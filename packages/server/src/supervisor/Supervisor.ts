@@ -52,8 +52,16 @@ const TERMINATED_RETENTION_MS = 10 * 60 * 1000;
 /** How often to check for stale processes (60 seconds) */
 const STALE_CHECK_INTERVAL_MS = 60 * 1000;
 
-/** Terminate in-turn processes with no SDK messages for this long (5 minutes) */
-const STALE_IN_TURN_THRESHOLD_MS = 5 * 60 * 1000;
+/** Default in-turn stale threshold for providers with frequent heartbeat/tool events. */
+const DEFAULT_STALE_IN_TURN_THRESHOLD_MS = 5 * 60 * 1000;
+/** Codex sessions can be silent for long periods during backend retries/reconnects. */
+const CODEX_STALE_IN_TURN_THRESHOLD_MS = 60 * 60 * 1000;
+
+function getStaleInTurnThresholdMs(provider: ProviderName): number {
+  return provider === "codex" || provider === "codex-oss"
+    ? CODEX_STALE_IN_TURN_THRESHOLD_MS
+    : DEFAULT_STALE_IN_TURN_THRESHOLD_MS;
+}
 
 /**
  * Model and thinking settings for a session.
@@ -1531,8 +1539,9 @@ export class Supervisor {
       if (process.state.type !== "in-turn") continue;
       if (process.isHeld) continue;
 
+      const staleThresholdMs = getStaleInTurnThresholdMs(process.provider);
       const silentMs = now - process.lastMessageTime.getTime();
-      if (silentMs < STALE_IN_TURN_THRESHOLD_MS) continue;
+      if (silentMs < staleThresholdMs) continue;
 
       // If we can check process liveness, only terminate actually-dead processes.
       // A long-running tool call (e.g., CI wait) will be silent but the process
@@ -1553,7 +1562,9 @@ export class Supervisor {
             sessionId: process.sessionId,
             processId: process.id,
             projectId: process.projectId,
+            provider: process.provider,
             silentMs,
+            staleThresholdMs,
             startedAt: process.startedAt.toISOString(),
             lastMessageTime: process.lastMessageTime.toISOString(),
             livenessAvailable: false,
@@ -1568,7 +1579,9 @@ export class Supervisor {
             sessionId: process.sessionId,
             processId: process.id,
             projectId: process.projectId,
+            provider: process.provider,
             silentMs,
+            staleThresholdMs,
             startedAt: process.startedAt.toISOString(),
             lastMessageTime: process.lastMessageTime.toISOString(),
           },
