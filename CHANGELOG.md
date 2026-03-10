@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.10] - 2026-03-10
+
+### Added
+- `/model` slash command for mid-session model switching
+- Codex correlation debug logging
+
+### Codex
+- Improve replay deduplication
+- Preserve timestamps on stream messages
+- Improve session reconnect merging
+
+### Fixed
+- Fix Codex session titles on agents page
+- Fix Codex session cloning in mixed projects
+- Fix Codex session clone visibility
+- Fix Codex session discovery defaults
+- Reduce Codex debug logging overhead
+
 ## [0.4.9] - 2026-03-06
 
 ### Added
