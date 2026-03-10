@@ -244,6 +244,73 @@ describe("Relay Server E2E", () => {
         1,
       );
     });
+
+    it("should expose active server compatibility metadata on /status", async () => {
+      const ws = await connectToRelay();
+
+      const username = `meta-${randomUUID().slice(0, 8)}`;
+      const installId = randomUUID();
+
+      const register: RelayServerRegister = {
+        type: "server_register",
+        username,
+        installId,
+        appVersion: "1.2.3",
+        resumeProtocolVersion: 2,
+        capabilities: ["git-status", "deviceBridge"],
+      };
+
+      const responsePromise = waitForMessage(ws, isRelayServerRegistered);
+      ws.send(JSON.stringify(register));
+      await responsePromise;
+
+      const response = await fetch(`http://localhost:${relay.port}/status`);
+      const status = (await response.json()) as {
+        activeServers: Array<{
+          username: string;
+          installId: string;
+          connectedAt: string;
+          appVersion?: string;
+          resumeProtocolVersion?: number;
+          capabilities?: string[];
+          state: string;
+        }>;
+        compatibility: {
+          appVersions: Array<{ value: string | null; count: number }>;
+          resumeProtocolVersions: Array<{
+            value: number | null;
+            count: number;
+          }>;
+          capabilities: Array<{ capability: string; count: number }>;
+        };
+      };
+
+      const activeServer = status.activeServers.find(
+        (server) => server.username === username,
+      );
+      expect(activeServer).toBeDefined();
+      expect(activeServer).toMatchObject({
+        username,
+        installId,
+        state: "waiting",
+        appVersion: "1.2.3",
+        resumeProtocolVersion: 2,
+        capabilities: ["git-status", "deviceBridge"],
+      });
+      expect(activeServer?.connectedAt).toEqual(expect.any(String));
+      expect(status.compatibility.appVersions).toContainEqual({
+        value: "1.2.3",
+        count: 1,
+      });
+      expect(status.compatibility.resumeProtocolVersions).toContainEqual({
+        value: 2,
+        count: 1,
+      });
+      expect(status.compatibility.capabilities).toContainEqual({
+        capability: "deviceBridge",
+        count: 1,
+      });
+    });
   });
 
   describe("Client Connection Flow", () => {

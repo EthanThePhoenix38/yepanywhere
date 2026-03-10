@@ -425,6 +425,7 @@ export {
 
 // Relay server routing protocol (for relay server <-> yepanywhere/phone)
 export type {
+  RelayServerCompatibilityMetadata,
   RelayServerRegister,
   RelayServerRegistered,
   RelayServerRejectedReason,

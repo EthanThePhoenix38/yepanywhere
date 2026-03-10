@@ -149,6 +149,8 @@ export async function createRelayServer(
       waiting: connectionManager.getWaitingCount(),
       pairs: connectionManager.getPairCount(),
       registered: registry.count(),
+      activeServers: connectionManager.getActiveServers(),
+      compatibility: connectionManager.getActiveServerSummary(),
       memory: process.memoryUsage(),
     });
   });

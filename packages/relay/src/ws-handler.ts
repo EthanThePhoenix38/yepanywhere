@@ -170,6 +170,12 @@ export function createWsHandler(
           ws,
           msg.username,
           msg.installId,
+          {
+            appVersion: msg.appVersion,
+            resumeProtocolVersion: msg.resumeProtocolVersion,
+            renderProtocolVersion: msg.renderProtocolVersion,
+            capabilities: msg.capabilities,
+          },
         );
 
         if (result === "registered") {
@@ -181,7 +187,16 @@ export function createWsHandler(
           // Start ping interval for waiting connections
           startPingInterval(ws, state);
 
-          logger.info({ username: msg.username }, "Server registered");
+          logger.info(
+            {
+              username: msg.username,
+              appVersion: msg.appVersion,
+              resumeProtocolVersion: msg.resumeProtocolVersion,
+              renderProtocolVersion: msg.renderProtocolVersion,
+              capabilities: msg.capabilities,
+            },
+            "Server registered",
+          );
         } else {
           const response: RelayServerRejected = {
             type: "server_rejected",

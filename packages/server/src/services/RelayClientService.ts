@@ -25,6 +25,14 @@ export interface RelayClientConfig {
   username: string;
   /** Installation ID for ownership verification */
   installId: string;
+  /** Optional app version for relay observability. */
+  appVersion?: string;
+  /** Optional session resume protocol version for relay observability. */
+  resumeProtocolVersion?: number;
+  /** Optional future render protocol version for relay observability. */
+  renderProtocolVersion?: number;
+  /** Optional server capabilities for relay observability. */
+  capabilities?: string[];
   /**
    * Called when a connection is claimed by a phone client.
    * The first message (SRP init) is passed along with the WebSocket.
@@ -231,6 +239,10 @@ export class RelayClientService {
       type: "server_register",
       username: this.config.username,
       installId: this.config.installId,
+      appVersion: this.config.appVersion,
+      resumeProtocolVersion: this.config.resumeProtocolVersion,
+      renderProtocolVersion: this.config.renderProtocolVersion,
+      capabilities: this.config.capabilities,
     };
     ws.send(JSON.stringify(register));
   }

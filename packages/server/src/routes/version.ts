@@ -137,25 +137,62 @@ export interface VersionInfo {
 }
 
 /** Resume protocol version with nonce challenge + proof binding. */
-const RESUME_PROTOCOL_VERSION = 2;
+export const RESUME_PROTOCOL_VERSION = 2;
 
 /** Base capabilities always advertised. */
 const BASE_CAPABILITIES = ["git-status"];
 
-type DeviceBridgeState = "available" | "downloadable" | "unavailable";
+export type DeviceBridgeState = "available" | "downloadable" | "unavailable";
 
-interface VersionRouteOptions {
+export interface VersionRouteOptions {
   /** Dynamic device bridge state: available (binary exists), downloadable (ADB found, no binary), unavailable (no ADB). */
   getDeviceBridgeState?: () => DeviceBridgeState;
   /** Whether the user has opted into the device bridge feature. */
   isDeviceBridgeEnabled?: () => boolean;
 }
 
+export interface ServerCompatibilityInfo {
+  appVersion: string;
+  resumeProtocolVersion: number;
+  renderProtocolVersion?: number;
+  capabilities: string[];
+}
+
+export function getServerCapabilities(options?: VersionRouteOptions): string[] {
+  const capabilities = [...BASE_CAPABILITIES];
+  const deviceBridgeState = options?.getDeviceBridgeState?.() ?? "unavailable";
+  if (deviceBridgeState !== "unavailable") {
+    // Hardware is present — always advertise so settings page can show opt-in
+    capabilities.push("deviceBridge-available");
+    // Only advertise active capabilities when user has opted in
+    const enabled = options?.isDeviceBridgeEnabled?.() ?? false;
+    if (enabled) {
+      if (deviceBridgeState === "available") {
+        capabilities.push("deviceBridge");
+      } else {
+        capabilities.push("deviceBridge-download");
+      }
+    }
+  }
+  return capabilities;
+}
+
+export function getServerCompatibilityInfo(
+  options?: VersionRouteOptions,
+): ServerCompatibilityInfo {
+  return {
+    appVersion: getCurrentVersion(),
+    resumeProtocolVersion: RESUME_PROTOCOL_VERSION,
+    capabilities: getServerCapabilities(options),
+  };
+}
+
 export function createVersionRoutes(options?: VersionRouteOptions): Hono {
   const routes = new Hono();
 
   routes.get("/", async (c) => {
-    const current = getCurrentVersion();
+    const compatibility = getServerCompatibilityInfo(options);
+    const current = compatibility.appVersion;
     const latest = await getLatestNpmVersion();
 
     // For dev versions like "v0.1.7-3-g050bfd2", extract base version "v0.1.7"
@@ -165,29 +202,12 @@ export function createVersionRoutes(options?: VersionRouteOptions): Hono {
       ? isNewerVersion(baseVersion, latest)
       : false;
 
-    const capabilities = [...BASE_CAPABILITIES];
-    const deviceBridgeState =
-      options?.getDeviceBridgeState?.() ?? "unavailable";
-    if (deviceBridgeState !== "unavailable") {
-      // Hardware is present — always advertise so settings page can show opt-in
-      capabilities.push("deviceBridge-available");
-      // Only advertise active capabilities when user has opted in
-      const enabled = options?.isDeviceBridgeEnabled?.() ?? false;
-      if (enabled) {
-        if (deviceBridgeState === "available") {
-          capabilities.push("deviceBridge");
-        } else {
-          capabilities.push("deviceBridge-download");
-        }
-      }
-    }
-
     const info: VersionInfo = {
       current,
       latest,
       updateAvailable,
-      resumeProtocolVersion: RESUME_PROTOCOL_VERSION,
-      capabilities,
+      resumeProtocolVersion: compatibility.resumeProtocolVersion,
+      capabilities: compatibility.capabilities,
     };
 
     return c.json(info);

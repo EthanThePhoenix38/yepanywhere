@@ -28,6 +28,19 @@ describe("relay-protocol", () => {
         expect(isRelayServerRegister(msg)).toBe(true);
       });
 
+      it("returns true when optional compatibility metadata is present", () => {
+        const msg: RelayServerRegister = {
+          type: "server_register",
+          username: "alice",
+          installId: "abc-123",
+          appVersion: "0.2.0",
+          resumeProtocolVersion: 2,
+          renderProtocolVersion: 1,
+          capabilities: ["git-status", "deviceBridge"],
+        };
+        expect(isRelayServerRegister(msg)).toBe(true);
+      });
+
       it("returns false for missing username", () => {
         const msg = {
           type: "server_register",
@@ -49,6 +62,26 @@ describe("relay-protocol", () => {
           type: "server_registered",
           username: "alice",
           installId: "abc-123",
+        };
+        expect(isRelayServerRegister(msg)).toBe(false);
+      });
+
+      it("returns false for invalid resumeProtocolVersion", () => {
+        const msg = {
+          type: "server_register",
+          username: "alice",
+          installId: "abc-123",
+          resumeProtocolVersion: "2",
+        };
+        expect(isRelayServerRegister(msg)).toBe(false);
+      });
+
+      it("returns false for invalid capabilities", () => {
+        const msg = {
+          type: "server_register",
+          username: "alice",
+          installId: "abc-123",
+          capabilities: ["git-status", 123],
         };
         expect(isRelayServerRegister(msg)).toBe(false);
       });

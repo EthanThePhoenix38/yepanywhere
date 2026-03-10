@@ -18,12 +18,32 @@
 // ============================================================================
 
 /** Yepanywhere server registers with relay, claiming a username */
+export interface RelayServerCompatibilityMetadata {
+  /** Yep Anywhere app version running on the server. */
+  appVersion?: string;
+  /** Session resume protocol version supported by this server. */
+  resumeProtocolVersion?: number;
+  /** Future render protocol version for hosted client/server compatibility. */
+  renderProtocolVersion?: number;
+  /** Feature capabilities supported by this server. */
+  capabilities?: string[];
+}
+
+/** Yepanywhere server registers with relay, claiming a username */
 export interface RelayServerRegister {
   type: "server_register";
   /** Username for clients to connect to */
   username: string;
   /** Installation ID for ownership verification (allows reconnection) */
   installId: string;
+  /** Optional compatibility metadata for relay observability. */
+  appVersion?: string;
+  /** Optional session resume protocol version. */
+  resumeProtocolVersion?: number;
+  /** Optional future render protocol version. */
+  renderProtocolVersion?: number;
+  /** Optional feature capabilities. */
+  capabilities?: string[];
 }
 
 /** Relay confirms server registration succeeded */
@@ -98,12 +118,24 @@ export type RelayRoutingMessage =
 export function isRelayServerRegister(
   msg: unknown,
 ): msg is RelayServerRegister {
+  const register = msg as RelayServerRegister;
   return (
     typeof msg === "object" &&
     msg !== null &&
-    (msg as RelayServerRegister).type === "server_register" &&
-    typeof (msg as RelayServerRegister).username === "string" &&
-    typeof (msg as RelayServerRegister).installId === "string"
+    register.type === "server_register" &&
+    typeof register.username === "string" &&
+    typeof register.installId === "string" &&
+    (register.appVersion === undefined ||
+      typeof register.appVersion === "string") &&
+    (register.resumeProtocolVersion === undefined ||
+      typeof register.resumeProtocolVersion === "number") &&
+    (register.renderProtocolVersion === undefined ||
+      typeof register.renderProtocolVersion === "number") &&
+    (register.capabilities === undefined ||
+      (Array.isArray(register.capabilities) &&
+        register.capabilities.every(
+          (capability) => typeof capability === "string",
+        )))
   );
 }
 

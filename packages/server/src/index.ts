@@ -48,6 +48,7 @@ import {
   RemoteSessionService,
 } from "./remote-access/index.js";
 import { createUploadRoutes } from "./routes/upload.js";
+import { getServerCompatibilityInfo } from "./routes/version.js";
 import { createWsRelayRoutes } from "./routes/ws-relay.js";
 import { createAcceptRelayConnection } from "./routes/ws-relay.js";
 import { detectClaudeCli, detectCodexCli } from "./sdk/cli-detection.js";
@@ -619,10 +620,22 @@ async function startServer() {
   async function updateRelayConnection() {
     const relayConfig = remoteAccessService.getRelayConfig();
     if (relayConfig?.url && relayConfig?.username) {
+      const compatibility = getServerCompatibilityInfo({
+        getDeviceBridgeState: () => {
+          if (!deviceBridgeService) return "unavailable";
+          return deviceBridgeService.hasBinary() ? "available" : "downloadable";
+        },
+        isDeviceBridgeEnabled: () =>
+          serverSettingsService.getSetting("deviceBridgeEnabled") ?? false,
+      });
       relayClientService.start({
         relayUrl: relayConfig.url,
         username: relayConfig.username,
         installId: installService.getInstallId(),
+        appVersion: compatibility.appVersion,
+        resumeProtocolVersion: compatibility.resumeProtocolVersion,
+        renderProtocolVersion: compatibility.renderProtocolVersion,
+        capabilities: compatibility.capabilities,
         onRelayConnection: acceptRelayConnection,
         onStatusChange: (status) => {
           console.log(`[Relay] Status: ${status}`);

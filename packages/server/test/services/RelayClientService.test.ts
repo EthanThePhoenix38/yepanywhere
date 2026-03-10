@@ -130,6 +130,32 @@ describe("RelayClientService", () => {
       expect(service.getState().status).toBe("registering");
     });
 
+    it("includes optional compatibility metadata in registration", async () => {
+      service.start({
+        relayUrl: "wss://relay.example.com/ws",
+        username: "testuser",
+        installId: "install-123",
+        appVersion: "1.2.3",
+        resumeProtocolVersion: 2,
+        renderProtocolVersion: 1,
+        capabilities: ["git-status", "deviceBridge"],
+        onRelayConnection: mockOnRelayConnection,
+      });
+
+      await vi.advanceTimersByTimeAsync(10);
+
+      const ws = MockWebSocketInstances[0];
+      expect(JSON.parse(ws.sentMessages[0])).toEqual({
+        type: "server_register",
+        username: "testuser",
+        installId: "install-123",
+        appVersion: "1.2.3",
+        resumeProtocolVersion: 2,
+        renderProtocolVersion: 1,
+        capabilities: ["git-status", "deviceBridge"],
+      });
+    });
+
     it("transitions to waiting on server_registered response", async () => {
       service.start({
         relayUrl: "wss://relay.example.com/ws",

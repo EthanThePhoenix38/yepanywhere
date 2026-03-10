@@ -1,4 +1,7 @@
-import { isValidRelayUsername } from "@yep-anywhere/shared";
+import {
+  type RelayServerCompatibilityMetadata,
+  isValidRelayUsername,
+} from "@yep-anywhere/shared";
 import type { WebSocket } from "ws";
 import type { UsernameRegistry } from "./registry.js";
 
@@ -17,6 +20,25 @@ interface Pair {
   client: WebSocket;
 }
 
+export interface ActiveRelayServer extends RelayServerCompatibilityMetadata {
+  username: string;
+  installId: string;
+  connectedAt: string;
+  state: "waiting" | "paired";
+}
+
+interface SummaryBucket<T> {
+  value: T | null;
+  count: number;
+}
+
+export interface ActiveRelayServerSummary {
+  appVersions: SummaryBucket<string>[];
+  resumeProtocolVersions: SummaryBucket<number>[];
+  renderProtocolVersions: SummaryBucket<number>[];
+  capabilities: Array<{ capability: string; count: number }>;
+}
+
 /**
  * Manages WebSocket connections for the relay.
  *
@@ -33,6 +55,8 @@ export class ConnectionManager {
   private pairs = new Set<Pair>();
   /** Lookup from WebSocket to its pair (for forwarding) */
   private pairLookup = new Map<WebSocket, Pair>();
+  /** Active server connections keyed by the server WebSocket. */
+  private activeServers = new Map<WebSocket, ActiveRelayServer>();
   /** Registry for username validation */
   private registry: UsernameRegistry;
 
@@ -52,6 +76,7 @@ export class ConnectionManager {
     ws: WebSocket,
     username: string,
     installId: string,
+    metadata: RelayServerCompatibilityMetadata = {},
   ): RegistrationResult {
     // Validate username format
     if (!isValidRelayUsername(username)) {
@@ -71,6 +96,7 @@ export class ConnectionManager {
     // Close existing waiting connection for this username (same installId reconnecting)
     const existingWaiting = this.waiting.get(username);
     if (existingWaiting) {
+      this.activeServers.delete(existingWaiting);
       try {
         existingWaiting.close(1000, "Replaced by new connection");
       } catch {
@@ -80,6 +106,18 @@ export class ConnectionManager {
 
     // Store as waiting connection
     this.waiting.set(username, ws);
+    this.activeServers.set(ws, {
+      username,
+      installId,
+      connectedAt: new Date().toISOString(),
+      state: "waiting",
+      appVersion: metadata.appVersion,
+      resumeProtocolVersion: metadata.resumeProtocolVersion,
+      renderProtocolVersion: metadata.renderProtocolVersion,
+      capabilities: metadata.capabilities
+        ? [...metadata.capabilities]
+        : undefined,
+    });
 
     return "registered";
   }
@@ -105,6 +143,10 @@ export class ConnectionManager {
 
     // Remove from waiting map (server is now paired)
     this.waiting.delete(username);
+    const serverInfo = this.activeServers.get(serverWs);
+    if (serverInfo) {
+      serverInfo.state = "paired";
+    }
 
     // Create pair
     const pair: Pair = { server: serverWs, client: ws };
@@ -157,6 +199,7 @@ export class ConnectionManager {
       const waitingWs = this.waiting.get(username);
       if (waitingWs === ws) {
         this.waiting.delete(username);
+        this.activeServers.delete(ws);
         return false;
       }
     }
@@ -167,6 +210,7 @@ export class ConnectionManager {
       this.pairs.delete(pair);
       this.pairLookup.delete(pair.server);
       this.pairLookup.delete(pair.client);
+      this.activeServers.delete(pair.server);
 
       // Close the other end
       const other = pair.server === ws ? pair.client : pair.server;
@@ -226,4 +270,79 @@ export class ConnectionManager {
   getWaitingUsernames(): string[] {
     return Array.from(this.waiting.keys());
   }
+
+  /**
+   * Get all active server registrations, including paired connections.
+   */
+  getActiveServers(): ActiveRelayServer[] {
+    return Array.from(this.activeServers.values()).sort((a, b) =>
+      a.username.localeCompare(b.username),
+    );
+  }
+
+  /**
+   * Summarize active server compatibility metadata for observability.
+   */
+  getActiveServerSummary(): ActiveRelayServerSummary {
+    const activeServers = this.getActiveServers();
+    return {
+      appVersions: summarizeOptionalValues(
+        activeServers,
+        (server) => server.appVersion ?? null,
+      ),
+      resumeProtocolVersions: summarizeOptionalValues(
+        activeServers,
+        (server) => server.resumeProtocolVersion ?? null,
+      ),
+      renderProtocolVersions: summarizeOptionalValues(
+        activeServers,
+        (server) => server.renderProtocolVersion ?? null,
+      ),
+      capabilities: summarizeCapabilities(activeServers),
+    };
+  }
+}
+
+function summarizeOptionalValues<T extends string | number>(
+  activeServers: ActiveRelayServer[],
+  getValue: (server: ActiveRelayServer) => T | null,
+): SummaryBucket<T>[] {
+  const counts = new Map<T | null, number>();
+  for (const server of activeServers) {
+    const value = getValue(server);
+    counts.set(value, (counts.get(value) ?? 0) + 1);
+  }
+
+  return Array.from(counts.entries())
+    .map(([value, count]) => ({ value, count }))
+    .sort((a, b) => {
+      if (b.count !== a.count) {
+        return b.count - a.count;
+      }
+      if (a.value === null) return 1;
+      if (b.value === null) return -1;
+      if (typeof a.value === "number" && typeof b.value === "number") {
+        return a.value - b.value;
+      }
+      return String(a.value).localeCompare(String(b.value));
+    });
+}
+
+function summarizeCapabilities(
+  activeServers: ActiveRelayServer[],
+): Array<{ capability: string; count: number }> {
+  const counts = new Map<string, number>();
+  for (const server of activeServers) {
+    for (const capability of new Set(server.capabilities ?? [])) {
+      counts.set(capability, (counts.get(capability) ?? 0) + 1);
+    }
+  }
+
+  return Array.from(counts.entries())
+    .map(([capability, count]) => ({ capability, count }))
+    .sort((a, b) =>
+      b.count === a.count
+        ? a.capability.localeCompare(b.capability)
+        : b.count - a.count,
+    );
 }
