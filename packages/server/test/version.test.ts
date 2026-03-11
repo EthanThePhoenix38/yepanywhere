@@ -27,14 +27,15 @@ describe("GET /version", () => {
   }
 
   it("parses version from update server 200 response", async () => {
-    mockFetch(() =>
-      new Response(
-        JSON.stringify({
-          version: "99.0.0",
-          notes: "New release",
-          pub_date: "2026-01-01T00:00:00Z",
-        }),
-      ),
+    mockFetch(
+      () =>
+        new Response(
+          JSON.stringify({
+            version: "99.0.0",
+            notes: "New release",
+            pub_date: "2026-01-01T00:00:00Z",
+          }),
+        ),
     );
 
     const { createVersionRoutes } = await importVersion();
