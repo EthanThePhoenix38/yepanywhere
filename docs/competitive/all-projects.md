@@ -24,6 +24,7 @@ Everything in the AI coding agent supervisor/wrapper space, in one table. For de
 | **Gemini-CLI-UI** | Web UI for Google's Gemini CLI with chat, terminal, file explorer, git | [cruzyjapan/Gemini-CLI-UI](https://github.com/cruzyjapan/Gemini-CLI-UI) | — | cruzyjapan | 599 |
 | **Yep Anywhere** | Mobile-first supervisor with E2E encryption, tiered inbox, fork/clone, multi-agent (Claude/Codex/Gemini) | [kzahel/yepanywhere](https://github.com/kzahel/yepanywhere) | MIT | Kyle Graehl | 61 |
 | **HAPI** | Local-first hub for Claude/Codex/Gemini/OpenCode with terminal page and file browser | — | Open source | — | — |
+| **Vicoa** | "Vibe Code Anywhere" — mobile-first remote supervisor for Claude Code, Codex, OpenCode, Google/OpenRouter. Native iOS app + web + CLI. Freemium: free (50 msgs/mo), Pro $9.99/mo | [vicoa.ai](https://vicoa.ai/) | Proprietary | — | N/A |
 | **Conductor** | macOS app for parallel Claude Code + Codex with git worktree isolation | [conductor.build](https://www.conductor.build/) | Proprietary | — | N/A |
 
 ## Community Projects
