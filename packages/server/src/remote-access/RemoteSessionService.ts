@@ -32,8 +32,8 @@ const IDLE_TIMEOUT_MS = 7 * 24 * 60 * 60 * 1000;
 /** Maximum lifetime of a session (30 days) */
 const MAX_LIFETIME_MS = 30 * 24 * 60 * 60 * 1000;
 
-/** Maximum proof timestamp age (60 seconds) */
-const MAX_PROOF_AGE_MS = 60 * 1000;
+/** Maximum proof timestamp age (5 minutes) */
+const MAX_PROOF_AGE_MS = 5 * 60 * 1000;
 
 /** Maximum sessions per user */
 const MAX_SESSIONS_PER_USER = 5;
@@ -324,7 +324,11 @@ export class RemoteSessionService {
       const now = Date.now();
 
       // Verify the proof is fresh and bound to this resume attempt
-      if (Math.abs(now - proofData.timestamp) > MAX_PROOF_AGE_MS) {
+      const clockSkewMs = Math.abs(now - proofData.timestamp);
+      if (clockSkewMs > MAX_PROOF_AGE_MS) {
+        console.warn(
+          `[RemoteSessionService] Resume proof rejected due to timestamp skew for session ${sessionId}: ${clockSkewMs}ms`,
+        );
         return null;
       }
       if (proofData.sessionId !== sessionId) {

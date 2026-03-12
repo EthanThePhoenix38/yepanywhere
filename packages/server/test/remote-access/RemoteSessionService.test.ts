@@ -145,7 +145,7 @@ describe("RemoteSessionService", () => {
       const sessionId = await service.createSession("testuser", sessionKey);
       const challenge = "test-challenge";
 
-      // Generate proof with timestamp 10 minutes ago (> 1 min max age)
+      // Generate proof with timestamp 10 minutes ago (> 5 min max age)
       const oldTimestamp = Date.now() - 10 * 60 * 1000;
       const proofData = JSON.stringify({
         timestamp: oldTimestamp,
@@ -161,6 +161,25 @@ describe("RemoteSessionService", () => {
         challenge,
       );
       expect(validatedSession).toBeNull();
+    });
+
+    it("accepts proof within the 5 minute skew window", async () => {
+      const sessionKey = new Uint8Array(32).fill(0x42);
+      const sessionId = await service.createSession("testuser", sessionKey);
+      const challenge = "test-challenge";
+
+      const timestamp = Date.now() - 4 * 60 * 1000;
+      const proofData = JSON.stringify({ timestamp, sessionId, challenge });
+      const { nonce, ciphertext } = encrypt(proofData, sessionKey);
+      const proof = JSON.stringify({ nonce, ciphertext });
+
+      const validatedSession = await service.validateProof(
+        sessionId,
+        proof,
+        challenge,
+      );
+      expect(validatedSession).not.toBeNull();
+      expect(validatedSession?.sessionId).toBe(sessionId);
     });
 
     it("rejects proof with wrong challenge", async () => {
