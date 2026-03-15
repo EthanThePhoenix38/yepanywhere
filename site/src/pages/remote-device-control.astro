@@ -3,13 +3,13 @@ import ArticleLayout from "../layouts/ArticleLayout.astro";
 ---
 
 <ArticleLayout
-  title="Android Dev Without a Desktop: Remote Device Control"
-  description="Stream and control Android devices from your phone over WebRTC. Close the loop on mobile-first AI development."
+  title="Mobile Dev Without a Desktop: Remote Device Control"
+  description="Stream and control Android devices and iOS Simulators from your phone over WebRTC. Complete mobile development for both platforms, all from your phone."
   date="March 3, 2026"
   publishedTime="2026-03-03"
   ogImage="/screenshots/device-stream.png"
 >
-  <p><a href="https://yepanywhere.com">Yep Anywhere</a> lets you supervise AI coding agents from your phone. But when those agents are building Android apps, you still have to walk to your computer to see the result. Now you don't. Yep streams your Android device or emulator to your phone &mdash; H264 over WebRTC, full touch input.</p>
+  <p><a href="https://yepanywhere.com">Yep Anywhere</a> lets you supervise AI coding agents from your phone. But when those agents are building mobile apps, you still have to walk to your computer to see the result. Now you don't. Yep streams your Android devices, Android emulators, and iOS Simulators to your phone &mdash; H264 over WebRTC, full touch input. Complete mobile development for both platforms, all from your phone.</p>
 
   <div class="video-embed">
     <iframe
@@ -21,7 +21,7 @@ import ArticleLayout from "../layouts/ArticleLayout.astro";
     ></iframe>
   </div>
 
-  <p>Spot-check a layout, test a user flow, verify a fix. The device stays connected to your dev machine via ADB. You see its screen on your phone. Tap on your phone, the device responds.</p>
+  <p>Spot-check a layout, test a user flow, verify a fix. Android devices connect via ADB, iOS Simulators via <code>simctl</code>. You see the screen on your phone. Tap on your phone, the device responds.</p>
 
   <h2>How it works</h2>
 
@@ -46,23 +46,21 @@ import ArticleLayout from "../layouts/ArticleLayout.astro";
 
   <p>Video is peer-to-peer WebRTC &mdash; encrypted, low latency. Signaling goes through Yep's relay, but video and touch data flow directly between your dev machine and your phone. No relay bandwidth cost.</p>
 
-  <p>A Go sidecar (Pion) handles WebRTC and H264 encoding. It's a single pre-built binary, compiled on GitHub Actions for each platform &mdash; no native dependencies, no libdatachannel, no system WebRTC libraries to install. The binary downloads automatically on first connect and only when you actually use device control, so Yep Anywhere stays lightweight. It talks to your device over ADB, encodes frames with x264 (<code>ultrafast</code>/<code>zerolatency</code>), hardware-decoded on your phone. Touch and nav buttons go over the WebRTC data channel. Multi-touch and pressure work natively.</p>
+  <p>A Go sidecar (Pion) handles WebRTC and H264 encoding. It's a single pre-built binary, compiled on GitHub Actions for each platform &mdash; no native dependencies, no libdatachannel, no system WebRTC libraries to install. The binary downloads automatically on first connect and only when you actually use device control, so Yep Anywhere stays lightweight. For Android, it talks to your device over ADB. For iOS Simulators, it uses <code>simctl</code> for input and screen capture. Frames are encoded with x264 (<code>ultrafast</code>/<code>zerolatency</code>), hardware-decoded on your phone. Touch and nav buttons go over the WebRTC data channel. Multi-touch and pressure work natively.</p>
 
   <p>Adaptive quality monitors packet loss and drops FPS before you notice stutter, recovers when the connection stabilizes.</p>
 
   <h2>What's next: agents that can see</h2>
 
-  <p>We're adding accessibility tree support so agents can read what's on screen, tap elements by semantic label, and verify their own work. Build a feature, install the APK, navigate to the screen, confirm the list loads and the back button works &mdash; without a human in the loop.</p>
+  <p>We're adding accessibility tree support so agents can read what's on screen, tap elements by semantic label, and verify their own work. Build a feature, install the APK or launch the iOS Simulator, navigate to the screen, confirm the list loads and the back button works &mdash; without a human in the loop.</p>
 
-  <p>Existing Android device MCP servers have high latency per action &mdash; screenshot, parse, decide, tap, repeat. We're prioritizing speed: direct ADB access, accessibility tree for structured interactions, screenshots only when you need visual verification.</p>
+  <p>Existing device MCP servers have high latency per action &mdash; screenshot, parse, decide, tap, repeat. We're prioritizing speed: direct ADB and <code>simctl</code> access, accessibility tree for structured interactions, screenshots only when you need visual verification.</p>
 
-  <p>The agent and the device are on the same machine, connected by ADB. No network hop for input, no cloud round-trip for screenshots. The sidecar is already there.</p>
-
-  <p>iOS Simulator support is next.</p>
+  <p>The agent and the device are on the same machine. No network hop for input, no cloud round-trip for screenshots. The sidecar is already there.</p>
 
   <h2>Try it</h2>
 
-  <p>Device control ships in Yep Anywhere today. Enable Device Bridge in Settings, and any Android emulator or device connected via ADB shows up automatically in the Devices tab. It's still in beta &mdash; expect rough edges.</p>
+  <p>Device control ships in Yep Anywhere today. Enable Device Bridge in Settings, and any Android emulator, Android device, or iOS Simulator shows up automatically in the Devices tab. iOS support is for Simulators running on your Mac &mdash; real iOS devices are not yet supported. It's still in beta &mdash; expect rough edges.</p>
 
   <p><a href="/#install" class="cta-link">Install Yep Anywhere</a></p>
 </ArticleLayout>

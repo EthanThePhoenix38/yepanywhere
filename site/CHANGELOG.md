@@ -6,6 +6,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [site-v1.5.22] - 2026-03-15
+
+### Changed
+- Update remote device control post to cover iOS Simulator support alongside Android
+
 ## [site-v1.5.21] - 2026-03-13
 
 ### Added
