@@ -48,8 +48,8 @@ export function createUploadRoutes(deps: UploadDeps): Hono {
   routes.get(
     "/projects/:projectId/sessions/:sessionId/upload/ws",
     deps.upgradeWebSocket((c) => {
-      const projectId = c.req.param("projectId");
-      const sessionId = c.req.param("sessionId");
+      const projectId = c.req.param("projectId")!;
+      const sessionId = c.req.param("sessionId")!;
 
       // Track current upload for this connection
       let currentUploadId: string | null = null;
@@ -289,9 +289,9 @@ export function createUploadRoutes(deps: UploadDeps): Hono {
   routes.get(
     "/projects/:projectId/sessions/:sessionId/upload/:filename",
     async (c) => {
-      const projectId = c.req.param("projectId");
-      const sessionId = c.req.param("sessionId");
-      const filename = c.req.param("filename");
+      const projectId = c.req.param("projectId")!;
+      const sessionId = c.req.param("sessionId")!;
+      const filename = c.req.param("filename")!;
 
       // Validate projectId format
       if (!isUrlProjectId(projectId)) {
