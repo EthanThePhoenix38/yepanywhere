@@ -107,4 +107,14 @@ export interface ISessionReader {
   listSessionFiles?(
     sessionDir: string,
   ): Promise<{ sessionId: string; filePath: string }[]>;
+
+  /**
+   * Return a stable cache/index scope key for this reader.
+   *
+   * Most providers can use the physical sessionDir directly, but providers like
+   * Codex/Gemini share a single root session directory across many projects and
+   * rely on reader-level filtering. Those readers should return a key that also
+   * includes the logical project scope to avoid cache/index contamination.
+   */
+  getIndexScopeKey?(sessionDir: string): string;
 }

@@ -305,6 +305,25 @@ export class CodexSessionReader implements ISessionReader {
     return sessionFile?.filePath ?? null;
   }
 
+  getIndexScopeKey(sessionDir: string): string {
+    return `codex::${sessionDir}::${this.projectPath ?? "*"}`;
+  }
+
+  async listSessionFiles(
+    _sessionDir: string,
+  ): Promise<{ sessionId: string; filePath: string }[]> {
+    const sessions = await this.scanSessions();
+
+    return sessions
+      .filter((session) =>
+        this.projectPath ? session.cwd === this.projectPath : true,
+      )
+      .map((session) => ({
+        sessionId: session.id,
+        filePath: session.filePath,
+      }));
+  }
+
   /**
    * Find a session file by ID.
    */

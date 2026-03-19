@@ -248,6 +248,15 @@ export class GeminiSessionReader implements ISessionReader {
     return null;
   }
 
+  async getSessionFilePath(sessionId: string): Promise<string | null> {
+    const sessionCache = await this.findSessionFile(sessionId);
+    return sessionCache?.filePath ?? null;
+  }
+
+  getIndexScopeKey(sessionDir: string): string {
+    return `gemini::${sessionDir}::${this.projectPath ?? "*"}`;
+  }
+
   /**
    * Enumerate session files in a directory for SessionIndexService.
    * Reads each file to extract the sessionId (not derivable from filename).
