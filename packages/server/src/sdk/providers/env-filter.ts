@@ -34,6 +34,10 @@ const EXCLUDED_VARS = new Set([
   "PROXY_DEBUG",
   // Prevent nested session detection when server runs inside Claude Code
   "CLAUDECODE",
+  // NODE_ENV is set to "production" by yepanywhere's CLI but should not
+  // leak into Claude Code child processes where it breaks project tooling
+  // (e.g. React 19 + Vitest). See GitHub issue #41.
+  "NODE_ENV",
 ]);
 
 /** Essential variables to always keep (even if they match excluded patterns) */
@@ -53,7 +57,6 @@ const ALWAYS_KEEP = new Set([
   "VISUAL",
   "PAGER",
   // Node/runtime
-  "NODE_ENV",
   "NODE_OPTIONS",
   "NODE_PATH",
   "NVM_DIR",
