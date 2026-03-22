@@ -974,7 +974,9 @@ describe("progress messages", () => {
         parentUuid: "u1",
         message: {
           role: "assistant",
-          content: [{ type: "tool_use", id: "agent-id", name: "Agent", input: {} }],
+          content: [
+            { type: "tool_use", id: "agent-id", name: "Agent", input: {} },
+          ],
         },
       },
       {
@@ -983,10 +985,16 @@ describe("progress messages", () => {
         parentUuid: "agent-tooluse",
         message: {
           role: "user",
-          content: [{ type: "tool_result", tool_use_id: "agent-id", content: "done" }],
+          content: [
+            { type: "tool_result", tool_use_id: "agent-id", content: "done" },
+          ],
         },
       },
-      { type: "assistant", uuid: "text-after-agent", parentUuid: "agent-result" },
+      {
+        type: "assistant",
+        uuid: "text-after-agent",
+        parentUuid: "agent-result",
+      },
       { type: "assistant", uuid: "final-text", parentUuid: "text-after-agent" },
       // Progress chain branches off agent-tooluse
       { type: "progress", uuid: "p1", parentUuid: "agent-tooluse" },

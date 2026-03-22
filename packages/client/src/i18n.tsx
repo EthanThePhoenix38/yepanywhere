@@ -47,7 +47,11 @@ function isLocale(value: string | null): value is Locale {
 }
 
 function detectLocale(): Locale {
-  const stored = localStorage.getItem(UI_KEYS.locale);
+  const stored =
+    typeof localStorage !== "undefined" &&
+    typeof localStorage.getItem === "function"
+      ? localStorage.getItem(UI_KEYS.locale)
+      : null;
   if (isLocale(stored)) return stored;
   if (navigator.language.toLowerCase().startsWith("zh")) return "zh-CN";
   if (navigator.language.toLowerCase().startsWith("es")) return "es";
@@ -64,7 +68,12 @@ export function I18nProvider({ children }: { children: ReactNode }) {
   });
 
   useEffect(() => {
-    localStorage.setItem(UI_KEYS.locale, locale);
+    if (
+      typeof localStorage !== "undefined" &&
+      typeof localStorage.setItem === "function"
+    ) {
+      localStorage.setItem(UI_KEYS.locale, locale);
+    }
     document.documentElement.lang = locale;
   }, [locale]);
 
