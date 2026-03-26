@@ -172,6 +172,7 @@ export function createGlobalSessionsRoutes(deps: GlobalSessionsDeps): Hono {
       );
       // Include sessions from cross-machine merged directories (Claude-specific)
       if (project.provider === "claude" && project.mergedSessionDirs) {
+        const seenSessionIds = new Set(sessions.map((s) => s.id));
         for (const dir of project.mergedSessionDirs) {
           const mergedReader = new ClaudeSessionReader({ sessionDir: dir });
           const merged = await deps.sessionIndexService.getSessionsWithCache(
@@ -179,7 +180,14 @@ export function createGlobalSessionsRoutes(deps: GlobalSessionsDeps): Hono {
             project.id,
             mergedReader,
           );
-          sessions = [...sessions, ...merged];
+          // Deduplicate: on Windows, mixed-slash cwds can cause the same
+          // physical directory to appear as both primary and merged.
+          for (const s of merged) {
+            if (!seenSessionIds.has(s.id)) {
+              seenSessionIds.add(s.id);
+              sessions.push(s);
+            }
+          }
         }
       }
     } else {

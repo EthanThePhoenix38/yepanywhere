@@ -213,11 +213,15 @@ export class ProjectScanner {
 
     // Helper to add a Claude project, merging cross-machine duplicates
     const addOrMerge = (
-      projectPath: string,
+      rawProjectPath: string,
       sessionDir: string,
       sessionCount: number,
       lastActivity: string | null,
     ) => {
+      // Normalize slashes so Windows mixed-slash cwds
+      // (e.g. "C:\Users\sox/Documents/webvam" vs "C:\Users\sox\Documents\webvam")
+      // are recognized as the same path.
+      const projectPath = rawProjectPath.replace(/\\/g, "/");
       if (seenPaths.has(projectPath)) return; // exact path duplicate
       seenPaths.add(projectPath);
 
