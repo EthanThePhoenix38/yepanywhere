@@ -263,7 +263,8 @@ type NormalizedThreadItem =
       type: "todo_list";
       items: Array<{ text: string; completed: boolean }>;
     }
-  | { id: string; type: "error"; message: string };
+  | { id: string; type: "error"; message: string }
+  | { id: string; type: "image_view"; path: string };
 
 /**
  * Configuration for Codex provider.
@@ -1832,6 +1833,12 @@ export class CodexProvider implements AgentProvider {
         };
       }
 
+      case "image_view": {
+        const imagePath = this.getOptionalString(itemRecord.path) ?? "";
+        if (!imagePath) return null;
+        return { id, type: "image_view", path: imagePath };
+      }
+
       case "error": {
         const message =
           this.getOptionalString(itemRecord.message) ?? "Codex error";
@@ -2374,6 +2381,69 @@ export class CodexProvider implements AgentProvider {
           sourceEvent,
         });
         return [message];
+      }
+
+      case "image_view": {
+        // Represent as a ViewImage tool_use + tool_result pair
+        const toolUseMessage = withCodexTimestamp(
+          {
+            type: "assistant",
+            session_id: sessionId,
+            uuid,
+            message: {
+              role: "assistant",
+              content: [
+                {
+                  type: "tool_use",
+                  id: item.id,
+                  name: "ViewImage",
+                  input: { path: item.path },
+                },
+              ],
+            },
+          } as SDKMessage,
+          observedAt,
+        );
+        logSdkCorrelationDebug(sessionId, toolUseMessage, {
+          eventKind: "image_view",
+          turnId,
+          itemId: item.id,
+          phase: isComplete ? "completed" : "started",
+          sourceEvent,
+        });
+        const messages: SDKMessage[] = [toolUseMessage];
+
+        if (isComplete) {
+          const toolResultMessage = withCodexTimestamp(
+            {
+              type: "user",
+              session_id: sessionId,
+              uuid: `${uuid}-result`,
+              message: {
+                role: "user",
+                content: [
+                  {
+                    type: "tool_result",
+                    tool_use_id: item.id,
+                    content: `Viewed image: ${item.path}`,
+                  },
+                ],
+              },
+            } as SDKMessage,
+            observedAt,
+          );
+          logSdkCorrelationDebug(sessionId, toolResultMessage, {
+            eventKind: "tool_result",
+            turnId,
+            itemId: item.id,
+            callId: item.id,
+            phase: "completed",
+            sourceEvent,
+          });
+          messages.push(toolResultMessage);
+        }
+
+        return messages;
       }
 
       case "error": {

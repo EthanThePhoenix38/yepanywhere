@@ -103,6 +103,8 @@ export interface Config {
   enabledProviders: string[];
   /** Whether voice input is enabled. Default: true */
   voiceInputEnabled: boolean;
+  /** Allowed directory prefixes for serving local images (e.g., ["/tmp"]). Empty = disabled. */
+  allowedImagePaths: string[];
 
   /** Whether cookie-based auth is disabled by env var (--auth-disable or AUTH_DISABLED=true). Used for recovery. */
   authDisabled: boolean;
@@ -241,6 +243,13 @@ export function loadConfig(): Config {
       : [],
     // Voice input (default: true, set VOICE_INPUT=false to disable)
     voiceInputEnabled: process.env.VOICE_INPUT !== "false",
+    // Allowed local image paths (default: /tmp). Set ALLOWED_IMAGE_PATHS to override, empty string to disable.
+    allowedImagePaths:
+      process.env.ALLOWED_IMAGE_PATHS !== undefined
+        ? process.env.ALLOWED_IMAGE_PATHS.split(",")
+            .map((s) => s.trim())
+            .filter(Boolean)
+        : ["/tmp"],
     // Auth disabled override (for recovery if user forgets password)
     authDisabled: process.env.AUTH_DISABLED === "true",
     authCookieSecret: process.env.AUTH_COOKIE_SECRET,

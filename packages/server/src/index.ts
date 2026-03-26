@@ -534,6 +534,7 @@ async function startServer() {
     modelInfoService,
     enabledProviders: config.enabledProviders,
     voiceInputEnabled: config.voiceInputEnabled,
+    allowedImagePaths: config.allowedImagePaths,
   });
 
   const focusedSessionWatchManager = new FocusedSessionWatchManager({

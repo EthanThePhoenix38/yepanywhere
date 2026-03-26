@@ -11,6 +11,8 @@ const TOOL_NAME_ALIASES: Record<string, string> = {
   web_search_call: "WebSearch",
   search_query: "WebSearch",
   Agent: "Task", // SDK 0.2.76+ renamed Task → Agent
+  view_image: "ViewImage",
+  imageView: "ViewImage",
 };
 
 function canonicalizeToolName(toolName: string): string {
@@ -161,6 +163,7 @@ import { taskOutputRenderer } from "./TaskOutputRenderer";
 import { taskRenderer } from "./TaskRenderer";
 import { todoWriteRenderer } from "./TodoWriteRenderer";
 import { updatePlanRenderer } from "./UpdatePlanRenderer";
+import { viewImageRenderer } from "./ViewImageRenderer";
 import { webFetchRenderer } from "./WebFetchRenderer";
 import { webSearchRenderer } from "./WebSearchRenderer";
 import { writeRenderer } from "./WriteRenderer";
@@ -183,6 +186,9 @@ toolRegistry.register(askUserQuestionRenderer);
 toolRegistry.register(exitPlanModeRenderer);
 toolRegistry.register(updatePlanRenderer);
 toolRegistry.register(writeStdinRenderer);
+
+// Codex-specific tools
+toolRegistry.register(viewImageRenderer);
 
 // Tier 4: Background/async tools
 toolRegistry.register(bashOutputRenderer);

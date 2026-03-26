@@ -60,6 +60,7 @@ import { createSettingsRoutes } from "./routes/settings.js";
 import { createSharingRoutes } from "./routes/sharing.js";
 import { ClaudeOllamaProvider } from "./sdk/providers/claude-ollama.js";
 
+import { createLocalImageRoutes } from "./routes/local-image.js";
 import { type UploadDeps, createUploadRoutes } from "./routes/upload.js";
 import { createVersionRoutes } from "./routes/version.js";
 import type {
@@ -175,6 +176,8 @@ export interface AppOptions {
   enabledProviders?: string[];
   /** Whether voice input is enabled. Default: true */
   voiceInputEnabled?: boolean;
+  /** Allowed directory prefixes for serving local images. Default: ["/tmp"] */
+  allowedImagePaths?: string[];
 }
 
 export interface AppResult {
@@ -668,6 +671,16 @@ export function createApp(options: AppOptions): AppResult {
         scanner,
         upgradeWebSocket: options.upgradeWebSocket,
         maxUploadSizeBytes: options.maxUploadSizeBytes,
+      }),
+    );
+  }
+
+  // Local image serving (opt-in, restricted to allowed paths)
+  if (options.allowedImagePaths && options.allowedImagePaths.length > 0) {
+    app.route(
+      "/api/local-image",
+      createLocalImageRoutes({
+        allowedPaths: options.allowedImagePaths,
       }),
     );
   }
