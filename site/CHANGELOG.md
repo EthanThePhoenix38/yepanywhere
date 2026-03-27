@@ -6,6 +6,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [site-v1.5.26] - 2026-03-27
+
+### Added
+- New session defaults: save preferred provider, model, and permission mode
+- Local image viewing for Codex imageView events
+
+### Fixed
+- Resolve allowed image paths for macOS /tmp symlink
+- Deduplicate sessions on Windows caused by mixed-slash cwds
+
 ## [site-v1.5.25] - 2026-03-22
 
 ### Fixed

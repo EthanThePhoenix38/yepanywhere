@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.18] - 2026-03-27
+
+### Added
+- New session defaults: save preferred provider, model, and permission mode
+- Local image viewing for Codex imageView events
+- Scoped session indexing for shared providers
+
+### Fixed
+- Resolve allowed image paths for macOS /tmp symlink
+- Deduplicate sessions on Windows caused by mixed-slash cwds
+- Improve provider process handling
+
 ## [0.4.17] - 2026-03-22
 
 ### Fixed
