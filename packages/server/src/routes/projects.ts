@@ -11,9 +11,9 @@ import type { CodexSessionScanner } from "../projects/codex-scanner.js";
 import type { GeminiSessionScanner } from "../projects/gemini-scanner.js";
 import { isAbsolutePath } from "../projects/paths.js";
 import type { ProjectScanner } from "../projects/scanner.js";
-import { CodexSessionReader } from "../sessions/codex-reader.js";
-import { GeminiSessionReader } from "../sessions/gemini-reader.js";
-import { ClaudeSessionReader } from "../sessions/reader.js";
+import type { CodexSessionReader } from "../sessions/codex-reader.js";
+import type { GeminiSessionReader } from "../sessions/gemini-reader.js";
+import { listSessionsAcrossProviders } from "../sessions/provider-resolution.js";
 import type { ISessionReader } from "../sessions/types.js";
 import type { ExternalSessionTracker } from "../supervisor/ExternalSessionTracker.js";
 import type { Supervisor } from "../supervisor/Supervisor.js";
@@ -335,97 +335,23 @@ export function createProjectsRoutes(deps: ProjectsDeps): Hono {
       return c.json({ error: "Project not found" }, 404);
     }
 
-    const reader = deps.readerFactory(project);
-    let sessions: SessionSummary[];
-    if (deps.sessionIndexService) {
-      sessions = await deps.sessionIndexService.getSessionsWithCache(
-        project.sessionDir,
-        project.id,
-        reader,
-      );
-      // Include sessions from cross-machine merged directories (Claude-specific)
-      if (project.provider === "claude" && project.mergedSessionDirs) {
-        const seenSessionIds = new Set(sessions.map((s) => s.id));
-        for (const dir of project.mergedSessionDirs) {
-          const mergedReader = new ClaudeSessionReader({ sessionDir: dir });
-          const merged = await deps.sessionIndexService.getSessionsWithCache(
-            dir,
-            project.id,
-            mergedReader,
-          );
-          // Deduplicate: on Windows, mixed-slash cwds can cause the same
-          // physical directory to appear as both primary and merged.
-          for (const s of merged) {
-            if (!seenSessionIds.has(s.id)) {
-              seenSessionIds.add(s.id);
-              sessions.push(s);
-            }
-          }
-        }
-      }
-    } else {
-      sessions = await reader.listSessions(project.id);
-    }
-
     const providerCatalog = await buildProviderProjectCatalog({
       codexScanner: deps.codexScanner,
       geminiScanner: deps.geminiScanner,
     });
-
-    // For Claude projects, also check for Codex sessions for the same path
-    if (
-      project.provider === "claude" &&
-      providerCatalog.codexPaths.has(project.path) &&
-      (deps.codexReaderFactory || deps.codexSessionsDir)
-    ) {
-      const codexReader =
-        deps.codexReaderFactory?.(project.path) ??
-        (deps.codexSessionsDir
-          ? new CodexSessionReader({
-              sessionsDir: deps.codexSessionsDir,
-              projectPath: project.path,
-            })
-          : null);
-      if (codexReader) {
-        const codexSessionSummaries =
-          deps.sessionIndexService && deps.codexSessionsDir
-            ? await deps.sessionIndexService.getSessionsWithCache(
-                deps.codexSessionsDir,
-                project.id,
-                codexReader,
-              )
-            : await codexReader.listSessions(project.id);
-        sessions = [...sessions, ...codexSessionSummaries];
-      }
-    }
-
-    // For Claude/Codex projects, also check for Gemini sessions for the same path
-    if (
-      (project.provider === "claude" || project.provider === "codex") &&
-      providerCatalog.geminiPaths.has(project.path) &&
-      (deps.geminiReaderFactory || deps.geminiSessionsDir)
-    ) {
-      const geminiReader =
-        deps.geminiReaderFactory?.(project.path) ??
-        (deps.geminiSessionsDir
-          ? new GeminiSessionReader({
-              sessionsDir: deps.geminiSessionsDir,
-              projectPath: project.path,
-              hashToCwd: providerCatalog.geminiHashToCwd,
-            })
-          : null);
-      if (geminiReader) {
-        const geminiSessionSummaries =
-          deps.sessionIndexService && deps.geminiSessionsDir
-            ? await deps.sessionIndexService.getSessionsWithCache(
-                deps.geminiSessionsDir,
-                project.id,
-                geminiReader,
-              )
-            : await geminiReader.listSessions(project.id);
-        sessions = [...sessions, ...geminiSessionSummaries];
-      }
-    }
+    let sessions = await listSessionsAcrossProviders(
+      project,
+      {
+        readerFactory: deps.readerFactory,
+        sessionIndexService: deps.sessionIndexService,
+        codexSessionsDir: deps.codexSessionsDir,
+        codexReaderFactory: deps.codexReaderFactory,
+        geminiSessionsDir: deps.geminiSessionsDir,
+        geminiReaderFactory: deps.geminiReaderFactory,
+        geminiHashToCwd: providerCatalog.geminiHashToCwd,
+      },
+      providerCatalog,
+    );
 
     // Add missing owned sessions (new sessions that don't have user/assistant messages yet)
     sessions = addMissingOwnedSessions(sessions, projectId);
