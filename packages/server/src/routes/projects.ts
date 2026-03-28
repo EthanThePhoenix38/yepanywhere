@@ -387,9 +387,14 @@ export function createProjectsRoutes(deps: ProjectsDeps): Hono {
             })
           : null);
       if (codexReader) {
-        const codexSessionSummaries = await codexReader.listSessions(
-          project.id,
-        );
+        const codexSessionSummaries =
+          deps.sessionIndexService && deps.codexSessionsDir
+            ? await deps.sessionIndexService.getSessionsWithCache(
+                deps.codexSessionsDir,
+                project.id,
+                codexReader,
+              )
+            : await codexReader.listSessions(project.id);
         sessions = [...sessions, ...codexSessionSummaries];
       }
     }

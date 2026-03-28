@@ -210,9 +210,14 @@ export function createGlobalSessionsRoutes(deps: GlobalSessionsDeps): Hono {
             })
           : null);
       if (codexReader) {
-        const codexSessionSummaries = await codexReader.listSessions(
-          project.id,
-        );
+        const codexSessionSummaries =
+          deps.sessionIndexService && deps.codexSessionsDir
+            ? await deps.sessionIndexService.getSessionsWithCache(
+                deps.codexSessionsDir,
+                project.id,
+                codexReader,
+              )
+            : await codexReader.listSessions(project.id);
         // Merge Codex sessions with Claude sessions
         sessions = [...sessions, ...codexSessionSummaries];
       }

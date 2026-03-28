@@ -426,6 +426,21 @@ export class SessionIndexService implements ISessionIndexService {
     this.dirtySessionsByDir.delete(scopeKey);
   }
 
+  private markMatchingScopesDirty(prefix: string): void {
+    const knownScopeKeys = new Set<string>([
+      ...this.indexCache.keys(),
+      ...this.lastFullValidationAt.keys(),
+      ...this.dirtyDirs.values(),
+      ...this.dirtySessionsByDir.keys(),
+    ]);
+
+    for (const scopeKey of knownScopeKeys) {
+      if (scopeKey.startsWith(prefix)) {
+        this.dirtyDirs.add(scopeKey);
+      }
+    }
+  }
+
   private buildSummariesFromIndex(
     index: SessionIndexState,
     projectId: UrlProjectId,
@@ -518,27 +533,45 @@ export class SessionIndexService implements ISessionIndexService {
   }
 
   /**
-   * Handle watcher events for claude session files so requests can avoid full rescans.
+   * Handle watcher events so requests can avoid unnecessary full rescans while
+   * still invalidating provider-specific indexes correctly.
    */
   private handleFileChange(event: FileChangeEvent): void {
-    if (event.provider !== "claude" || event.fileType !== "session") {
+    if (event.fileType !== "session") {
       return;
     }
 
-    const fileName = path.basename(event.relativePath);
-    if (!fileName.endsWith(".jsonl")) return;
-    const sessionId = fileName.slice(0, -6);
-    const relativeDir = path.dirname(event.relativePath);
-    const sessionDir =
-      relativeDir === "."
-        ? this.projectsDir
-        : path.join(this.projectsDir, relativeDir);
+    if (event.provider === "claude") {
+      const fileName = path.basename(event.relativePath);
+      if (!fileName.endsWith(".jsonl")) return;
+      const sessionId = fileName.slice(0, -6);
+      const relativeDir = path.dirname(event.relativePath);
+      const sessionDir =
+        relativeDir === "."
+          ? this.projectsDir
+          : path.join(this.projectsDir, relativeDir);
 
-    this.markSessionDirty(sessionDir, sessionId);
+      this.markSessionDirty(sessionDir, sessionId);
 
-    // Directory creates/deletes require full readdir reconciliation.
-    if (event.changeType === "create" || event.changeType === "delete") {
-      this.markDirDirty(sessionDir);
+      // Directory creates/deletes require full readdir reconciliation.
+      if (event.changeType === "create" || event.changeType === "delete") {
+        this.markDirDirty(sessionDir);
+      }
+      return;
+    }
+
+    if (event.provider === "codex") {
+      // Codex indexes are project-scoped over a shared sessions tree
+      // (codex::<sessionsDir>::<projectPath>), so a raw file event does not
+      // tell us which project scope owns the changed session. Mark all loaded
+      // Codex scopes dirty and let the next request reconcile via listSessionFiles.
+      this.markMatchingScopesDirty("codex::");
+      return;
+    }
+
+    if (event.provider === "gemini") {
+      // Gemini uses the same shared-tree + project-scoped index pattern.
+      this.markMatchingScopesDirty("gemini::");
     }
   }
 

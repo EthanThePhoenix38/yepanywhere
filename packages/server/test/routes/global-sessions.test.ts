@@ -529,6 +529,62 @@ describe("Global Sessions Routes", () => {
       expect(codexReaderFactory).toHaveBeenCalledWith(project1.path);
       expect(result.sessions.some((s) => s.id === "codex-sess-1")).toBe(true);
     });
+
+    it("uses session index cache for codex sessions merged into claude projects", async () => {
+      const project = createProject("proj1", "project-one", "/sessions/proj1");
+      vi.mocked(mockScanner.listProjects).mockResolvedValue([project]);
+      sessionsByDir.set("/sessions/proj1", []);
+
+      const codexSession = createSession(
+        "codex-sess-1",
+        "proj1",
+        minutesAgo(1),
+        {
+          provider: "codex",
+        },
+      );
+      const codexReader = {
+        listSessions: vi.fn(async () => [codexSession]),
+      } as unknown as CodexSessionReader;
+      const codexReaderFactory = vi.fn(() => codexReader);
+      const codexScanner = {
+        listProjects: vi.fn(async () => [{ ...project, provider: "codex" }]),
+      };
+      const sessionIndexService = {
+        getSessionsWithCache: vi.fn(
+          async (
+            sessionDir: string,
+            _projectId: string,
+            reader: ISessionReader,
+          ) => {
+            if (sessionDir === "/codex/sessions") {
+              expect(reader).toBe(codexReader);
+              return [codexSession];
+            }
+            return reader.listSessions(_projectId as UrlProjectId);
+          },
+        ),
+      } as unknown as SessionIndexService;
+
+      const routes = createGlobalSessionsRoutes({
+        ...getDeps({ sessionIndexService }),
+        codexScanner:
+          codexScanner as unknown as GlobalSessionsDeps["codexScanner"],
+        codexSessionsDir: "/codex/sessions",
+        codexReaderFactory:
+          codexReaderFactory as unknown as GlobalSessionsDeps["codexReaderFactory"],
+      });
+
+      const response = await routes.request("/");
+      expect(response.status).toBe(200);
+      const result = (await response.json()) as GlobalSessionsResponse;
+
+      expect(
+        vi.mocked(sessionIndexService.getSessionsWithCache),
+      ).toHaveBeenCalledWith("/codex/sessions", project.id, codexReader);
+      expect(codexReader.listSessions).not.toHaveBeenCalled();
+      expect(result.sessions.some((s) => s.id === "codex-sess-1")).toBe(true);
+    });
   });
 
   describe("enrichment", () => {

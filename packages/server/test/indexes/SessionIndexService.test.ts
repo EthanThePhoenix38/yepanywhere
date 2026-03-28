@@ -14,6 +14,9 @@ import { toUrlProjectId } from "@yep-anywhere/shared";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { SessionIndexService } from "../../src/indexes/SessionIndexService.js";
 import { SessionReader } from "../../src/sessions/reader.js";
+import type { ISessionReader } from "../../src/sessions/types.js";
+import type { SessionSummary } from "../../src/supervisor/types.js";
+import { EventBus } from "../../src/watcher/EventBus.js";
 
 describe("SessionIndexService", () => {
   let testDir: string;
@@ -389,6 +392,86 @@ describe("SessionIndexService", () => {
         reader,
       );
       expect(sessions).toHaveLength(1);
+    });
+
+    it("invalidates loaded codex scopes on codex file-change events", async () => {
+      const eventBus = new EventBus();
+      const codexService = new SessionIndexService({
+        dataDir,
+        projectsDir,
+        eventBus,
+        fullValidationIntervalMs: 60000,
+      });
+      await codexService.initialize();
+
+      const codexSessionDir = join(testDir, "codex-sessions");
+      await mkdir(codexSessionDir, { recursive: true });
+      const codexFile = join(codexSessionDir, "session-1.jsonl");
+      await writeFile(codexFile, "Original title\n");
+
+      const codexReader: ISessionReader = {
+        getIndexScopeKey: (sessionDir) => `codex::${sessionDir}::/tmp/project`,
+        listSessionFiles: async (sessionDir) => [
+          {
+            sessionId: "session-1",
+            filePath: join(sessionDir, "session-1.jsonl"),
+          },
+        ],
+        getSessionSummary: async (
+          sessionId: string,
+          projectId: string,
+        ): Promise<SessionSummary> => {
+          const title = (await readFile(codexFile, "utf-8")).trim();
+          const stats = await stat(codexFile);
+          return {
+            id: sessionId,
+            projectId,
+            title,
+            fullTitle: title,
+            createdAt: new Date(stats.mtimeMs).toISOString(),
+            updatedAt: new Date(stats.mtimeMs).toISOString(),
+            messageCount: 1,
+            ownership: { owner: "none" },
+            provider: "codex",
+          };
+        },
+        getAgentMappings: async () => [],
+        getAgentSession: async () => null,
+      };
+
+      const first = await codexService.getSessionsWithCache(
+        codexSessionDir,
+        projectId,
+        codexReader,
+      );
+      expect(first[0]?.title).toBe("Original title");
+
+      await writeFile(codexFile, "Updated title\n");
+
+      // Without an invalidation event, fast path should keep serving stale data.
+      const stale = await codexService.getSessionsWithCache(
+        codexSessionDir,
+        projectId,
+        codexReader,
+      );
+      expect(stale[0]?.title).toBe("Original title");
+
+      eventBus.emit({
+        type: "file-change",
+        provider: "codex",
+        path: codexFile,
+        relativePath: "2025/03/28/session-1.jsonl",
+        changeType: "modify",
+        timestamp: new Date().toISOString(),
+        fileType: "session",
+      });
+
+      const refreshed = await codexService.getSessionsWithCache(
+        codexSessionDir,
+        projectId,
+        codexReader,
+      );
+      expect(refreshed[0]?.title).toBe("Updated title");
     });
   });
 
