@@ -153,8 +153,8 @@ importers:
   packages/relay:
     dependencies:
       '@hono/node-server':
-        specifier: ^1.19.9
-        version: 1.19.9(hono@4.12.1)
+        specifier: ^1.19.10
+        version: 1.19.10(hono@4.12.7)
       '@yep-anywhere/shared':
         specifier: workspace:*
         version: link:../shared
@@ -162,8 +162,8 @@ importers:
         specifier: ^11.8.1
         version: 11.10.0
       hono:
-        specifier: ^4.12.1
-        version: 4.12.1
+        specifier: ^4.12.7
+        version: 4.12.7
       pino:
         specifier: ^10.1.0
         version: 10.1.0
@@ -202,11 +202,11 @@ importers:
         specifier: ^0.2.56
         version: 0.2.56(zod@4.3.5)
       '@hono/node-server':
-        specifier: ^1.19.9
-        version: 1.19.9(hono@4.12.1)
+        specifier: ^1.19.10
+        version: 1.19.10(hono@4.12.7)
       '@hono/node-ws':
         specifier: ^1.2.0
-        version: 1.3.0(@hono/node-server@1.19.9(hono@4.12.1))(hono@4.12.1)
+        version: 1.3.0(@hono/node-server@1.19.10(hono@4.12.7))(hono@4.12.7)
       '@openai/codex-sdk':
         specifier: ^0.77.0
         version: 0.77.0
@@ -220,8 +220,8 @@ importers:
         specifier: ^8.0.3
         version: 8.0.3
       hono:
-        specifier: ^4.12.1
-        version: 4.12.1
+        specifier: ^4.12.7
+        version: 4.12.7
       http-proxy:
         specifier: ^1.18.1
         version: 1.18.1
@@ -410,8 +410,8 @@ packages:
     resolution: {integrity: sha512-Q/N6JNWvIvPnLDvjlE1OUBLPQHH6l3CltCEsHIujp45zQUSSh8K+gHnaEX45yAT1nyngnINhvWtzN+Nb9D8RAQ==}
     engines: {node: '>=6.9.0'}
 
-  '@babel/runtime@7.28.6':
-    resolution: {integrity: sha512-05WQkdpL9COIMz4LjTxGpPNCdlpyimKppYNoJ5Di5EUObifl8t4tuLuUBBZEpoLYOmfvIWrsp9fCl0HoPRVTdA==}
+  '@babel/runtime@7.29.2':
+    resolution: {integrity: sha512-JiDShH45zKHWyGe4ZNVRrCjBz8Nh9TMmZG1kh4QTK8hCBTWBi8Da+i7s1fJw7/lYpM4ccepSNfqzZ/QvABBi5g==}
     engines: {node: '>=6.9.0'}
 
   '@babel/template@7.27.2':
@@ -957,8 +957,8 @@ packages:
     cpu: [x64]
     os: [win32]
 
-  '@hono/node-server@1.19.9':
-    resolution: {integrity: sha512-vHL6w3ecZsky+8P5MD+eFfaGTyCeOHUIFYMGpQGbrBTSmNNoxv0if69rEZ5giu36weC5saFuznL411gRX7bJDw==}
+  '@hono/node-server@1.19.10':
+    resolution: {integrity: sha512-hZ7nOssGqRgyV3FVVQdfi+U4q02uB23bpnYpdvNXkYTRRyWx84b7yf1ans+dnJ/7h41sGL3CeQTfO+ZGxuO+Iw==}
     engines: {node: '>=18.14.1'}
     peerDependencies:
       hono: ^4
@@ -1822,8 +1822,8 @@ packages:
   help-me@5.0.0:
     resolution: {integrity: sha512-7xgomUX6ADmcYzFik0HzAxh/73YlKR9bmFzf51CZwR+b6YtzU2m0u49hQCqV6SvlqIqsaxovfwdvbnsw3b/zpg==}
 
-  hono@4.12.1:
-    resolution: {integrity: sha512-hi9afu8g0lfJVLolxElAZGANCTTl6bewIdsRNhaywfP9K8BPf++F2z6OLrYGIinUwpRKzbZHMhPwvc0ZEpAwGw==}
+  hono@4.12.7:
+    resolution: {integrity: sha512-jq9l1DM0zVIvsm3lv9Nw9nlJnMNPOcAtsbsgiUhWcFzPE99Gvo6yRTlszSLLYacMeQ6quHD6hMfId8crVHvexw==}
     engines: {node: '>=16.9.0'}
 
   html-encoding-sniffer@4.0.0:
@@ -2069,6 +2069,7 @@ packages:
   prebuild-install@7.1.3:
     resolution: {integrity: sha512-8Mf2cbV7x1cXPUILADGI3wuhfqWvtiLA1iclTDbFRZkgRQS0NqsPZphna9V+HyTEadheuPmjaJMsbzKQFOzLug==}
     engines: {node: '>=10'}
+    deprecated: No longer maintained. Please contact the author of the relevant native addon; alternatives are available.
     hasBin: true
 
   pretty-format@27.5.1:
@@ -2694,7 +2695,7 @@ snapshots:
 
   '@babel/runtime@7.28.4': {}
 
-  '@babel/runtime@7.28.6': {}
+  '@babel/runtime@7.29.2': {}
 
   '@babel/template@7.27.2':
     dependencies:
@@ -2999,14 +3000,14 @@ snapshots:
   '@esbuild/win32-x64@0.27.2':
     optional: true
 
-  '@hono/node-server@1.19.9(hono@4.12.1)':
+  '@hono/node-server@1.19.10(hono@4.12.7)':
     dependencies:
-      hono: 4.12.1
+      hono: 4.12.7
 
-  '@hono/node-ws@1.3.0(@hono/node-server@1.19.9(hono@4.12.1))(hono@4.12.1)':
+  '@hono/node-ws@1.3.0(@hono/node-server@1.19.10(hono@4.12.7))(hono@4.12.7)':
     dependencies:
-      '@hono/node-server': 1.19.9(hono@4.12.1)
-      hono: 4.12.1
+      '@hono/node-server': 1.19.10(hono@4.12.7)
+      hono: 4.12.7
       ws: 8.19.0
     transitivePeerDependencies:
       - bufferutil
@@ -3283,7 +3284,7 @@ snapshots:
   '@testing-library/dom@10.4.1':
     dependencies:
       '@babel/code-frame': 7.29.0
-      '@babel/runtime': 7.28.6
+      '@babel/runtime': 7.29.2
       '@types/aria-query': 5.0.4
       aria-query: 5.3.0
       dom-accessibility-api: 0.5.16
@@ -3850,7 +3851,7 @@ snapshots:
 
   help-me@5.0.0: {}
 
-  hono@4.12.1: {}
+  hono@4.12.7: {}
 
   html-encoding-sniffer@4.0.0:
     dependencies:
