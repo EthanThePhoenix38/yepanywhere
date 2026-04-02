@@ -9,9 +9,9 @@ import {
   query,
 } from "@anthropic-ai/claude-agent-sdk";
 import {
-  getModelContextWindow,
   type ModelInfo,
   type SlashCommand,
+  getModelContextWindow,
 } from "@yep-anywhere/shared";
 import { getLogger } from "../../logging/logger.js";
 import { detectClaudeCli } from "../cli-detection.js";
