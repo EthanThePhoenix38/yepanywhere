@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  CLAUDE_EXTENDED_CONTEXT_WINDOW,
   CODEX_DEFAULT_CONTEXT_WINDOW,
   DEFAULT_CONTEXT_WINDOW,
   getModelContextWindow,
@@ -25,6 +26,18 @@ describe("getModelContextWindow", () => {
     );
     expect(getModelContextWindow("openai/gpt-5")).toBe(
       CODEX_DEFAULT_CONTEXT_WINDOW,
+    );
+  });
+
+  it("detects explicit Claude 1M model variants", () => {
+    expect(getModelContextWindow("sonnet[1m]")).toBe(
+      CLAUDE_EXTENDED_CONTEXT_WINDOW,
+    );
+    expect(getModelContextWindow("opus[1m]")).toBe(
+      CLAUDE_EXTENDED_CONTEXT_WINDOW,
+    );
+    expect(getModelContextWindow("claude-opus-4-6[1m]")).toBe(
+      CLAUDE_EXTENDED_CONTEXT_WINDOW,
     );
   });
 

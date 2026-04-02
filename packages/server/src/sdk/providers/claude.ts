@@ -8,7 +8,11 @@ import {
   type SpawnedProcess,
   query,
 } from "@anthropic-ai/claude-agent-sdk";
-import type { ModelInfo, SlashCommand } from "@yep-anywhere/shared";
+import {
+  getModelContextWindow,
+  type ModelInfo,
+  type SlashCommand,
+} from "@yep-anywhere/shared";
 import { getLogger } from "../../logging/logger.js";
 import { detectClaudeCli } from "../cli-detection.js";
 import { logSDKMessage } from "../messageLogger.js";
@@ -42,17 +46,83 @@ const USE_SPAWN_WRAPPER = true;
 /** Static fallback list of Claude models (used if probe fails) */
 const CLAUDE_MODELS_FALLBACK: ModelInfo[] = [
   {
+    id: "default",
+    name: "Default (recommended)",
+    description: "Claude Code chooses the recommended model for your account",
+    contextWindow: getModelContextWindow("default", "claude"),
+  },
+  {
+    id: "best",
+    name: "Best",
+    description: "Highest-capability Claude Code alias for complex work",
+    contextWindow: getModelContextWindow("best", "claude"),
+  },
+  {
     id: "sonnet",
     name: "Sonnet",
-    description: "Best balance of speed and capability",
+    description: "Standard-context Sonnet for everyday coding tasks",
+    contextWindow: getModelContextWindow("sonnet", "claude"),
+  },
+  {
+    id: "sonnet[1m]",
+    name: "Sonnet 1M",
+    description: "Sonnet with 1M context for long sessions and large codebases",
+    contextWindow: getModelContextWindow("sonnet[1m]", "claude"),
   },
   {
     id: "opus",
     name: "Opus",
-    description: "Most capable model for complex tasks",
+    description: "Standard-context Opus for the most demanding reasoning",
+    contextWindow: getModelContextWindow("opus", "claude"),
   },
-  { id: "haiku", name: "Haiku", description: "Fastest model for simple tasks" },
+  {
+    id: "opus[1m]",
+    name: "Opus 1M",
+    description: "Opus with 1M context for the largest working sets",
+    contextWindow: getModelContextWindow("opus[1m]", "claude"),
+  },
+  {
+    id: "haiku",
+    name: "Haiku",
+    description: "Fastest model for simple tasks",
+    contextWindow: getModelContextWindow("haiku", "claude"),
+  },
+  {
+    id: "opusplan",
+    name: "Opus Plan",
+    description: "Uses Opus for planning, then Sonnet for execution",
+    contextWindow: getModelContextWindow("opus", "claude"),
+  },
 ];
+
+function enrichClaudeModel(model: ModelInfo): ModelInfo {
+  return {
+    ...model,
+    contextWindow:
+      model.contextWindow ?? getModelContextWindow(model.id, "claude"),
+  };
+}
+
+function mergeClaudeModels(models: ModelInfo[]): ModelInfo[] {
+  const byId = new Map<string, ModelInfo>();
+
+  for (const model of CLAUDE_MODELS_FALLBACK) {
+    byId.set(model.id, enrichClaudeModel(model));
+  }
+
+  for (const model of models) {
+    byId.set(model.id, enrichClaudeModel(model));
+  }
+
+  const orderedIds = [
+    ...CLAUDE_MODELS_FALLBACK.map((model) => model.id),
+    ...models.map((model) => model.id),
+  ];
+
+  return [...new Set(orderedIds)]
+    .map((id) => byId.get(id))
+    .filter((model): model is ModelInfo => model !== undefined);
+}
 
 /** Cached models from SDK probe */
 let cachedModels: ModelInfo[] | null = null;
@@ -141,8 +211,8 @@ export class ClaudeProvider implements AgentProvider {
     probePromise = this.probeModels();
     try {
       const models = await probePromise;
-      cachedModels = models;
-      return models;
+      cachedModels = mergeClaudeModels(models);
+      return cachedModels;
     } catch (error) {
       console.warn("[Claude] Failed to probe models, using fallback:", error);
       return CLAUDE_MODELS_FALLBACK;
@@ -232,11 +302,13 @@ export class ClaudeProvider implements AgentProvider {
         ),
       ]);
 
-      return models.map((m) => ({
-        id: m.value,
-        name: m.displayName,
-        description: m.description,
-      }));
+      return mergeClaudeModels(
+        models.map((m) => ({
+          id: m.value,
+          name: m.displayName,
+          description: m.description,
+        })),
+      );
     } finally {
       abortController.abort();
     }
@@ -459,11 +531,13 @@ export class ClaudeProvider implements AgentProvider {
       supportedModels: async (): Promise<ModelInfo[]> => {
         const models = await sdkQuery.supportedModels();
         // Map SDK ModelInfo (value, displayName, description) to our ModelInfo (id, name, description)
-        const mappedModels = models.map((m) => ({
-          id: m.value,
-          name: m.displayName,
-          description: m.description,
-        }));
+        const mappedModels = mergeClaudeModels(
+          models.map((m) => ({
+            id: m.value,
+            name: m.displayName,
+            description: m.description,
+          })),
+        );
         // Update cache for future getAvailableModels() calls
         cachedModels = mappedModels;
         return mappedModels;

@@ -64,16 +64,20 @@ function getPreferredModelId(
   models: ModelInfo[],
   preferredModelId?: string | null,
 ) {
-  if (preferredModelId) {
+  const configuredModelId = preferredModelId ?? resolveModel(getModelSetting());
+
+  if (!configuredModelId) {
+    return models.find((m) => m.id === "default")?.id ?? null;
+  }
+
+  if (configuredModelId) {
     const matchingPreferredModel = models.find(
-      (m) => m.id === preferredModelId,
+      (m) => m.id === configuredModelId,
     );
     if (matchingPreferredModel) return matchingPreferredModel.id;
   }
 
-  const targetModelId = resolveModel(getModelSetting());
-  const matchingUserSetting = models.find((m) => m.id === targetModelId);
-  return matchingUserSetting?.id ?? models[0]?.id ?? null;
+  return models[0]?.id ?? null;
 }
 
 export interface NewSessionFormProps {

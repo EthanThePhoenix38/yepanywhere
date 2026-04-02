@@ -128,25 +128,37 @@ export interface NewSessionDefaults {
 /**
  * Model option for Claude sessions.
  * - "default": Use the CLI's default model
+ * - "best": Use Claude Code's best available model alias
  * - "sonnet": Claude Sonnet
+ * - "sonnet[1m]": Claude Sonnet with 1M context when available
  * - "opus": Claude Opus
+ * - "opus[1m]": Claude Opus with 1M context when available
  * - "haiku": Claude Haiku
+ * - "opusplan": Plan with Opus, execute with Sonnet
  */
-export type ModelOption = "default" | "sonnet" | "opus" | "haiku";
+export type ModelOption =
+  | "default"
+  | "best"
+  | "sonnet"
+  | "sonnet[1m]"
+  | "opus"
+  | "opus[1m]"
+  | "haiku"
+  | "opusplan";
 
 /**
- * The default model when "default" is selected.
+ * The logical default selection token.
  */
-export const DEFAULT_MODEL: Exclude<ModelOption, "default"> = "opus";
+export const DEFAULT_MODEL: ModelOption = "default";
 
 /**
- * Resolve a model option to the actual model name.
- * Maps "default" to the actual default model (opus).
+ * Resolve a saved model option to the explicit value sent to Claude Code.
+ * Returning undefined means "use Claude Code's tier-dependent default".
  */
 export function resolveModel(
   model: ModelOption | undefined,
-): Exclude<ModelOption, "default"> {
-  return model === "default" || !model ? DEFAULT_MODEL : model;
+): string | undefined {
+  return model === "default" || !model ? undefined : model;
 }
 
 /**

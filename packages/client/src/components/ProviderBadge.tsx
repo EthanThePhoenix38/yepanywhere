@@ -50,6 +50,7 @@ export function ProviderBadge({
   const getModelLabel = (modelName: string | undefined): string | null => {
     if (!modelName) return null;
     if (modelName === "default") return null;
+    const isExtendedContext = modelName.includes("[1m]");
 
     // Check if it's a known short model option (e.g., "opus", "sonnet")
     const knownModel = MODEL_OPTIONS.find((o) => o.value === modelName);
@@ -65,14 +66,18 @@ export function ProviderBadge({
       // Check if the extracted family is a known model
       const familyModel = MODEL_OPTIONS.find((o) => o.value === family);
       if (familyModel) {
-        return familyModel.label;
+        return isExtendedContext
+          ? `${familyModel.label} 1M`
+          : familyModel.label;
       }
       // Capitalize unknown family
-      return family.charAt(0).toUpperCase() + family.slice(1);
+      const capitalized = family.charAt(0).toUpperCase() + family.slice(1);
+      return isExtendedContext ? `${capitalized} 1M` : capitalized;
     }
 
     // For other models, capitalize first letter
-    return modelName.charAt(0).toUpperCase() + modelName.slice(1);
+    const capitalized = modelName.charAt(0).toUpperCase() + modelName.slice(1);
+    return isExtendedContext ? `${capitalized} 1M` : capitalized;
   };
 
   const modelLabel = getModelLabel(model);

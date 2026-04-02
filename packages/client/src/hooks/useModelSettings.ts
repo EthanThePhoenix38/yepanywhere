@@ -1,5 +1,6 @@
 import type {
   EffortLevel,
+  ModelOption,
   ThinkingMode,
   ThinkingOption,
 } from "@yep-anywhere/shared";
@@ -11,21 +12,19 @@ import {
 } from "../lib/storageKeys";
 
 /**
- * Available model options.
- * "default" uses the CLI's default model.
- */
-export type ModelOption = "default" | "sonnet" | "opus" | "haiku";
-
-/**
  * Re-export shared types for convenience.
  */
-export type { EffortLevel, ThinkingMode, ThinkingOption };
+export type { EffortLevel, ModelOption, ThinkingMode, ThinkingOption };
 
 export const MODEL_OPTIONS: { value: ModelOption; label: string }[] = [
   { value: "default", label: "Default" },
+  { value: "best", label: "Best" },
   { value: "sonnet", label: "Sonnet" },
+  { value: "sonnet[1m]", label: "Sonnet 1M" },
   { value: "opus", label: "Opus" },
+  { value: "opus[1m]", label: "Opus 1M" },
   { value: "haiku", label: "Haiku" },
+  { value: "opusplan", label: "Opus Plan" },
 ];
 
 export const EFFORT_LEVEL_OPTIONS: {
@@ -41,7 +40,7 @@ export const EFFORT_LEVEL_OPTIONS: {
 
 function loadModel(): ModelOption {
   const stored = getServerScoped("model", LEGACY_KEYS.model);
-  if (stored && ["default", "sonnet", "opus", "haiku"].includes(stored)) {
+  if (stored && MODEL_OPTIONS.some((option) => option.value === stored)) {
     return stored as ModelOption;
   }
   return "default";

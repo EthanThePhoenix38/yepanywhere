@@ -190,15 +190,15 @@ export interface ContextUsage {
 export const DEFAULT_CONTEXT_WINDOW = 200_000;
 /** Default context window size for Codex cloud sessions when metadata is missing */
 export const CODEX_DEFAULT_CONTEXT_WINDOW = 258_000;
+export const CLAUDE_EXTENDED_CONTEXT_WINDOW = 1_000_000;
 
 /**
  * Known context window sizes for different models.
  *
  * Claude models:
- * - Opus 4.5: 200K
- * - Sonnet 4: 200K (standard), 1M (extended - not yet widely available)
+ * - Opus / Sonnet / Haiku standard aliases: 200K
+ * - Explicit "[1m]" Claude variants: 1M
  * - Sonnet 3.5: 200K
- * - Haiku 4.5/3.5: 200K
  *
  * Gemini models:
  * - Gemini 2.0/1.5: 1M
@@ -229,7 +229,9 @@ const MODEL_CONTEXT_WINDOWS: Record<string, number> = {
  *
  * Parses model IDs like:
  * - "claude-opus-4-5-20251101" → opus → 200K
+ * - "claude-opus-4-6[1m]" → opus → 1M
  * - "claude-sonnet-4-20250514" → sonnet → 200K
+ * - "sonnet[1m]" → sonnet → 1M
  * - "claude-3-5-sonnet-20241022" → sonnet → 200K
  * - "gemini-2.0-flash-exp" → gemini → 1M
  * - "gpt-4o-2024-08-06" → gpt-4o → 128K
@@ -249,6 +251,10 @@ export function getModelContextWindow(
   }
 
   const lowerModel = model.toLowerCase();
+
+  if (lowerModel.includes("[1m]")) {
+    return CLAUDE_EXTENDED_CONTEXT_WINDOW;
+  }
 
   // Handle model IDs that may include provider namespace or other prefixes.
   if (lowerModel.includes("gpt-5") || lowerModel.includes("codex")) {
