@@ -76,6 +76,34 @@ export function saveHost(host: SavedHost): void {
   saveSavedHosts(data);
 }
 
+/** Create or update a relay host and optionally attach its stored session. */
+export function upsertRelayHost(params: {
+  relayUrl: string;
+  relayUsername: string;
+  srpUsername: string;
+  session?: StoredSession;
+}): SavedHost {
+  const existing = getHostByRelayUsername(params.relayUsername);
+  const host: SavedHost = existing
+    ? {
+        ...existing,
+        relayUrl: params.relayUrl,
+        srpUsername: params.srpUsername,
+        session: params.session ?? existing.session,
+        lastConnected: params.session
+          ? new Date().toISOString()
+          : existing.lastConnected,
+      }
+    : {
+        ...createRelayHost(params),
+        session: params.session,
+        lastConnected: params.session ? new Date().toISOString() : undefined,
+      };
+
+  saveHost(host);
+  return host;
+}
+
 /** Update just the session for a host (for session resumption) */
 export function updateHostSession(
   id: string,

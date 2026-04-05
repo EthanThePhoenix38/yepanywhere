@@ -37,7 +37,11 @@ import {
   type StoredSession,
 } from "../lib/connection/SecureConnection";
 import type { Connection } from "../lib/connection/types";
-import { getHostById, updateHostSession } from "../lib/hostStorage";
+import {
+  getHostById,
+  updateHostSession,
+  upsertRelayHost,
+} from "../lib/hostStorage";
 
 /** Stored credentials for auto-reconnect */
 interface StoredCredentials {
@@ -691,6 +695,20 @@ export function RemoteConnectionProvider({ children }: Props) {
         await conn.fetch("/auth/status");
 
         console.log("[RemoteConnection] Auto-resume successful");
+        if (currentStored.mode === "relay") {
+          const relayUrl = currentStored.wsUrl;
+          const relayUsername = currentStored.relayUsername;
+
+          if (relayUrl && relayUsername) {
+            const host = upsertRelayHost({
+              relayUrl,
+              relayUsername,
+              srpUsername: currentStored.username,
+              session: storedSession,
+            });
+            setCurrentHostId(host.id);
+          }
+        }
         // Set global connection BEFORE setConnection to avoid race condition
         setGlobalConnection(conn);
         setConnection(conn);
@@ -724,7 +742,12 @@ export function RemoteConnectionProvider({ children }: Props) {
     };
 
     void attemptAutoResume();
-  }, [autoResumeAttempted, handleSessionEstablished, handleDisconnect]);
+  }, [
+    autoResumeAttempted,
+    handleSessionEstablished,
+    handleDisconnect,
+    setCurrentHostId,
+  ]);
 
   // Listen for ConnectionManager state changes to sync React state.
   // When reconnection succeeds, restore the React connection state.

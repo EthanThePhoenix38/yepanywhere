@@ -112,29 +112,6 @@ export function DevelopmentSettings() {
             <span className="toggle-slider" />
           </label>
         </div>
-        <div className="settings-item">
-          <div className="settings-item-info">
-            <strong>{t("developmentPersistRemoteTitle")}</strong>
-            <p>
-              {t("developmentPersistRemoteDescriptionPrefix")}{" "}
-              <code>remote-sessions.json</code> so relay reconnect survives
-              {t("developmentPersistRemoteDescriptionSuffix")}
-            </p>
-          </div>
-          <label className="toggle-switch">
-            <input
-              type="checkbox"
-              checked={serverSettings?.persistRemoteSessionsToDisk ?? false}
-              onChange={(e) =>
-                updateServerSetting(
-                  "persistRemoteSessionsToDisk",
-                  e.target.checked,
-                )
-              }
-            />
-            <span className="toggle-slider" />
-          </label>
-        </div>
       </div>
 
       <div className="settings-group">

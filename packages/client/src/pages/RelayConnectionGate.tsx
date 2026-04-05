@@ -188,6 +188,8 @@ export function RelayConnectionGate() {
 
     // Attempt to connect using saved session
     setState("connecting");
+    // Set host ID before auth so session refresh callbacks can sync hostStorage.
+    setCurrentHostId(host.id);
 
     connectViaRelay({
       relayUrl: host.relayUrl,
@@ -199,7 +201,6 @@ export function RelayConnectionGate() {
       session: host.session,
     })
       .then(() => {
-        setCurrentHostId(host.id);
         setState("connected");
       })
       .catch((err) => {

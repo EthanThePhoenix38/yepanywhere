@@ -1199,6 +1199,10 @@ details[open] .collapsible__icon {
   font-weight: 600;
   font-size: 0.9375rem;
   color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
 }
 
 .modal-close {
@@ -1210,6 +1214,7 @@ details[open] .collapsible__icon {
   padding: 0.25rem 0.5rem;
   border-radius: 4px;
   line-height: 1;
+  flex-shrink: 0;
 }
 
 .modal-close:hover {
