@@ -6,6 +6,22 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [site-v1.5.29] - 2026-04-05
+
+### Added
+- Lifecycle webhook support
+- ToolSearch schema validation
+- Relay host upsert on auto-resume for reliable reconnect
+
+### Changed
+- Update Claude model selection options
+- Move persist-remote-sessions toggle to Remote Access settings
+
+### Fixed
+- Avoid new-session remounts on project refresh
+- Fix relay host ID race condition during session refresh
+- Fix modal title overflow on long names
+
 ## [site-v1.5.28] - 2026-04-02
 
 ### Added

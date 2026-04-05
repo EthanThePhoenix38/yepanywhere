@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.21] - 2026-04-05
+
+### Added
+- Lifecycle webhook support
+- ToolSearch schema validation
+- Claude metadata session entry handling
+- Relay host upsert on auto-resume for reliable reconnect
+
+### Changed
+- Update claude-agent-sdk to 0.2.90
+- Update Claude model selection options
+- Move persist-remote-sessions toggle to Remote Access settings
+- Align Codex session schema with upstream types
+
+### Fixed
+- Avoid new-session remounts on project refresh
+- Allow local image access to managed uploads
+- Fix relay host ID race condition during session refresh
+- Fix modal title overflow on long names
+
 ## [0.4.20] - 2026-04-02
 
 ### Added
