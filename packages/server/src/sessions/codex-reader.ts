@@ -322,7 +322,9 @@ export class CodexSessionReader implements ISessionReader {
 
     return sessions
       .filter((session) =>
-        this.projectPath ? session.cwd === this.projectPath : true,
+        this.projectPath
+          ? canonicalizeProjectPath(session.cwd) === this.projectPath
+          : true,
       )
       .map((session) => ({
         sessionId: session.id,
