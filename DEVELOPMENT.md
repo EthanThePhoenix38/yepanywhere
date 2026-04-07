@@ -11,9 +11,17 @@ pnpm dev
 
 Open http://localhost:3400 in your browser.
 
+If you only want the main app and do not want to install the relay workspace, use:
+
+```bash
+pnpm setup:core
+pnpm dev
+```
+
 ## Commands
 
 ```bash
+pnpm setup:core # Install root + client + server + shared, skipping relay
 pnpm dev        # Start dev server
 pnpm lint       # Biome linter
 pnpm typecheck  # TypeScript type checking

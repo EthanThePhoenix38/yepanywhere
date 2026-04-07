@@ -3,6 +3,7 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "setup:core": "pnpm --filter yep-anywhere --filter @yep-anywhere/server... --filter @yep-anywhere/client... install",
     "setup-vapid": "tsx scripts/setup-vapid.ts",
     "codex:protocol:update": "node scripts/update-codex-protocol.mjs",
     "codex:protocol:check": "node scripts/update-codex-protocol.mjs --check",
