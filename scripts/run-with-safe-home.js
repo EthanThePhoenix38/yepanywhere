@@ -16,9 +16,12 @@ if (!command) {
 
 exitIfUnsafeHome({ entrypoint: command });
 
+const isWindows = process.platform === "win32";
+
 const child = spawn(command, args, {
   stdio: [stdinNull ? "ignore" : "inherit", "inherit", "inherit"],
   env: process.env,
+  ...(isWindows ? { shell: true } : {}),
 });
 
 child.on("exit", (code, signal) => {
