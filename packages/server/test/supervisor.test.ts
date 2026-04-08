@@ -464,7 +464,9 @@ describe("Supervisor", () => {
           ),
         ).toBe(process);
 
-        const abortPromise = supervisorWithAliveProcess.abortProcess(process.id);
+        const abortPromise = supervisorWithAliveProcess.abortProcess(
+          process.id,
+        );
         await vi.advanceTimersByTimeAsync(20);
         await expect(abortPromise).resolves.toBe(true);
       } finally {
